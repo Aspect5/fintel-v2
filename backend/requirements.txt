@@ -3,3 +3,5 @@ flask
 python-dotenv
 openai
 requests
+PyYAML
+google-generativeai
