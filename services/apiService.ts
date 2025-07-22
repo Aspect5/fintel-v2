@@ -32,6 +32,8 @@ export const runWorkflow = async (
         payload.base_url = baseUrl;
     }
 
+    console.log("Frontend Service: Sending request to backend...", { url: API_URL, payload });
+
     try {
         const response = await fetch(API_URL, {
             method: 'POST',
@@ -41,12 +43,16 @@ export const runWorkflow = async (
             body: JSON.stringify(payload),
         });
 
+        console.log("Frontend Service: Received response from backend", { status: response.status });
+
         if (!response.ok) {
-            const errorData = await response.json();
+            const errorData = await response.json().catch(() => ({ error: "Failed to parse error response from backend." }));
+            console.error("Frontend Service: Backend returned an error", { errorData });
             throw new Error(errorData.error || `Request failed with status ${response.status}`);
         }
 
         const data = await response.json();
+        console.log("Frontend Service: Successfully parsed backend response", { data });
         
         // Wrap the backend's string response in a Report object for the UI
         const simplifiedReport: Report = {
@@ -64,7 +70,8 @@ export const runWorkflow = async (
         return simplifiedReport;
 
     } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
+        console.error("Frontend Service: An error occurred during the API call.", { error });
+        const errorMessage = error instanceof Error ? error.message : "An unknown network error occurred.";
         throw new Error(`Failed to execute workflow on Python backend: ${errorMessage}`);
     }
 };

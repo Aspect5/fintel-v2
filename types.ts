@@ -67,6 +67,11 @@ export type ChatMessage = {
     timestamp: string;
 };
 
+export interface Notification {
+  type: 'success' | 'error' | 'info';
+  message: string;
+}
+
 // A base interface for all node data. The coordinator and synthesizer
 // also need a status, so it's included here.
 

@@ -1,21 +1,24 @@
 import React, { useEffect } from 'react';
 import CheckCircleIcon from './icons/CheckCircleIcon';
 import XCircleIcon from './icons/XCircleIcon';
+import InformationCircleIcon from './icons/InformationCircleIcon';
 
 interface NotificationProps {
   message: string;
-  type: 'success' | 'error';
+  type: 'success' | 'error' | 'info';
   onClose: () => void;
 }
 
 const icons = {
   success: <CheckCircleIcon className="w-6 h-6 text-brand-success" />,
   error: <XCircleIcon className="w-6 h-6 text-brand-danger" />,
+  info: <InformationCircleIcon className="w-6 h-6 text-brand-info" />,
 };
 
 const colors = {
     success: 'border-brand-success',
     error: 'border-brand-danger',
+    info: 'border-brand-info',
 };
 
 const Notification: React.FC<NotificationProps> = ({ message, type, onClose }) => {

@@ -5,16 +5,18 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently \"vite\" \"npm run dev:backend\"",
-    "dev:backend": "cd backend && python3 server.py",
+    "dev:backend": "backend/venv/bin/gunicorn --chdir backend -w 1 -b 0.0.0.0:5001 app:app",
     "build": "vite build",
     "start": "vite preview",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@types/uuid": "^10.0.0",
     "dotenv": "^17.2.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "reactflow": "11.11.4",
+    "uuid": "^11.1.0",
     "zustand": "^4.5.4"
   },
   "devDependencies": {

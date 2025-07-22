@@ -5,3 +5,4 @@ openai
 requests
 PyYAML
 google-generativeai
+gunicorn
