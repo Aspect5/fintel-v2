@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 
+type ExecutionEngine = "Gemini (In-Browser)" | "ControlFlow (Python)";
+
 interface ApiKeyState {
   geminiApiKey: string | null;
   alphaVantageApiKey: string | null;
@@ -10,23 +12,31 @@ interface ApiKeyState {
   acknowledgeKeysSet: () => void; // Action to reset the flag
 }
 
-export const useApiKeyStore = create<ApiKeyState>((set) => ({
+interface AppState extends ApiKeyState {
+  executionEngine: ExecutionEngine;
+  setExecutionEngine: (engine: ExecutionEngine) => void;
+}
+
+export const useStore = create<AppState>((set) => ({
+  // API Key State
   geminiApiKey: null,
   alphaVantageApiKey: null,
   fredApiKey: null,
   areKeysSet: false,
   keysJustSet: false,
   setKeys: ({ gemini, alphaVantage, fred }) => {
-    // The Gemini key is required to consider the keys "set".
-    // Other tools can fall back to mock data if their keys are missing.
     const areSet = !!(gemini && gemini.trim());
     set({
       geminiApiKey: gemini,
       alphaVantageApiKey: alphaVantage,
       fredApiKey: fred,
       areKeysSet: areSet,
-      keysJustSet: areSet, // Set the flag to true on successful save
+      keysJustSet: areSet,
     });
   },
   acknowledgeKeysSet: () => set({ keysJustSet: false }),
+
+  // Execution Engine State
+  executionEngine: "Gemini (In-Browser)", // Default engine
+  setExecutionEngine: (engine) => set({ executionEngine: engine }),
 }));

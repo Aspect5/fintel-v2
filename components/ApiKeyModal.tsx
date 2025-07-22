@@ -1,12 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApiKeyStore } from '../store';
 import SparklesIcon from './icons/SparklesIcon';
+import { GEMINI_API_KEY, ALPHA_VANTAGE_API_KEY, FRED_API_KEY } from '../config';
 
 const ApiKeyModal: React.FC = () => {
   const [gemini, setGemini] = useState('');
   const [alphaVantage, setAlphaVantage] = useState('');
   const [fred, setFred] = useState('');
   const { setKeys } = useApiKeyStore();
+
+  useEffect(() => {
+    if (GEMINI_API_KEY) {
+      setGemini(GEMINI_API_KEY);
+    }
+    if (ALPHA_VANTAGE_API_KEY) {
+      setAlphaVantage(ALPHA_VANTAGE_API_KEY);
+    }
+    if (FRED_API_KEY) {
+      setFred(FRED_API_KEY);
+    }
+  }, []);
 
   const handleSave = () => {
     if (gemini.trim()) {

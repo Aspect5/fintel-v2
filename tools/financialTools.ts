@@ -1,5 +1,8 @@
 import { Tool, ToolRegistry } from "./toolTypes";
-import { useApiKeyStore } from '../store';
+import { useStore } from '../store';
+import * as alphaVantage from '../services/alphaVantageService';
+import * as fred from '../services/fredService';
+import { ALPHA_VANTAGE_API_KEY, FRED_API_KEY } from "../config";
 
 export const toolRegistry: ToolRegistry = new Map();
 
@@ -16,7 +19,7 @@ const get_market_data: Tool = {
         required: ["ticker"],
     },
     execute: async ({ ticker }) => {
-        const apiKey = useApiKeyStore.getState().alphaVantageApiKey;
+        const apiKey = useStore.getState().alphaVantageApiKey || ALPHA_VANTAGE_API_KEY;
         if (!apiKey) {
             console.warn("ALPHA_VANTAGE_API_KEY not found. Falling back to mock data for get_market_data.");
             const price = (Math.random() * 200 + 100).toFixed(2);
@@ -26,13 +29,8 @@ const get_market_data: Tool = {
             };
         }
 
-        const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${ticker}&apikey=${apiKey}`;
         try {
-            const response = await fetch(url);
-            if (!response.ok) {
-                 throw new Error(`Alpha Vantage API error! Status: ${response.status}`);
-            }
-            const data = await response.json();
+            const data = await alphaVantage.getGlobalQuote(ticker);
             const quoteData = data['Global Quote'];
 
             if (!quoteData || Object.keys(quoteData).length === 0) {
@@ -60,8 +58,8 @@ const get_market_data: Tool = {
     },
 };
 
-const get_economic_data: Tool = {
-    name: "get_economic_data",
+const get_economic_data_from_alpha_vantage: Tool = {
+    name: "get_economic_data_from_alpha_vantage",
     description: "Retrieves a time series of major US macroeconomic indicators from Alpha Vantage (e.g., CPI, GDP, Unemployment Rate). Useful for trend analysis and forecasting.",
     parameters: {
         type: "OBJECT",
@@ -72,9 +70,9 @@ const get_economic_data: Tool = {
         required: ["indicator"],
     },
      execute: async ({ indicator, data_points = 1 }) => {
-        const apiKey = useApiKeyStore.getState().alphaVantageApiKey;
+        const apiKey = useStore.getState().alphaVantageApiKey || ALPHA_VANTAGE_API_KEY;
         if (!apiKey) {
-            console.warn("ALPHA_VANTAGE_API_KEY not found. Falling back to mock data for get_economic_data.");
+            console.warn("ALPHA_VANTAGE_API_KEY not found. Falling back to mock data for get_economic_data_from_alpha_vantage.");
              const mockSeries = Array.from({length: data_points}, (_, i) => ({
                 date: `2024-0${6-i}-01`,
                 value: `${(Math.random() * 4 + 1.5).toFixed(1)}%`
@@ -96,17 +94,8 @@ const get_economic_data: Tool = {
             throw new Error(`Unsupported indicator "${indicator}". Supported indicators are: ${Object.keys(indicatorMap).join(', ')}.`);
         }
 
-        let url = `https://www.alphavantage.co/query?function=${selectedIndicator.func}&apikey=${apiKey}`;
-        if(selectedIndicator.interval) {
-            url += `&interval=${selectedIndicator.interval}`;
-        }
-        
         try {
-            const response = await fetch(url);
-            if (!response.ok) throw new Error(`Alpha Vantage Economic Data API error! Status: ${response.status}`);
-
-            const result = await response.json();
-            if (result.Note) { throw new Error(`Alpha Vantage API Note: ${result.Note}`); }
+            const result = await alphaVantage.getEconomicIndicator(selectedIndicator.func, selectedIndicator.interval);
             if (!result.data || result.data.length === 0) {
                 throw new Error(`No data found for indicator ${indicator}.`);
             }
@@ -131,6 +120,53 @@ const get_economic_data: Tool = {
     },
 };
 
+const get_economic_data_from_fred: Tool = {
+    name: "get_economic_data_from_fred",
+    description: "Retrieves a time series of a specific economic data series from FRED (Federal Reserve Economic Data).",
+    parameters: {
+        type: "OBJECT",
+        properties: {
+            series_id: { type: "STRING", description: "The FRED series ID to fetch (e.g., 'GNPCA')." },
+            data_points: { type: "NUMBER", description: "The number of recent data points to retrieve. Default is 10."}
+        },
+        required: ["series_id"],
+    },
+    execute: async ({ series_id, data_points = 10 }) => {
+        const apiKey = useStore.getState().fredApiKey || FRED_API_KEY;
+        if (!apiKey) {
+            console.warn("FRED_API_KEY not found. Falling back to mock data for get_economic_data_from_fred.");
+            const mockSeries = Array.from({length: data_points}, (_, i) => ({
+                date: `2024-0${6-i}-01`,
+                value: (Math.random() * 1000 + 20000).toFixed(2)
+            })).reverse();
+            return {
+                output: { series_id, series: mockSeries },
+                summary: `[MOCK] Generated ${data_points} mock data points for FRED series ${series_id}.`
+            };
+        }
+
+        try {
+            const data = await fred.getFredSeries(series_id, data_points);
+            if (!data.observations || data.observations.length === 0) {
+                throw new Error(`No data received from FRED for series ID: ${series_id}.`);
+            }
+            const output = {
+                series_id,
+                series: data.observations.map((obs: any) => ({ date: obs.date, value: obs.value }))
+            };
+            return {
+                output,
+                summary: `[LIVE] Successfully fetched the latest ${output.series.length} data points for FRED series ${series_id}.`
+            };
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
+            console.error(`Failed to fetch FRED data for series ${series_id}:`, errorMessage);
+            throw new Error(`API call to FRED failed for ${series_id}: ${errorMessage}`);
+        }
+    }
+};
+
+
 const get_company_overview: Tool = {
     name: "get_company_overview",
     description: "Fetches fundamental company data, including market cap, P/E ratio, EPS, and a business description.",
@@ -142,17 +178,12 @@ const get_company_overview: Tool = {
         required: ["ticker"],
     },
     execute: async ({ ticker }) => {
-        const apiKey = useApiKeyStore.getState().alphaVantageApiKey;
+        const apiKey = useStore.getState().alphaVantageApiKey || ALPHA_VANTAGE_API_KEY;
         if (!apiKey) {
             throw new Error("This tool requires an Alpha Vantage API key.");
         }
-        const url = `https://www.alphavantage.co/query?function=OVERVIEW&symbol=${ticker}&apikey=${apiKey}`;
         try {
-            const response = await fetch(url);
-            if (!response.ok) throw new Error(`Alpha Vantage API error! Status: ${response.status}`);
-            
-            const data = await response.json();
-            if (data.Note) throw new Error(`Alpha Vantage API Note: ${data.Note}`);
+            const data = await alphaVantage.getCompanyOverview(ticker);
             if (!data.Symbol) throw new Error(`No company overview data found for ticker: ${ticker}.`);
 
             const output = {
@@ -189,18 +220,12 @@ const get_news_sentiment: Tool = {
         required: ["ticker"],
     },
     execute: async ({ ticker }) => {
-        const apiKey = useApiKeyStore.getState().alphaVantageApiKey;
+        const apiKey = useStore.getState().alphaVantageApiKey || ALPHA_VANTAGE_API_KEY;
         if (!apiKey) {
             throw new Error("This tool requires an Alpha Vantage API key.");
         }
-        // Limit to 10 most recent articles for a concise result.
-        const url = `https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers=${ticker}&apikey=${apiKey}&limit=10`;
         try {
-            const response = await fetch(url);
-            if (!response.ok) throw new Error(`Alpha Vantage API error! Status: ${response.status}`);
-
-            const data = await response.json();
-            if (data.Note) throw new Error(`Alpha Vantage API Note: ${data.Note}`);
+            const data = await alphaVantage.getNewsSentiment(ticker);
             if (!data.feed || data.feed.length === 0) {
                  return {
                     output: { feed: [], overall_sentiment_label: "Neutral" },
@@ -295,7 +320,7 @@ const analyze_spending_trends: Tool = {
 
 
 // Register all tools
-[get_market_data, get_economic_data, get_company_overview, get_news_sentiment, analyze_tariff_impact, analyze_spending_trends].forEach(tool => {
+[get_market_data, get_economic_data_from_alpha_vantage, get_economic_data_from_fred, get_company_overview, get_news_sentiment, analyze_tariff_impact, analyze_spending_trends].forEach(tool => {
     toolRegistry.set(tool.name, tool);
 });
 

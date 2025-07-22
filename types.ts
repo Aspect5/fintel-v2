@@ -20,6 +20,7 @@ export interface ToolCallResult {
   toolOutputSummary: string;
 }
 
+
 export type AgentInvocationStatus = 'pending' | 'running' | 'success' | 'failure';
 
 export interface AgentInvocation {
@@ -66,32 +67,29 @@ export type ChatMessage = {
     timestamp: string;
 };
 
-// Data payload for different node types in the workflow
-export type AgentNodeData = {
-    label: string;
-    details: string;
-    status: AgentInvocationStatus;
-    error?: string;
-    result?: string;
-    toolCalls?: ToolCallResult[];
+// A base interface for all node data. The coordinator and synthesizer
+// also need a status, so it's included here.
+
+export interface BasicNodeData {
+  label: string;
+  details: string;
+  status: AgentInvocationStatus;
 };
 
-export type BasicNodeData = {
-    label: string;
-    details: string;
+// Agent-specific data extends the base, adding its unique properties.
+// `toolCalls` is now non-optional as it's always initialized in your code.
+export interface AgentNodeData extends BasicNodeData {
+  error?: string;
+  result?: string;
+  toolCalls: ToolCallResult[];
 };
 
-export type NodeData = BasicNodeData | AgentNodeData;
+// A union of all possible data types for our nodes.
+// THIS is the correct type to pass as a generic to useNodesState.
+export type CustomNodeData = BasicNodeData | AgentNodeData;
 
-export type CustomNode =
-    | (Node<BasicNodeData> & {
-        type: 'coordinator';
-      })
-    | (Node<AgentNodeData> & {
-        type: 'agent';
-      })
-    | (Node<AgentNodeData> & {
-        type: 'synthesizer';
-      });
+// A simple, clear type alias for a React Flow node using our custom data union.
+// This is the type that the `nodes` array will hold.
+export type CustomNode = Node<CustomNodeData>;
 
 export type CustomEdge = Edge;

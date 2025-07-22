@@ -10,7 +10,7 @@ export const agentRegistry: AgentDefinition[] = [
         name: "MarketAnalyst",
         description: "Specializes in analyzing financial markets, securities, and economic trends.",
         instructions: "You are an expert market analyst. Your goal is to provide insights into market conditions and security performance using the tools available to you.",
-        tools: ["get_market_data", "get_economic_data", "analyze_tariff_impact", "get_company_overview", "get_news_sentiment"],
+        tools: ["get_market_data", "get_economic_data_from_alpha_vantage", "analyze_tariff_impact", "get_company_overview", "get_news_sentiment"],
     },
     {
         name: "BudgetAnalyzer",
@@ -21,8 +21,8 @@ export const agentRegistry: AgentDefinition[] = [
     {
         name: "EconomicForecaster",
         description: "Specializes in macro-economic trends and forecasting.",
-        instructions: "You are an expert economic forecaster. Your primary goal is to provide a comprehensive outlook on economic conditions. To do this, you must analyze historical trends. Use the `get_economic_data` tool to fetch time series data (e.g., the last 12-24 months for monthly data like CPI, or 8-12 quarters for quarterly data like GDP). Analyze the retrieved series to identify growth rates, momentum, and inflection points to support your forecast. Do not make a forecast based on a single data point.",
-        tools: ["get_economic_data", "analyze_tariff_impact"],
+        instructions: "You are an expert economic forecaster. Your primary goal is to provide a comprehensive outlook on economic conditions. To do this, you must analyze historical trends. Use the `get_economic_data_from_fred` tool to fetch time series data (e.g., the last 12-24 months for monthly data like CPI, or 8-12 quarters for quarterly data like GDP). Analyze the retrieved series to identify growth rates, momentum, and inflection points to support your forecast. Do not make a forecast based on a single data point.",
+        tools: ["get_economic_data_from_alpha_vantage", "get_economic_data_from_fred", "analyze_tariff_impact"],
     },
     {
         name: "TechnologyInvestmentAnalyst",

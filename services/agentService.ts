@@ -3,6 +3,7 @@ import { agentRegistry, getAgentDefinition } from '../agents/registry';
 import { executeTool, toolRegistry } from '../tools/financialTools';
 import { agentFinalResponseSchema, agentToolCallSchema, planSchema, reportSynthesizerSchema } from '../agents/schemas';
 import { useApiKeyStore } from '../store';
+import { GEMINI_API_KEY } from '../config';
 
 export class AgentFailureError extends Error {
     payload: AgentFailure;
@@ -28,12 +29,12 @@ const purposeToSchemaMap = {
  * @returns The parsed JSON object from the model's response.
  */
 async function callGeminiApi(prompt: string, purpose: 'coordinator' | 'tool_planning' | 'synthesis' | 'report'): Promise<any> {
-    const apiKey = useApiKeyStore.getState().geminiApiKey;
+    const apiKey = useApiKeyStore.getState().geminiApiKey || GEMINI_API_KEY;
     if (!apiKey) {
         throw new Error("Gemini API key has not been set. Please provide your key to proceed.");
     }
     
-    const model = 'gemini-2.5-flash';
+    const model = 'gemini-1.5-flash';
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     const schema = purposeToSchemaMap[purpose];
@@ -66,7 +67,7 @@ async function callGeminiApi(prompt: string, purpose: 'coordinator' | 'tool_plan
     try {
         const jsonString = responseData.candidates[0].content.parts[0].text;
         return JSON.parse(jsonString);
-    } catch(e) {
+    } catch(e: any) {
         console.error("Failed to parse JSON response from Gemini:", responseData.candidates[0].content.parts[0].text);
         throw new Error("The AI returned a malformed JSON response. Please try again.");
     }
@@ -96,7 +97,7 @@ export const runCoordinatorPlanner = async (query: string): Promise<{plan: Plan[
     try {
         const result = await callGeminiApi(prompt, 'coordinator');
         return result;
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error in Coordinator Planner:", error);
         const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
         throw new Error(`The AI coordinator failed to create a plan. Reason: ${errorMessage}`);
@@ -116,9 +117,9 @@ async function planToolCalls(agentName: string, task: string, addStatusMessage: 
     }
 
     const toolSchemas = availableTools.map(tool => ({
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.parameters,
+        name: tool!.name,
+        description: tool!.description,
+        parameters: tool!.parameters,
     }));
 
     const prompt = `
@@ -131,7 +132,7 @@ async function planToolCalls(agentName: string, task: string, addStatusMessage: 
         ${JSON.stringify(toolSchemas, null, 2)}
 
         Based on your task, respond with ONLY a raw JSON object with a "toolCalls" key. The value should be an array of objects, where each object has "toolName" and "parameters".
-        IMPORTANT: The value for the "parameters" key MUST be a JSON string. For example: { "toolCalls": [{ "toolName": "get_market_data", "parameters": "{\\"ticker\\":\\"MSFT\\"}" }] }
+        IMPORTANT: The value for the "parameters" key MUST be a JSON string. For example: { "toolCalls": [{ "toolName": "get_market_data", "parameters": "{"ticker":"MSFT"}" }] }
         If no tools are necessary, return an object with an empty "toolCalls" array.
     `;
     
@@ -199,7 +200,7 @@ export const runAgentTask = async (plan: Plan, addStatusMessage: (msg: string) =
             status: 'success'
         };
 
-    } catch (error) {
+    } catch (error: any) {
         console.error(`Error in agent ${plan.agentName}:`, error);
         const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
         throw new AgentFailureError(errorMessage, { agentName: plan.agentName, task: plan.task, error: errorMessage });
@@ -226,7 +227,7 @@ export const runReportSynthesizer = async (query: string, agentFindings: AgentFi
     `;
      try {
         return await callGeminiApi(prompt, 'report');
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error in Report Synthesizer:", error);
         const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
         throw new Error(`The AI failed to synthesize the final report. Reason: ${errorMessage}`);
