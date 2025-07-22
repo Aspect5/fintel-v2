@@ -4,17 +4,18 @@ import { Notification } from './types';
 
 // Define types for the execution engines and providers
 export type ExecutionEngine = 'Gemini (Visual)' | 'ControlFlow (Python)';
-export type ControlFlowProvider = 'openai' | 'gemini' | 'local';
+// 💡 Refactored 'gemini' to 'google' to match the backend
+export type ControlFlowProvider = 'openai' | 'google' | 'local';
 
 // Define the shape of the application's global state
 export interface AppState {
   // --- UI & Execution Configuration ---
   executionEngine: ExecutionEngine;
   setExecutionEngine: (engine: ExecutionEngine) => void;
-  
+
   controlFlowProvider: ControlFlowProvider;
   setControlFlowProvider: (provider: ControlFlowProvider) => void;
-  
+
   customBaseUrl: string;
   setCustomBaseUrl: (url: string) => void;
 
@@ -47,7 +48,7 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'fintel-app-storage', // Name for persisting to localStorage
-      // Select which parts of the state to persist. 
+      // Select which parts of the state to persist.
       // Transient UI state like modals and notifications are not persisted.
       partialize: (state) => ({
         executionEngine: state.executionEngine,

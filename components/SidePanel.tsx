@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ChatMessage } from '../types';
 import ChatPanel from './ChatPanel';
 import CodeBracketIcon from './icons/CodeBracketIcon';
 import DocumentTextIcon from './icons/DocumentTextIcon';
 import ToolkitPanel from './ToolkitPanel';
-import { useStore, ExecutionEngine, ControlFlowProvider } from '../store';
+import { useStore } from '../store';
 import { useKeyStatus } from '../hooks/useKeyStatus';
 
 /**
@@ -18,7 +18,6 @@ const SidePanel: React.FC<{
 }> = ({ chatMessages, onSendMessage, isLoading }) => {
     const [activeTab, setActiveTab] = useState<'chat' | 'toolkit'>('chat');
     
-    // Get all necessary state and actions from the unified store
     const {
         executionEngine,
         setExecutionEngine,
@@ -28,32 +27,40 @@ const SidePanel: React.FC<{
         setCustomBaseUrl,
     } = useStore();
 
-    // Fetch the status of API keys from the backend
     const { backendKeys, isLoading: areKeysLoading } = useKeyStatus();
 
+    // Check if the browser has the built-in AI feature.
+    const isVisualEngineSupported = typeof window.ai !== 'undefined';
+    
+    // If the visual engine isn't supported, default to the Python engine.
+    useEffect(() => {
+        if (!isVisualEngineSupported && executionEngine === 'Gemini (Visual)') {
+            setExecutionEngine('ControlFlow (Python)');
+        }
+    }, [isVisualEngineSupported, executionEngine, setExecutionEngine]);
+
+
     const handleEngineChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        setExecutionEngine(e.target.value as ExecutionEngine);
+        setExecutionEngine(e.target.value as 'Gemini (Visual)' | 'ControlFlow (Python)');
     };
 
+    // 💡 Refactored the type to use 'google'
     const handleProviderChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        setControlFlowProvider(e.target.value as ControlFlowProvider);
+        setControlFlowProvider(e.target.value as 'openai' | 'google' | 'local');
     };
 
-    // Determine if a required key is missing based on the current engine and provider selection
+    // 💡 Refactored the condition to check for 'google'
     const isKeyMissing = (() => {
         if (executionEngine === 'Gemini (Visual)') {
-            // The visual engine relies on the backend proxy which needs Google and tool keys
             return !backendKeys.google || !backendKeys.alpha_vantage;
         }
         if (executionEngine === 'ControlFlow (Python)') {
-            // The agentic backend's needs depend on the selected LLM provider
             if (controlFlowProvider === 'openai') return !backendKeys.openai;
-            if (controlFlowProvider === 'gemini') return !backendKeys.google;
+            if (controlFlowProvider === 'google') return !backendKeys.google;
         }
-        return false; // No key needed for local provider
+        return false;
     })();
 
-    // A reusable button component for switching between Chat and Toolkit tabs
     const TabButton: React.FC<{ tabName: 'chat' | 'toolkit'; label: string; children: React.ReactNode }> = ({ tabName, label, children }) => (
         <button
             onClick={() => setActiveTab(tabName)}
@@ -83,9 +90,17 @@ const SidePanel: React.FC<{
                         onChange={handleEngineChange}
                         className="w-full p-2 bg-gray-800 border border-gray-600 rounded-md focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                     >
-                        <option value="Gemini (Visual)">Gemini (Visual Tools)</option>
+                        <option value="Gemini (Visual)" disabled={!isVisualEngineSupported}>
+                            Gemini (Visual Tools)
+                            {!isVisualEngineSupported && " (Unsupported)"}
+                        </option>
                         <option value="ControlFlow (Python)">ControlFlow (Python Agents)</option>
                     </select>
+                    {!isVisualEngineSupported && (
+                         <div className="mt-2 text-xs text-yellow-300 bg-yellow-900/50 p-2 rounded-md">
+                            <strong>Note:</strong> The Visual engine requires a browser with built-in AI support (e.g., Chrome with AI features enabled).
+                        </div>
+                    )}
                 </div>
 
                 {/* --- Conditional Controls for ControlFlow Backend --- */}
@@ -102,7 +117,8 @@ const SidePanel: React.FC<{
                                 className="w-full p-2 bg-gray-800 border border-gray-600 rounded-md focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                             >
                                 <option value="openai">OpenAI</option>
-                                <option value="gemini">Gemini</option>
+                                {/* 💡 Refactored value from 'gemini' to 'google' */}
+                                <option value="google">Gemini</option>
                                 <option value="local">Local Model</option>
                             </select>
                         </div>
@@ -123,23 +139,20 @@ const SidePanel: React.FC<{
                         )}
                     </div>
                 )}
-                 {/* --- Key Status Warning --- */}
                 {!areKeysLoading && isKeyMissing && (
                      <div className="mt-2 text-xs text-yellow-300 bg-yellow-900/50 p-2 rounded-md animate-fade-in">
-                        <strong>Warning:</strong> The required API key for the selected configuration is not set on the backend. The application may not function correctly.
+                        <strong>Warning:</strong> The required API key is not set on the backend.
                     </div>
                 )}
             </div>
             
+            {/* --- Tab Navigation --- */}
             <div className="flex border-b border-gray-700 flex-shrink-0">
-                <TabButton tabName="chat" label="Chat">
-                    <DocumentTextIcon className="w-5 h-5" />
-                </TabButton>
-                <TabButton tabName="toolkit" label="Toolkit">
-                    <CodeBracketIcon className="w-5 h-5" />
-                </TabButton>
+                <TabButton tabName="chat" label="Chat"><DocumentTextIcon className="w-5 h-5" /></TabButton>
+                <TabButton tabName="toolkit" label="Toolkit"><CodeBracketIcon className="w-5 h-5" /></TabButton>
             </div>
 
+            {/* --- Tab Content --- */}
             <div className="flex-grow overflow-hidden">
                 {activeTab === 'chat' && (
                     <ChatPanel
@@ -148,11 +161,9 @@ const SidePanel: React.FC<{
                         isLoading={isLoading}
                     />
                 )}
-                {activeTab === 'toolkit' && (
-                    <ToolkitPanel />
-                )}
+                {activeTab === 'toolkit' && <ToolkitPanel />}
             </div>
-             <style>{`
+            <style>{`
                 @keyframes fade-in {
                 from { opacity: 0; transform: translateY(-5px); }
                 to { opacity: 1; transform: translateY(0); }

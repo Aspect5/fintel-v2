@@ -1,10 +1,10 @@
-
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { ChatMessage } from '../types';
-import SparklesIcon from './icons/SparklesIcon';
+import MarkdownRenderer from './MarkdownRenderer';
+// FIX: Changed to default imports for the icon components
 import SendIcon from './icons/SendIcon';
 import SpinnerIcon from './icons/SpinnerIcon';
-import MarkdownRenderer from './MarkdownRenderer';
+import ReportDisplay from './report/ReportDisplay';
 
 interface ChatPanelProps {
   chatMessages: ChatMessage[];
@@ -12,126 +12,86 @@ interface ChatPanelProps {
   isLoading: boolean;
 }
 
-const suggestions: { label: string; query: string }[] = [
-    { label: "Auto Tariffs", query: "What is the impact of a 10% tariff on the automotive industry in the USA and Eurozone?" },
-    { label: "Tech Stocks", query: "Analyze the market performance of 'NVDA' and 'AMD' over the last quarter." },
-    { label: "US Economy", query: "Forecast the US macroeconomic outlook using current CPI and GDP data." },
-];
-
-
-const ChatPanel: React.FC<ChatPanelProps> = ({ chatMessages, onSendMessage, isLoading }) => {
-  const [input, setInput] = useState('');
-  const messagesContainerRef = useRef<HTMLDivElement>(null);
-
-  const scrollToBottom = () => {
-    if (messagesContainerRef.current) {
-      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
-    }
-  };
+const ChatPanel: React.FC<ChatPanelProps> = ({
+  chatMessages,
+  onSendMessage,
+  isLoading,
+}) => {
+  const [input, setInput] = React.useState('');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Use a small timeout to ensure the DOM has been updated before scrolling
-    setTimeout(scrollToBottom, 0);
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSend = () => {
     if (input.trim() && !isLoading) {
-      onSendMessage(input.trim());
+      onSendMessage(input);
       setInput('');
     }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        handleSubmit(e as unknown as React.FormEvent);
-    }
-  };
-
-  const handleSuggestionClick = (suggestionQuery: string) => {
-    if (!isLoading) {
-      onSendMessage(suggestionQuery);
+      e.preventDefault();
+      handleSend();
     }
   };
 
   return (
-    <div className="flex flex-col h-full bg-brand-surface">
-      {/* Message Display Area */}
-      <div ref={messagesContainerRef} className="flex-grow p-4 overflow-y-auto space-y-4">
-        {chatMessages.map(msg => (
-          <div key={msg.id} className={`flex items-start gap-3 animate-fade-in ${msg.sender === 'user' ? 'justify-end' : ''}`}>
-            {msg.sender === 'ai' && (
-              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-brand-secondary flex items-center justify-center">
-                <SparklesIcon className="w-5 h-5 text-white" />
+    <div className="flex flex-col h-full bg-gray-800 text-white">
+      <div className="flex-grow p-4 overflow-y-auto">
+        <div className="space-y-4">
+          {chatMessages.map((msg, index) => (
+            <div key={`msg-${index}`} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div
+                className={`max-w-xl p-3 rounded-lg ${
+                  msg.role === 'user'
+                    ? 'bg-indigo-500 text-white'
+                    : 'bg-gray-700'
+                }`}
+              >
+                {/* Conditionally render the ReportDisplay or the standard markdown content */}
+                {msg.trace ? (
+                   <ReportDisplay trace={msg.trace} />
+                ) : (
+                  <MarkdownRenderer content={msg.content} />
+                )}
               </div>
-            )}
-            <div className={`max-w-md p-3 rounded-lg ${msg.sender === 'user' ? 'bg-brand-primary text-white' : 'bg-brand-bg'}`}>
-              <MarkdownRenderer content={msg.content} />
             </div>
-          </div>
-        ))}
-         {isLoading && chatMessages.length > 1 && (
-            <div className="flex items-start gap-3 animate-fade-in">
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-brand-secondary flex items-center justify-center">
-                    <SpinnerIcon className="w-5 h-5 text-white animate-spin" />
-                </div>
-                <div className="max-w-md p-3 rounded-lg bg-brand-bg italic text-brand-text-secondary">
-                    Thinking...
-                </div>
-            </div>
-         )}
-      </div>
-      
-      {/* Input Area */}
-      <div className="p-4 border-t border-brand-border flex-shrink-0">
-         {/* Prompt Suggestions */}
-        <div className="mb-4">
-            <p className="text-xs text-brand-text-secondary mb-2">Or try an example:</p>
-            <div className="flex flex-wrap gap-2">
-                {suggestions.map((s, i) => (
-                    <button
-                        key={i}
-                        onClick={() => handleSuggestionClick(s.query)}
-                        disabled={isLoading}
-                        className="px-3 py-1 bg-brand-bg text-sm text-brand-text-primary rounded-full border border-brand-border hover:bg-brand-primary/20 hover:border-brand-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        title={s.query}
-                    >
-                        {s.label}
-                    </button>
-                ))}
-            </div>
+          ))}
+          {isLoading && (
+             <div className="flex justify-start">
+               <div className="bg-gray-700 p-3 rounded-lg flex items-center space-x-2">
+                 <SpinnerIcon />
+                 <span>Thinking...</span>
+               </div>
+             </div>
+          )}
         </div>
-        <form onSubmit={handleSubmit} className="relative">
+        <div ref={messagesEndRef} />
+      </div>
+
+      <div className="p-4 border-t border-gray-700">
+        <div className="relative">
           <textarea
             value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKeyPress}
-            placeholder={isLoading ? "Processing..." : "Ask FINTEL to build a workflow..."}
-            className="w-full p-3 pr-12 bg-brand-bg border border-brand-border rounded-lg resize-none focus:ring-2 focus:ring-brand-primary focus:outline-none transition-shadow"
+            onChange={(e) => setInput(e.target.value)}
+            onKeyPress={handleKeyPress}
+            placeholder="Ask a question about a stock, company, or financial concept..."
+            className="w-full p-2 pr-10 bg-gray-700 border border-gray-600 rounded-md focus:ring-2 focus:ring-indigo-500 focus:outline-none resize-none"
             rows={2}
             disabled={isLoading}
           />
           <button
-            type="submit"
+            onClick={handleSend}
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-indigo-400 disabled:text-gray-600"
             disabled={isLoading || !input.trim()}
-            className="absolute bottom-3 right-3 flex items-center justify-center w-8 h-8 bg-brand-primary text-white font-semibold rounded-full hover:bg-brand-secondary disabled:bg-brand-text-secondary disabled:cursor-not-allowed transition-all duration-300 ease-in-out transform hover:scale-110 disabled:scale-100"
-            aria-label="Send message"
           >
-            {isLoading && chatMessages.length > 1 ? <SpinnerIcon className="w-4 h-4" /> : <SendIcon className="w-4 h-4" />}
+            <SendIcon />
           </button>
-        </form>
+        </div>
       </div>
-      <style>{`
-        @keyframes fade-in {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        .animate-fade-in {
-            opacity: 0;
-            animation: fade-in 0.3s ease-out forwards;
-        }
-      `}</style>
     </div>
   );
 };
