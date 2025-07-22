@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FINTEL - Financial Intelligence Assistant</title>
+    <link rel="stylesheet" href="https://esm.sh/reactflow@11.11.4/dist/style.css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              'brand-bg': '#0D1117',
+              'brand-surface': '#161B22',
+              'brand-border': '#30363D',
+              'brand-primary': '#58A6FF',
+              'brand-secondary': '#1F6FEB',
+              'brand-text-primary': '#C9D1D9',
+              'brand-text-secondary': '#8B949E',
+              'brand-success': '#22C55E',
+              'brand-warning': '#FACC15',
+              'brand-danger': '#F85149',
+            }
+          }
+        }
+      }
+    </script>
+<style>
+  #root {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+  }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://esm.sh/react-dom@^19.1.0/",
+    "react": "https://esm.sh/react@^19.1.0",
+    "react/": "https://esm.sh/react@^19.1.0/",
+    "reactflow": "https://esm.sh/reactflow@^11.11.4",
+    "vite": "https://esm.sh/vite@^7.0.5",
+    "zustand": "https://esm.sh/zustand@^4.5.4",
+    "zustand/": "https://esm.sh/zustand@^4.5.4/",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^4.7.0",
+    "@google/genai": "https://esm.sh/@google/genai@^1.10.0"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body class="bg-brand-bg text-brand-text-primary">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+</body>
+</html>

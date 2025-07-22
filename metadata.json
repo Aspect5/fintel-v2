@@ -1,0 +1,6 @@
+{
+  "name": "FINTEL - Financial Intelligence Assistant",
+  "description": "A sophisticated, modular multi-agent AI financial intelligence system that uses a coordinator-driven approach for comprehensive financial and market analysis, generating structured, actionable reports.",
+  "requestFramePermissions": [],
+  "prompt": ""
+}
