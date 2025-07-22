@@ -1,5 +1,25 @@
-
 import type { Node, Edge } from 'reactflow';
+
+// --- Core Chat and Notification Types ---
+
+/**
+ * Defines the structure of a single chat message, used in App.tsx.
+ */
+export interface ChatMessage {
+  role: 'user' | 'assistant'; // The role of the message sender
+  content: string; // The text content of the message
+  trace?: any; // Optional agent trace data for visualization
+}
+
+/**
+ * Defines the structure for a UI notification, used in the global store.
+ */
+export interface Notification {
+  type: 'success' | 'error' | 'info';
+  message: string;
+}
+
+// --- Agent and Workflow Types ---
 
 export interface AgentFinding {
   agentName: string;
@@ -19,7 +39,6 @@ export interface ToolCallResult {
   toolOutput: any;
   toolOutputSummary: string;
 }
-
 
 export type AgentInvocationStatus = 'pending' | 'running' | 'success' | 'failure';
 
@@ -46,7 +65,7 @@ export interface Report {
   riskAssessment: string;
   confidenceLevel: number;
   dataQualityNotes: string;
-  executionTrace: ExecutionTrace; // Keep for data integrity
+  executionTrace: ExecutionTrace;
 }
 
 export interface Plan {
@@ -60,20 +79,7 @@ export interface AgentFailure {
     error: string;
 }
 
-export type ChatMessage = {
-    id: string;
-    sender: 'user' | 'ai';
-    content: string;
-    timestamp: string;
-};
-
-export interface Notification {
-  type: 'success' | 'error' | 'info';
-  message: string;
-}
-
-// A base interface for all node data. The coordinator and synthesizer
-// also need a status, so it's included here.
+// --- React Flow Node Types for Workflow Canvas ---
 
 export interface BasicNodeData {
   label: string;
@@ -81,20 +87,27 @@ export interface BasicNodeData {
   status: AgentInvocationStatus;
 };
 
-// Agent-specific data extends the base, adding its unique properties.
-// `toolCalls` is now non-optional as it's always initialized in your code.
 export interface AgentNodeData extends BasicNodeData {
   error?: string;
   result?: string;
   toolCalls: ToolCallResult[];
 };
 
-// A union of all possible data types for our nodes.
-// THIS is the correct type to pass as a generic to useNodesState.
 export type CustomNodeData = BasicNodeData | AgentNodeData;
-
-// A simple, clear type alias for a React Flow node using our custom data union.
-// This is the type that the `nodes` array will hold.
 export type CustomNode = Node<CustomNodeData>;
-
 export type CustomEdge = Edge;
+
+// --- Global Type Declarations ---
+
+/**
+ * Extends the global Window interface to include the experimental 'ai' property
+ * for the built-in browser AI, used in App.tsx.
+ */
+declare global {
+  interface Window {
+    ai?: {
+      prompt: (prompt: string) => Promise<{ text: () => string }>;
+      tool: (toolName: string, parameters: any) => Promise<any>;
+    };
+  }
+}

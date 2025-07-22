@@ -1,13 +1,14 @@
 import { create } from 'zustand';
-import { v4 as uuidv4 } from 'uuid';
-import { ChatMessage, Notification } from './types';
+import { persist } from 'zustand/middleware';
+import { Notification } from './types';
 
-// Types for the different backend engines and providers
-export type ExecutionEngine = "Gemini (Visual)" | "ControlFlow (Python)";
-export type ControlFlowProvider = "openai" | "gemini" | "local";
+// Define types for the execution engines and providers
+export type ExecutionEngine = 'Gemini (Visual)' | 'ControlFlow (Python)';
+export type ControlFlowProvider = 'openai' | 'gemini' | 'local';
 
-interface AppState {
-  // --- UI & Execution State ---
+// Define the shape of the application's global state
+export interface AppState {
+  // --- UI & Execution Configuration ---
   executionEngine: ExecutionEngine;
   setExecutionEngine: (engine: ExecutionEngine) => void;
   
@@ -16,52 +17,43 @@ interface AppState {
   
   customBaseUrl: string;
   setCustomBaseUrl: (url: string) => void;
-  
-  // --- Frontend-Only Key State ---
-  geminiApiKey: string | null;
-  setGeminiApiKey: (key: string) => void;
 
-  // --- Chat & Notification State ---
-  chatMessages: ChatMessage[];
-  addChatMessage: (sender: 'user' | 'ai', content: string) => void;
-  
+  // --- UI State ---
+  isApiKeyModalOpen: boolean;
+  setIsApiKeyModalOpen: (isOpen: boolean) => void;
+
+  // --- Notification State ---
   notification: Notification | null;
   setNotification: (notification: Notification | null) => void;
-  
-  isLoading: boolean;
-  setIsLoading: (loading: boolean) => void;
 }
 
-export const useStore = create<AppState>((set) => ({
-  // --- UI & Execution State ---
-  executionEngine: "Gemini (Visual)",
-  setExecutionEngine: (engine) => set({ executionEngine: engine }),
+// Create the Zustand store with persistence for configuration
+export const useStore = create<AppState>()(
+  persist(
+    (set) => ({
+      // --- Default State Values ---
+      executionEngine: 'Gemini (Visual)',
+      controlFlowProvider: 'openai',
+      customBaseUrl: '',
+      isApiKeyModalOpen: false,
+      notification: null,
 
-  controlFlowProvider: "openai",
-  setControlFlowProvider: (provider) => set({ controlFlowProvider: provider }),
-
-  customBaseUrl: "",
-  setCustomBaseUrl: (url) => set({ customBaseUrl: url }),
-
-  // --- Frontend-Only Key State ---
-  geminiApiKey: null,
-  setGeminiApiKey: (key) => set({ geminiApiKey: key }),
-
-  // --- Chat & Notification State ---
-  chatMessages: [],
-  addChatMessage: (sender, content) => {
-    const newMessage: ChatMessage = {
-      id: uuidv4(),
-      sender,
-      content,
-      timestamp: new Date().toISOString(),
-    };
-    set((state) => ({ chatMessages: [...state.chatMessages, newMessage] }));
-  },
-  
-  notification: null,
-  setNotification: (notification) => set({ notification }),
-  
-  isLoading: false,
-  setIsLoading: (loading) => set({ isLoading: loading }),
-}));
+      // --- State Setters ---
+      setExecutionEngine: (engine) => set({ executionEngine: engine }),
+      setControlFlowProvider: (provider) => set({ controlFlowProvider: provider }),
+      setCustomBaseUrl: (url) => set({ customBaseUrl: url }),
+      setIsApiKeyModalOpen: (isOpen) => set({ isApiKeyModalOpen: isOpen }),
+      setNotification: (notification) => set({ notification }),
+    }),
+    {
+      name: 'fintel-app-storage', // Name for persisting to localStorage
+      // Select which parts of the state to persist. 
+      // Transient UI state like modals and notifications are not persisted.
+      partialize: (state) => ({
+        executionEngine: state.executionEngine,
+        controlFlowProvider: state.controlFlowProvider,
+        customBaseUrl: state.customBaseUrl,
+      }),
+    }
+  )
+);

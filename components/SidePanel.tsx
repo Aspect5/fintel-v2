@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { ChatMessage } from '../types';
 import ChatPanel from './ChatPanel';
@@ -6,7 +5,12 @@ import CodeBracketIcon from './icons/CodeBracketIcon';
 import DocumentTextIcon from './icons/DocumentTextIcon';
 import ToolkitPanel from './ToolkitPanel';
 import { useStore, ExecutionEngine, ControlFlowProvider } from '../store';
+import { useKeyStatus } from '../hooks/useKeyStatus';
 
+/**
+ * The main side panel component that contains the configuration controls,
+ * chat interface, and toolkit viewer.
+ */
 const SidePanel: React.FC<{
     chatMessages: ChatMessage[];
     onSendMessage: (message: string) => void;
@@ -24,6 +28,9 @@ const SidePanel: React.FC<{
         setCustomBaseUrl,
     } = useStore();
 
+    // Fetch the status of API keys from the backend
+    const { backendKeys, isLoading: areKeysLoading } = useKeyStatus();
+
     const handleEngineChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         setExecutionEngine(e.target.value as ExecutionEngine);
     };
@@ -32,13 +39,28 @@ const SidePanel: React.FC<{
         setControlFlowProvider(e.target.value as ControlFlowProvider);
     };
 
+    // Determine if a required key is missing based on the current engine and provider selection
+    const isKeyMissing = (() => {
+        if (executionEngine === 'Gemini (Visual)') {
+            // The visual engine relies on the backend proxy which needs Google and tool keys
+            return !backendKeys.google || !backendKeys.alpha_vantage;
+        }
+        if (executionEngine === 'ControlFlow (Python)') {
+            // The agentic backend's needs depend on the selected LLM provider
+            if (controlFlowProvider === 'openai') return !backendKeys.openai;
+            if (controlFlowProvider === 'gemini') return !backendKeys.google;
+        }
+        return false; // No key needed for local provider
+    })();
+
+    // A reusable button component for switching between Chat and Toolkit tabs
     const TabButton: React.FC<{ tabName: 'chat' | 'toolkit'; label: string; children: React.ReactNode }> = ({ tabName, label, children }) => (
         <button
             onClick={() => setActiveTab(tabName)}
             className={`flex-1 flex items-center justify-center p-3 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === tabName
-                    ? 'text-brand-primary border-brand-primary'
-                    : 'text-brand-text-secondary border-transparent hover:bg-brand-bg'
+                    ? 'text-indigo-400 border-indigo-400'
+                    : 'text-gray-400 border-transparent hover:bg-gray-800'
             }`}
             aria-label={`Switch to ${label} tab`}
         >
@@ -48,36 +70,36 @@ const SidePanel: React.FC<{
     );
 
     return (
-        <aside className="w-[450px] flex-shrink-0 border-r border-brand-border flex flex-col bg-brand-surface">
+        <aside className="w-[450px] flex-shrink-0 border-r border-gray-700 flex flex-col bg-gray-900 text-white">
             {/* --- Configuration Section --- */}
-            <div className="p-4 border-b border-brand-border space-y-4">
+            <div className="p-4 border-b border-gray-700 space-y-4">
                 <div>
-                    <label htmlFor="engine-select" className="block text-sm font-medium text-brand-text-primary mb-1">
+                    <label htmlFor="engine-select" className="block text-sm font-medium text-gray-300 mb-1">
                         Execution Engine
                     </label>
                     <select
                         id="engine-select"
                         value={executionEngine}
                         onChange={handleEngineChange}
-                        className="w-full p-2 bg-brand-bg border border-brand-border rounded-md focus:ring-2 focus:ring-brand-primary focus:outline-none text-white"
+                        className="w-full p-2 bg-gray-800 border border-gray-600 rounded-md focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                     >
-                        <option value="Gemini (Visual)">Gemini (Visual)</option>
-                        <option value="ControlFlow (Python)">ControlFlow (Python)</option>
+                        <option value="Gemini (Visual)">Gemini (Visual Tools)</option>
+                        <option value="ControlFlow (Python)">ControlFlow (Python Agents)</option>
                     </select>
                 </div>
 
                 {/* --- Conditional Controls for ControlFlow Backend --- */}
                 {executionEngine === 'ControlFlow (Python)' && (
-                    <div className="p-3 bg-brand-bg/50 rounded-md space-y-4 animate-fade-in">
+                    <div className="p-3 bg-gray-800/70 rounded-md space-y-4 animate-fade-in">
                         <div>
-                            <label htmlFor="provider-select" className="block text-sm font-medium text-brand-text-primary mb-1">
+                            <label htmlFor="provider-select" className="block text-sm font-medium text-gray-300 mb-1">
                                 LLM Provider
                             </label>
                             <select
                                 id="provider-select"
                                 value={controlFlowProvider}
                                 onChange={handleProviderChange}
-                                className="w-full p-2 bg-brand-bg border border-brand-border rounded-md focus:ring-2 focus:ring-brand-primary focus:outline-none text-white"
+                                className="w-full p-2 bg-gray-800 border border-gray-600 rounded-md focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                             >
                                 <option value="openai">OpenAI</option>
                                 <option value="gemini">Gemini</option>
@@ -86,7 +108,7 @@ const SidePanel: React.FC<{
                         </div>
                         {controlFlowProvider === 'local' && (
                             <div>
-                                <label htmlFor="base-url-input" className="block text-sm font-medium text-brand-text-primary mb-1">
+                                <label htmlFor="base-url-input" className="block text-sm font-medium text-gray-300 mb-1">
                                     Custom Base URL
                                 </label>
                                 <input
@@ -95,15 +117,21 @@ const SidePanel: React.FC<{
                                     value={customBaseUrl}
                                     onChange={(e) => setCustomBaseUrl(e.target.value)}
                                     placeholder="e.g., http://localhost:8080/v1"
-                                    className="w-full p-2 bg-brand-bg border border-brand-border rounded-md focus:ring-2 focus:ring-brand-primary focus:outline-none text-white"
+                                    className="w-full p-2 bg-gray-800 border border-gray-600 rounded-md focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                                 />
                             </div>
                         )}
                     </div>
                 )}
+                 {/* --- Key Status Warning --- */}
+                {!areKeysLoading && isKeyMissing && (
+                     <div className="mt-2 text-xs text-yellow-300 bg-yellow-900/50 p-2 rounded-md animate-fade-in">
+                        <strong>Warning:</strong> The required API key for the selected configuration is not set on the backend. The application may not function correctly.
+                    </div>
+                )}
             </div>
             
-            <div className="flex border-b border-brand-border flex-shrink-0">
+            <div className="flex border-b border-gray-700 flex-shrink-0">
                 <TabButton tabName="chat" label="Chat">
                     <DocumentTextIcon className="w-5 h-5" />
                 </TabButton>

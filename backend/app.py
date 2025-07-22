@@ -18,6 +18,47 @@ CORS(app)
 
 # --- API Endpoints ---
 
+@app.route('/api/proxy/<path:provider>', methods=['GET'])
+def proxy_request(provider):
+    """
+    A generic proxy endpoint to securely forward requests to external APIs.
+    """
+    # Determine which API key to use based on the provider
+    api_key = None
+    base_url = None
+
+    if provider == 'alpha_vantage':
+        api_key = config.ALPHA_VANTAGE_API_KEY
+        base_url = 'https://www.alphavantage.co/query'
+    elif provider == 'fred':
+        api_key = config.FRED_API_KEY
+        base_url = 'https://api.stlouisfed.org/fred/series/observations'
+    else:
+        return jsonify({"error": "Unsupported provider"}), 400
+
+    if not api_key:
+        return jsonify({"error": f"API key for {provider} is not configured on the backend."}), 500
+
+    # Prepare the request to the external API
+    # Forward all query parameters from the original request
+    params = request.args.to_dict()
+    params['apikey'] = api_key
+
+    try:
+        response = requests.get(base_url, params=params)
+        # Raise an exception for bad status codes (4xx or 5xx)
+        response.raise_for_status()
+        return jsonify(response.json())
+    except requests.exceptions.RequestException as e:
+        # Return a generic error to the client
+        logging.error(f"Proxy request to {provider} failed: {e}")
+        # Attempt to return the provider's error message if possible
+        try:
+            error_json = e.response.json()
+            return jsonify(error_json), e.response.status_code
+        except:
+            return jsonify({"error": "Failed to connect to the external API."}), 502
+            
 @app.route('/api/key-status', methods=['GET'])
 def key_status():
     """

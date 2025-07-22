@@ -1,116 +1,85 @@
 import React, { useState, useEffect } from 'react';
-import { useStore } from '../store';
-import SparklesIcon from './icons/SparklesIcon';
-import CheckCircleIcon from './icons/CheckCircleIcon';
-import XCircleIcon from './icons/XCircleIcon';
+import { useStore } from '../store'; // Corrected: Changed useAppStore to useStore
+import CheckCircleIcon from './icons-solid/CheckCircleIcon'; // Corrected: Default import
+import XCircleIcon from './icons-solid/XCircleIcon'; // Corrected: Default import
+import KeyIcon from './icons/KeyIcon'; // Corrected: Default import
 
-interface KeyStatus {
+type BackendKeyStatus = {
     openai: boolean;
     google: boolean;
     alpha_vantage: boolean;
     fred: boolean;
-}
+};
 
-const ApiKeyModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
-    const [status, setStatus] = useState<KeyStatus | null>(null);
-    const [geminiKey, setGeminiKey] = useState(useStore.getState().geminiApiKey || '');
-    const setFrontendGeminiKey = useStore((s) => s.setGeminiApiKey);
+// A helper component for displaying the status of a single key
+const KeyStatusRow = ({ name, isSet, children }: { name: string; isSet: boolean; children?: React.ReactNode }) => (
+    <div className="flex items-center justify-between p-2 my-1 bg-gray-700/50 rounded">
+        <span className="text-gray-300">{name}</span>
+        <div className="flex items-center space-x-2">
+            {isSet ? (
+                <CheckCircleIcon className="h-6 w-6 text-green-400" />
+            ) : (
+                <XCircleIcon className="h-6 w-6 text-red-400" />
+            )}
+            {children}
+        </div>
+    </div>
+);
+
+export const ApiKeyModal = () => {
+    const { isApiKeyModalOpen, setIsApiKeyModalOpen } = useStore(); // Corrected: useStore
+    const [backendKeys, setBackendKeys] = useState<BackendKeyStatus>({
+        openai: false,
+        google: false,
+        alpha_vantage: false,
+        fred: false,
+    });
 
     useEffect(() => {
-        const fetchKeyStatus = async () => {
-            try {
-                const response = await fetch('/api/key-status');
+        if (isApiKeyModalOpen) {
+            // Fetch the status of keys configured on the backend
+            fetch('/api/status/keys')
+                .then(res => res.json())
+                .then(data => setBackendKeys(data))
+                .catch(console.error);
+        }
+    }, [isApiKeyModalOpen]);
 
-                // --- Start of debugging code ---
-                // Clone the response so we can read it twice (once as text, once as JSON)
-                const responseForText = response.clone();
-                const rawText = await responseForText.text();
-                console.log("DEBUG: Raw response from backend:", rawText);
-                // --- End of debugging code ---
-
-                if (!response.ok) {
-                    throw new Error(`Server responded with status: ${response.status}`);
-                }
-                
-                const data = await response.json();
-                setStatus(data);
-
-            } catch (err) {
-                console.error("Failed to fetch key status:", err);
-            }
-        };
-
-        fetchKeyStatus();
-    }, []);
-
-    const handleSave = () => {
-        setFrontendGeminiKey(geminiKey);
-        onClose();
-    };
-
-    const StatusIndicator: React.FC<{ isSet: boolean; name: string }> = ({ isSet, name }) => (
-        <div className={`flex items-center justify-between p-3 rounded-md ${isSet ? 'bg-green-500/10' : 'bg-red-500/10'}`}>
-            <span className={`font-medium ${isSet ? 'text-green-300' : 'text-red-300'}`}>{name}</span>
-            {isSet ? <CheckCircleIcon className="w-6 h-6 text-green-400" /> : <XCircleIcon className="w-6 h-6 text-red-400" />}
-        </div>
-    );
+    if (!isApiKeyModalOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center animate-fade-in">
-            <div className="bg-brand-surface p-8 rounded-lg shadow-2xl w-full max-w-2xl border border-brand-border">
-                <div className="text-center mb-6">
-                    <SparklesIcon className="w-10 h-10 text-brand-primary mx-auto mb-3" />
-                    <h2 className="text-2xl font-bold text-white">API Key Configuration</h2>
-                    <p className="text-brand-text-secondary mt-2">Manage keys for both backend and frontend execution engines.</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 backdrop-blur-sm">
+            <div className="bg-gray-800 border border-gray-600 rounded-lg shadow-xl p-6 w-full max-w-md text-white">
+                <div className="flex items-center mb-4">
+                    <KeyIcon className="h-8 w-8 text-yellow-400 mr-3" />
+                    <h2 className="text-2xl font-bold">API Key Configuration</h2>
+                </div>
+                <p className="text-gray-400 mb-6">
+                    Manage keys for both backend services and financial data tools. All keys are configured securely on the server via environment variables.
+                </p>
+
+                {/* Backend Keys Status */}
+                <div className="space-y-2">
+                    <h3 className="text-lg font-semibold text-gray-200 border-b border-gray-700 pb-2 mb-3">Backend Service Status <span className='text-sm text-gray-500'>(from .env)</span></h3>
+                    <KeyStatusRow name="OpenAI Key (for Agents)" isSet={backendKeys.openai} />
+                    <KeyStatusRow name="Google Key (for Gemini)" isSet={backendKeys.google} />
+                </div>
+                
+                <div className="space-y-2 mt-6">
+                     <h3 className="text-lg font-semibold text-gray-200 border-b border-gray-700 pb-2 mb-3">Financial Tool Status <span className='text-sm text-gray-500'>(Handled by Proxy)</span></h3>
+                     <KeyStatusRow name="Alpha Vantage Key" isSet={backendKeys.alpha_vantage} />
+                     <KeyStatusRow name="FRED Key" isSet={backendKeys.fred} />
                 </div>
 
-                <div className="grid grid-cols-2 gap-6">
-                    {/* Backend Key Status */}
-                    <div className="space-y-4">
-                        <h3 className="font-semibold text-white border-b border-brand-border pb-2">Backend Status (from .env)</h3>
-                        {status ? (
-                            <>
-                                <StatusIndicator isSet={status.openai} name="OpenAI Key" />
-                                <StatusIndicator isSet={status.google} name="Google Key (for Gemini)" />
-                                <StatusIndicator isSet={status.alpha_vantage} name="Alpha Vantage Key" />
-                                <StatusIndicator isSet={status.fred} name="FRED Key" />
-                            </>
-                        ) : (
-                            <p className="text-brand-text-secondary">Loading backend status...</p>
-                        )}
-                    </div>
-
-                    {/* Frontend-Only Gemini Key */}
-                    <div className="space-y-4">
-                        <h3 className="font-semibold text-white border-b border-brand-border pb-2">Frontend Engine Key</h3>
-                        <div>
-                            <label htmlFor="gemini-key" className="block text-sm font-medium text-brand-text-primary mb-1">
-                                Gemini API Key (for Visual Engine)
-                            </label>
-                            <input
-                                id="gemini-key"
-                                type="password"
-                                value={geminiKey}
-                                onChange={(e) => setGeminiKey(e.target.value)}
-                                placeholder="Required for 'Gemini (Visual)' only"
-                                className="w-full p-2 bg-brand-bg border border-brand-border rounded-md focus:ring-2 focus:ring-brand-primary focus:outline-none"
-                            />
-                            <p className="text-xs text-brand-text-secondary mt-1">This key is stored in your browser's state and is never sent to the backend.</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="mt-8 flex justify-end">
+                <div className="mt-8 text-center">
                     <button
-                        onClick={handleSave}
-                        className="py-2 px-6 bg-brand-primary text-white font-bold rounded-lg hover:bg-brand-secondary transition-colors"
+                        onClick={() => setIsApiKeyModalOpen(false)}
+                        className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2 px-6 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
                     >
-                        Save & Close
+                        Close
                     </button>
                 </div>
             </div>
         </div>
     );
 };
-
-export default ApiKeyModal;
