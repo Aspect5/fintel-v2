@@ -40,7 +40,11 @@ const App: React.FC = () => {
   return (
     <div className="flex h-screen bg-gray-900 text-white">
       {!geminiApiKey && <ApiKeyModal onClose={() => {}} />}
-      <SidePanel />
+      <SidePanel 
+        chatMessages={chatMessages}
+        onSendMessage={handleSendMessage}
+        isLoading={isLoading}
+      />
       <div className="flex flex-col flex-grow">
         <header className="bg-gray-800 p-4 border-b border-gray-700">
           <h1 className="text-xl font-bold">Multi-Agent AI</h1>
