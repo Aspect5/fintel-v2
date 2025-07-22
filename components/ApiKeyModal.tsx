@@ -17,11 +17,30 @@ const ApiKeyModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const setFrontendGeminiKey = useStore((s) => s.setGeminiApiKey);
 
     useEffect(() => {
-        // Fetch the status of backend keys when the modal mounts
-        fetch('/api/key-status')
-            .then(res => res.json())
-            .then(data => setStatus(data))
-            .catch(err => console.error("Failed to fetch key status:", err));
+        const fetchKeyStatus = async () => {
+            try {
+                const response = await fetch('/api/key-status');
+
+                // --- Start of debugging code ---
+                // Clone the response so we can read it twice (once as text, once as JSON)
+                const responseForText = response.clone();
+                const rawText = await responseForText.text();
+                console.log("DEBUG: Raw response from backend:", rawText);
+                // --- End of debugging code ---
+
+                if (!response.ok) {
+                    throw new Error(`Server responded with status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                setStatus(data);
+
+            } catch (err) {
+                console.error("Failed to fetch key status:", err);
+            }
+        };
+
+        fetchKeyStatus();
     }, []);
 
     const handleSave = () => {

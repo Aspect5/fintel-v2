@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently \"vite\" \"npm run dev:backend\"",
-    "dev:backend": "backend/venv/bin/gunicorn --chdir backend -w 1 -b 0.0.0.0:5001 app:app",
+    "dev:backend": "gunicorn --chdir backend \"app:app\" -w 1 -b 0.0.0.0:5001",
     "build": "vite build",
     "start": "vite preview",
     "preview": "vite preview"

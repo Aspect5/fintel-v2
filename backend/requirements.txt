@@ -6,3 +6,4 @@ requests
 PyYAML
 google-generativeai
 gunicorn
+Flask-Cors

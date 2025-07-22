@@ -5,7 +5,7 @@ import controlflow as cf
 from controlflow.agents import Agent
 
 # Import all available tools from the tools module
-from backend import tools
+import tools
 
 def get_agents_from_config(provider: str, base_url: str = None) -> tuple[Agent, Agent, list[Agent]]:
     """
