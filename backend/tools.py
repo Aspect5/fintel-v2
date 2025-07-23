@@ -1,3 +1,5 @@
+# backend/tools.py
+
 import os
 import requests
 import controlflow as cf
@@ -37,7 +39,6 @@ def get_market_data(ticker: str) -> dict:
             "change": float(data.get("09. change"))
         }
     except (requests.RequestException, ValueError) as e:
-        # Let the agent handle the error
         raise e
 
 @cf.tool
@@ -93,3 +94,19 @@ def get_company_overview(ticker: str) -> dict:
         }
     except (requests.RequestException, ValueError) as e:
         raise e
+
+# (FIX) Even if you don't have this tool, simplifying type hints in any
+# function that uses an imported module is the key to solving the problem.
+@cf.tool
+def read_file_content(filepath: str) -> str:
+    """
+    Reads the content of a file at the given path.
+    By using 'filepath: str', we avoid the inspection error.
+    """
+    if not os.path.exists(filepath):
+        return f"Error: File not found at path: {filepath}"
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            return f.read()
+    except Exception as e:
+        return f"Error reading file: {e}"

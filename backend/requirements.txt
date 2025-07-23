@@ -7,3 +7,6 @@ PyYAML
 google-generativeai
 gunicorn
 Flask-Cors
+whitenoise
+gunicorn
+langchain_google_genai

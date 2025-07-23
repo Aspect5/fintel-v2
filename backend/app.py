@@ -1,10 +1,13 @@
+# backend/app.py
+
+
 import logging
-import os
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
 import controlflow as cf
 import google.generativeai as genai
+import os
 
 # Import project-specific modules
 import config
@@ -16,129 +19,17 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 # --- Flask App Initialization ---
 app = Flask(__name__)
 
-# --- Dynamic CORS Configuration (FIX) ---
-# This is a more robust way to handle CORS in a proxied cloud environment.
-# Instead of a static URL, we use a function that checks the 'Origin' header
-# of the incoming request and dynamically allows it.
-# This adapts to the specific URL your browser is using at any given time.
-@app.after_request
-def after_request(response):
-    origin = request.headers.get('Origin')
-    if origin:
-        response.headers['Access-Control-Allow-Origin'] = origin
-        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
-        response.headers['Access-Control-Allow-Credentials'] = 'true'
-    return response
+# --- CORS Configuration ---
+# This allows your frontend (on a different port) to talk to this backend.
+CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
 
-
-# --- Configure the Gemini API ---
+# --- Configure the Gemini API (for separate calls if needed) ---
 genai.configure(api_key=config.GOOGLE_API_KEY)
 
 
-# --- Schemas for Gemini ---
-plan_schema = {
-    "type": "object",
-    "properties": {
-        "plan": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "agentName": {"type": "string"},
-                    "task": {"type": "string"}
-                },
-                "required": ["agentName", "task"]
-            }
-        },
-        "analysis": {"type": "string"}
-    },
-    "required": ["plan", "analysis"]
-}
-
-agent_tool_call_schema = {
-    "type": "object",
-    "properties": {
-        "toolCalls": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "toolName": {"type": "string"},
-                    "parameters": {"type": "string"}
-                },
-                "required": ["toolName", "parameters"]
-            }
-        }
-    },
-    "required": ["toolCalls"]
-}
-
-agent_final_response_schema = {
-    "type": "object",
-    "properties": {
-        "finalResponse": {"type": "string"}
-    },
-    "required": ["finalResponse"]
-}
-
-report_synthesizer_schema = {
-    "type": "object",
-    "properties": {
-        "executiveSummary": {"type": "string"}
-    },
-    "required": ["executiveSummary"]
-}
-
-
-purpose_to_schema_map = {
-    'coordinator': plan_schema,
-    'tool_planning': agent_tool_call_schema,
-    'synthesis': agent_final_response_schema,
-    'report': report_synthesizer_schema,
-}
-
-# --- API Endpoints ---
-@app.route('/api/proxy/<path:provider>', methods=['GET'])
-def proxy_request(provider):
-    """
-    A generic proxy endpoint to securely forward requests to external APIs.
-    """
-    api_key = None
-    base_url = None
-
-    if provider == 'alpha_vantage':
-        api_key = config.ALPHA_VANTAGE_API_KEY
-        base_url = 'https://www.alphavantage.co/query'
-    elif provider == 'fred':
-        api_key = config.FRED_API_KEY
-        base_url = 'https://api.stlouisfed.org/fred/series/observations'
-    else:
-        return jsonify({"error": "Unsupported provider"}), 400
-
-    if not api_key:
-        return jsonify({"error": f"API key for {provider} is not configured on the backend."}), 500
-
-    params = request.args.to_dict()
-    params['apikey'] = api_key
-
-    try:
-        response = requests.get(base_url, params=params)
-        response.raise_for_status()
-        return jsonify(response.json())
-    except requests.exceptions.RequestException as e:
-        logging.error(f"Proxy request to {provider} failed: {e}")
-        try:
-            error_json = e.response.json()
-            return jsonify(error_json), e.response.status_code
-        except:
-            return jsonify({"error": "Failed to connect to the external API."}), 502
-
 @app.route('/api/key-status', methods=['GET'])
 def key_status():
-    """
-    Endpoint to check which backend API keys are set.
-    """
+    """Endpoint to check which backend API keys are set."""
     status = {
         "openai": bool(config.OPENAI_API_KEY),
         "google": bool(config.GOOGLE_API_KEY),
@@ -148,7 +39,7 @@ def key_status():
 
 @app.route('/api/run-workflow', methods=['POST'])
 def run_workflow():
-    """Executes a financial analysis workflow."""
+    """Executes a financial analysis workflow using ControlFlow."""
     logging.info("Received request for /api/run-workflow")
     data = request.get_json()
 
@@ -162,28 +53,25 @@ def run_workflow():
     logging.info(f"Starting workflow for query: '{query}' with provider: {provider}")
 
     try:
-        # --- Model Selection ---
-        if provider == 'openai':
-            llm = cf.OpenAI(model="gpt-4o", api_key=config.OPENAI_API_KEY)
-        elif provider == 'google':
-            llm = cf.Google(model="gemini-1.5-pro", api_key=config.GOOGLE_API_KEY)
-        elif provider == 'local' and base_url:
-            llm = cf.OpenAI(model="local-model", base_url=base_url)
-        else:
-            logging.error(f"Invalid or unsupported provider: {provider}")
-            return jsonify({"error": f"Invalid or unsupported provider: {provider}"}), 400
-
-        agents = get_agents_from_config(llm)
-        financial_analyst = agents.get("financial_analyst")
+        # --- (FIX) Agent and Task Setup ---
+        # We pass the provider and base_url directly to your agent factory function.
+        # This function is now responsible for creating and configuring all agents.
+        agents = get_agents_from_config(provider=provider, base_url=base_url)
         
+        financial_analyst = agents.get("financial_analyst")
         if not financial_analyst:
              logging.error("Configuration error: 'financial_analyst' agent not found.")
              return jsonify({"error": "Configuration error: 'financial_analyst' not found."}), 500
 
-        task = cf.Task(objective=query, agent=financial_analyst)
-        
+        # The main task is assigned to the financial analyst.
+        task = cf.Task(
+            objective=query,
+            agent=financial_analyst
+        )
+
+        # --- Workflow Execution ---
         logging.info("Running ControlFlow workflow...")
-        trace = cf.run(task)
+        trace = task.run() # Use task.run() for a cleaner flow
         logging.info("Workflow completed.")
         
         final_result = task.result
@@ -200,9 +88,6 @@ def run_workflow():
 
 @app.route('/api/run-agent', methods=['POST'])
 def run_agent_endpoint():
-    """
-    This new endpoint handles the agent execution logic.
-    """
     data = request.get_json()
     query = data.get('query')
 
@@ -217,9 +102,6 @@ def run_agent_endpoint():
         return jsonify({"error": str(e)}), 500
 
 def run_agent_workflow(query: str):
-    """
-    This function contains the main agent orchestration logic.
-    """
     plan_result = run_coordinator_planner(query)
     agent_invocations = [run_agent_task(p) for p in plan_result['plan']]
     agent_findings = [{
@@ -239,9 +121,6 @@ def run_agent_workflow(query: str):
 
 
 def call_gemini_api(prompt: str, purpose: str):
-    """
-    A helper function to call the Gemini API with a specific purpose and schema.
-    """
     model = genai.GenerativeModel(
         model_name='gemini-1.5-flash',
         generation_config={"response_mime_type": "application/json"}
@@ -292,5 +171,4 @@ def run_report_synthesizer(query: str, agent_findings: list):
 
 # --- Main Execution Block ---
 if __name__ == '__main__':
-    # (FIX) Bind to 0.0.0.0 to make the app accessible on your network
     app.run(host='0.0.0.0', port=5001, debug=True)

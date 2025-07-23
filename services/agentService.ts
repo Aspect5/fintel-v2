@@ -2,7 +2,7 @@ import { AgentFailure } from '../types';
 import { ControlFlowProvider } from '../store';
 
 // This should be the public URL of your backend service from the Cloud Workstation
-const BACKEND_URL = "https://5001-firebase-fintel-v2-1753205806440.cluster-2xid2zxbenc4ixa74rpk7q7fyk.cloudworkstations.dev";
+const BACKEND_URL = ""
 
 export class AgentFailureError extends Error {
     payload: AgentFailure;
