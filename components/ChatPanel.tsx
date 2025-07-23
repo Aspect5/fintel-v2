@@ -51,11 +51,18 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
                     : 'bg-gray-700'
                 }`}
               >
-                {/* Conditionally render the ReportDisplay or the standard markdown content */}
-                {msg.trace ? (
+                {/* FIX: Check if trace is a complex object, not just a string */}
+                {msg.trace && typeof msg.trace === 'object' && msg.trace.fintelQueryAnalysis ? (
                    <ReportDisplay trace={msg.trace} />
                 ) : (
-                  <MarkdownRenderer content={msg.content} />
+                  <div>
+                    <MarkdownRenderer content={msg.content} />
+                    {msg.trace && typeof msg.trace === 'string' && (
+                      <div className="mt-2 text-xs text-gray-400 italic">
+                        Source: {msg.trace}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             </div>

@@ -5,6 +5,7 @@ import { useStore } from './store';
 import SidePanel from './components/SidePanel';
 import WorkflowCanvas from './components/WorkflowCanvas';
 import { ApiKeyModal } from './components/ApiKeyModal';
+// The 'executeTool' import is now correctly REMOVED
 import { runAgent } from './services/agentService';
 import Notification from './components/Notification';
 
@@ -30,55 +31,33 @@ const App: React.FC = () => {
     }, [setIsApiKeyModalOpen]);
 
     const handleSendMessage = async (message: string) => {
-        console.log('🎯 handleSendMessage called with:', message);
-        
         const userMessage: ChatMessage = { role: 'user', content: message };
-        setChatMessages(prev => {
-            console.log('📝 Adding user message to chat');
-            return [...prev, userMessage];
-        });
-        
+        setChatMessages(prev => [...prev, userMessage]);
         setIsLoading(true);
         setError(null);
 
         try {
             let assistantMessage: ChatMessage;
-            
             if (executionEngine === 'Gemini (Visual)') {
-                console.log('🤖 Using Gemini Visual engine');
+                // This engine correctly runs on the frontend via the browser's window.ai
                 if (!window.ai) {
                     throw new Error("Built-in AI (window.ai) is not available in this browser.");
                 }
                 const geminiResponse = await window.ai.prompt(message);
                 assistantMessage = { role: 'assistant', content: geminiResponse.text() };
             } else {
-                console.log('🤖 Using ControlFlow engine');
+                // This engine correctly runs on the backend for security
                 const agentResponse = await runAgent(message, controlFlowProvider, customBaseUrl);
-                console.log('🎉 Got agent response:', agentResponse);
-                
-                assistantMessage = { 
-                    role: 'assistant', 
-                    content: agentResponse.output, 
-                    trace: agentResponse.trace 
-                };
-                
-                console.log('📨 Created assistant message:', assistantMessage);
+                assistantMessage = { role: 'assistant', content: agentResponse.output, trace: agentResponse.trace };
             }
-            
-            setChatMessages(prev => {
-                console.log('📝 Adding assistant message to chat');
-                console.log('�� Assistant message content length:', assistantMessage.content?.length);
-                return [...prev, assistantMessage];
-            });
-            
+            setChatMessages(prev => [...prev, assistantMessage]);
         } catch (e: any) {
-            console.error("❌ Error processing message:", e);
+            console.error("Error processing message:", e);
             const errorMessage = e.message || "An unexpected error occurred.";
             setError(errorMessage);
             const errorChatMessage: ChatMessage = { role: 'assistant', content: `Error: ${errorMessage}` };
             setChatMessages(prev => [...prev, errorChatMessage]);
         } finally {
-            console.log('🏁 Setting loading to false');
             setIsLoading(false);
         }
     };

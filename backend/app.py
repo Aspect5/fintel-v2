@@ -52,6 +52,10 @@ def run_workflow():
     logging.info("Received request for /api/run-workflow")
     data = request.get_json()
 
+    logging.info(f"Request data: {data}")
+    logging.info(f"OpenAI key present: {bool(config.OPENAI_API_KEY)}")
+    logging.info(f"Google key present: {bool(config.GOOGLE_API_KEY)}")
+
     query = data.get('query')
     if not query:
         logging.error("Request received without a query.")
@@ -60,6 +64,11 @@ def run_workflow():
     provider = data.get('provider', 'openai')
     base_url = data.get('base_url')
     logging.info(f"Starting workflow for query: '{query}' with provider: {provider}")
+
+    if provider == 'openai' and not config.OPENAI_API_KEY:
+        return jsonify({"error": "OpenAI API key not configured on backend"}), 400
+    if provider == 'google' and not config.GOOGLE_API_KEY:
+        return jsonify({"error": "Google API key not configured on backend"}), 400
 
     try:
         # --- Agent Setup ---
