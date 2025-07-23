@@ -23,16 +23,13 @@ def get_market_data(ticker: str) -> dict:
         ticker: Stock ticker symbol (e.g., 'AAPL', 'GOOGL')
     
     Returns:
-        Dictionary containing market data or mock data if API unavailable
+        Dictionary containing market data or error message if API unavailable
     """
     if not ALPHA_VANTAGE_API_KEY:
-        # Return mock data when API key is not available
         return {
             "symbol": ticker.upper(),
-            "price": "$150.25",
-            "change": "+2.35 (+1.59%)",
-            "volume": "1,234,567",
-            "note": "Mock data - Alpha Vantage API key not configured"
+            "error": "Alpha Vantage API key not configured",
+            "note": "Unable to fetch real-time market data"
         }
     
     try:
@@ -46,27 +43,36 @@ def get_market_data(ticker: str) -> dict:
         response = requests.get(url, params=params, timeout=10)
         data = response.json()
         
-        if "Global Quote" in data:
+        # Check for API limit error
+        if "Note" in data:
+            return {
+                "symbol": ticker.upper(),
+                "error": "API limit reached",
+                "note": "Alpha Vantage API calls per minute exceeded. Please try again later."
+            }
+        
+        if "Global Quote" in data and data["Global Quote"]:
             quote = data["Global Quote"]
             return {
                 "symbol": quote.get("01. symbol", ticker),
                 "price": quote.get("05. price", "N/A"),
                 "change": quote.get("09. change", "N/A"),
                 "change_percent": quote.get("10. change percent", "N/A"),
-                "volume": quote.get("06. volume", "N/A")
+                "volume": quote.get("06. volume", "N/A"),
+                "status": "success"
             }
         else:
             return {
                 "symbol": ticker.upper(),
-                "error": "Unable to fetch real-time data",
-                "note": "API limit reached or invalid ticker"
+                "error": "No data available",
+                "note": "Invalid ticker symbol or API issue"
             }
             
     except Exception as e:
         return {
             "symbol": ticker.upper(),
-            "error": f"Error fetching data: {str(e)}",
-            "note": "Using fallback response"
+            "error": f"Request failed: {str(e)}",
+            "note": "Network or API error occurred"
         }
 
 @cf.tool
@@ -78,16 +84,13 @@ def get_company_overview(ticker: str) -> dict:
         ticker: Stock ticker symbol (e.g., 'AAPL', 'GOOGL')
     
     Returns:
-        Dictionary containing company overview data
+        Dictionary containing company overview data or error message
     """
     if not ALPHA_VANTAGE_API_KEY:
         return {
             "symbol": ticker.upper(),
-            "name": f"{ticker.upper()} Corporation",
-            "sector": "Technology",
-            "market_cap": "$1.2T",
-            "pe_ratio": "25.4",
-            "note": "Mock data - Alpha Vantage API key not configured"
+            "error": "Alpha Vantage API key not configured",
+            "note": "Unable to fetch company overview data"
         }
     
     try:
@@ -101,7 +104,15 @@ def get_company_overview(ticker: str) -> dict:
         response = requests.get(url, params=params, timeout=10)
         data = response.json()
         
-        if "Symbol" in data:
+        # Check for API limit error
+        if "Note" in data:
+            return {
+                "symbol": ticker.upper(),
+                "error": "API limit reached",
+                "note": "Alpha Vantage API calls per minute exceeded. Please try again later."
+            }
+        
+        if "Symbol" in data and data["Symbol"]:
             return {
                 "symbol": data.get("Symbol", ticker),
                 "name": data.get("Name", "N/A"),
@@ -110,19 +121,21 @@ def get_company_overview(ticker: str) -> dict:
                 "market_cap": data.get("MarketCapitalization", "N/A"),
                 "pe_ratio": data.get("PERatio", "N/A"),
                 "dividend_yield": data.get("DividendYield", "N/A"),
-                "description": data.get("Description", "N/A")[:200] + "..."
+                "description": data.get("Description", "N/A")[:300] + "..." if data.get("Description") else "N/A",
+                "status": "success"
             }
         else:
             return {
                 "symbol": ticker.upper(),
-                "error": "Company overview not available",
-                "note": "API limit reached or invalid ticker"
+                "error": "No company data available",
+                "note": "Invalid ticker symbol or API issue"
             }
             
     except Exception as e:
         return {
             "symbol": ticker.upper(),
-            "error": f"Error fetching company data: {str(e)}"
+            "error": f"Request failed: {str(e)}",
+            "note": "Network or API error occurred"
         }
 
 @cf.tool
@@ -134,15 +147,13 @@ def get_economic_data_from_fred(series_id: str = "GDP") -> dict:
         series_id: FRED series ID (e.g., 'GDP', 'UNRATE', 'FEDFUNDS')
     
     Returns:
-        Dictionary containing economic data
+        Dictionary containing economic data or error message
     """
     if not FRED_API_KEY:
         return {
             "series_id": series_id,
-            "title": f"Economic Indicator: {series_id}",
-            "latest_value": "Mock data",
-            "date": "2024-01-01",
-            "note": "Mock data - FRED API key not configured"
+            "error": "FRED API key not configured",
+            "note": "Unable to fetch economic data"
         }
     
     try:
@@ -151,7 +162,7 @@ def get_economic_data_from_fred(series_id: str = "GDP") -> dict:
             "series_id": series_id,
             "api_key": FRED_API_KEY,
             "file_type": "json",
-            "limit": 1,
+            "limit": 5,
             "sort_order": "desc"
         }
         
@@ -159,22 +170,24 @@ def get_economic_data_from_fred(series_id: str = "GDP") -> dict:
         data = response.json()
         
         if "observations" in data and data["observations"]:
-            obs = data["observations"][0]
+            latest = data["observations"][0]
             return {
                 "series_id": series_id,
-                "latest_value": obs.get("value", "N/A"),
-                "date": obs.get("date", "N/A"),
-                "note": "Data from FRED"
+                "latest_value": latest.get("value", "N/A"),
+                "date": latest.get("date", "N/A"),
+                "recent_data": data["observations"][:3],  # Last 3 data points
+                "status": "success"
             }
         else:
             return {
                 "series_id": series_id,
-                "error": "No data available",
+                "error": "No economic data available",
                 "note": "Invalid series ID or API issue"
             }
             
     except Exception as e:
         return {
             "series_id": series_id,
-            "error": f"Error fetching FRED data: {str(e)}"
+            "error": f"Request failed: {str(e)}",
+            "note": "Network or API error occurred"
         }
