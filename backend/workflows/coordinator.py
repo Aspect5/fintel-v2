@@ -34,7 +34,7 @@ class MultiAgentCoordinator(BaseWorkflow):
                 raise Exception("No agents available for analysis")
             
             # Execute workflow using ControlFlow
-            with cf.Flow("financial_analysis") as flow:
+            with cf.Flow(name="financial_analysis") as flow:
                 # Create analysis tasks for each agent
                 analysis_tasks = []
                 
@@ -91,7 +91,8 @@ class MultiAgentCoordinator(BaseWorkflow):
                 result=str(result),
                 trace=f"Multi-agent analysis completed using {', '.join(agents.keys())}",
                 agent_invocations=agent_invocations,
-                execution_time=execution_time
+                execution_time=execution_time,
+                workflow_name=self.name
             )
             
         except Exception as e:
@@ -102,7 +103,8 @@ class MultiAgentCoordinator(BaseWorkflow):
                 trace=f"Multi-agent workflow error: {str(e)}",
                 agent_invocations=agent_invocations,
                 execution_time=execution_time,
-                error=str(e)
+                error=str(e),
+                workflow_name=self.name
             )
     
     def _determine_agents(self, query: str) -> List[str]:

@@ -66,3 +66,40 @@ def mock_flask_app():
     mock_app.test_client.return_value.__exit__ = MagicMock(return_value=None)
     
     yield mock_client
+
+
+@pytest.fixture
+def mock_coordinator_execute():
+    """Mock the MultiAgentCoordinator execute method"""
+    with patch('backend.workflows.coordinator.MultiAgentCoordinator.execute') as mock_execute:
+        # Create a proper WorkflowResult
+        from backend.workflows.base import WorkflowResult
+        mock_result = WorkflowResult(
+            success=True,
+            result="Mocked analysis result",
+            trace="Mocked execution trace",
+            agent_invocations=[],
+            execution_time=1.0,
+            workflow_name="multi_agent_analysis",
+            error=None
+        )
+        mock_execute.return_value = mock_result
+        yield mock_execute
+
+@pytest.fixture
+def mock_workflow_execute():
+    """Mock any workflow execute method"""
+    with patch('backend.workflows.base.BaseWorkflow.execute') as mock_execute:
+        # Create a proper WorkflowResult
+        from backend.workflows.base import WorkflowResult
+        mock_result = WorkflowResult(
+            success=True,
+            result="Mocked workflow result",
+            trace="Mocked workflow trace",
+            agent_invocations=[],
+            execution_time=1.0,
+            workflow_name="test_workflow",
+            error=None
+        )
+        mock_execute.return_value = mock_result
+        yield mock_execute

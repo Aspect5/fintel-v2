@@ -1,8 +1,8 @@
 import pytest
 from unittest.mock import Mock, patch, MagicMock
-from tools.registry import ToolRegistry
-from tools.market_data import MarketDataTool, CompanyOverviewTool
-from tools.economic_data import EconomicDataTool
+from backend.tools.registry import ToolRegistry
+from backend.tools.market_data import MarketDataTool, CompanyOverviewTool
+from backend.tools.economic_data import EconomicDataTool
 
 class TestToolRegistry:
     @pytest.mark.unit

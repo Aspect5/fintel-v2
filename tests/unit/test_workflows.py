@@ -1,8 +1,8 @@
 import pytest
 from unittest.mock import Mock, patch
-from workflows.orchestrator import WorkflowOrchestrator
-from workflows.coordinator import MultiAgentCoordinator
-from workflows.base import WorkflowResult
+from backend.workflows.orchestrator import WorkflowOrchestrator
+from backend.workflows.coordinator import MultiAgentCoordinator
+from backend.workflows.base import WorkflowResult
 
 class TestWorkflowOrchestrator:
     @pytest.mark.unit

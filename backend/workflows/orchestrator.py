@@ -41,7 +41,8 @@ class WorkflowOrchestrator:
                     trace=f"Orchestrator error: {str(e)}",
                     agent_invocations=[],
                     execution_time=0,
-                    error=str(e)
+                    error=str(e),
+                    workflow_name=workflow_name
                 )
         
         # Run in thread with timeout
@@ -58,7 +59,8 @@ class WorkflowOrchestrator:
                 trace=f"Workflow timed out after {timeout} seconds",
                 agent_invocations=[],
                 execution_time=timeout,
-                error="Timeout"
+                error="Timeout",
+                workflow_name=workflow_name
             )
         
         return result_container.get('result', WorkflowResult(
@@ -67,7 +69,8 @@ class WorkflowOrchestrator:
             trace="No result generated",
             agent_invocations=[],
             execution_time=0,
-            error="Unknown error"
+            error="Unknown error",
+            workflow_name=workflow_name
         ))
     
     def get_available_workflows(self) -> Dict[str, Any]:
