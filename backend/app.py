@@ -2,186 +2,138 @@
 
 import os
 import sys
-import signal
 from pathlib import Path
 
-# Add the backend directory to Python path
+# Add backend directory to path
 backend_dir = Path(__file__).parent
 sys.path.insert(0, str(backend_dir))
 
-# Load environment variables first
-from dotenv import load_dotenv
-load_dotenv(backend_dir / '.env')
-
-# Disable ALL ControlFlow/Prefect display and logging
+# Configure environment before imports
 os.environ["PREFECT_API_URL"] = ""
 os.environ["CONTROLFLOW_ENABLE_EXPERIMENTAL_TUI"] = "false"
 os.environ["CONTROLFLOW_ENABLE_PRINT_HANDLER"] = "false"
 os.environ["PREFECT_LOGGING_LEVEL"] = "CRITICAL"
 
-# Set environment variables
-os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY", "")
-os.environ["GOOGLE_API_KEY"] = os.getenv("GOOGLE_API_KEY", "")
-
-import logging
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import threading
-import time
+import logging
 
-# Suppress all the noisy loggers
-logging.getLogger("prefect").setLevel(logging.CRITICAL)
-logging.getLogger("prefect.events").setLevel(logging.CRITICAL)
-logging.getLogger("prefect.task_engine").setLevel(logging.CRITICAL)
-logging.getLogger("langchain_google_genai").setLevel(logging.CRITICAL)
-logging.getLogger("tzlocal").setLevel(logging.CRITICAL)
+# Import our modules
+from config.settings import get_settings
+from providers.factory import ProviderFactory
+from agents.registry import get_agent_registry
+from tools.registry import get_tool_registry
+from workflows.orchestrator import get_orchestrator
+from utils.logging import setup_logging
+from utils.errors import FintelError
 
-# Configure our app logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+# Setup logging
+logger = setup_logging()
 
 # Initialize Flask app
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 
-# Global agents cache to avoid recreating them
-_agents_cache = {}
+# Initialize global components
+settings = get_settings()
+provider_factory = ProviderFactory()
+agent_registry = get_agent_registry()
+tool_registry = get_tool_registry()
+orchestrator = get_orchestrator()
 
-def get_cached_agents(provider='openai'):
-    """Get or create agents, cached to avoid repeated initialization"""
-    if provider not in _agents_cache:
-        try:
-            import controlflow as cf
-            cf.settings.enable_experimental_tui = False
-            
-            # Create a simple agent
-            analyst = cf.Agent(
-                name="FinancialAnalyst",
-                instructions="""
-                You are a financial analyst. Provide comprehensive analysis including:
-                1. Market insights and company fundamentals
-                2. Economic context and trends  
-                3. Risk assessment and recommendations
-                
-                If you cannot access real-time data, provide analysis based on your knowledge.
-                """,
-                model=f"openai/gpt-4o-mini" if provider == 'openai' else f"google/gemini-1.5-flash"
-            )
-            
-            _agents_cache[provider] = analyst
-            logger.info(f"Created and cached agent for provider: {provider}")
-            
-        except Exception as e:
-            logger.error(f"Failed to create agent for {provider}: {e}")
-            _agents_cache[provider] = None
-    
-    return _agents_cache[provider]
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """Health check endpoint"""
+    return jsonify({
+        "status": "healthy",
+        "version": "2.0.0",
+        "providers": provider_factory.get_provider_status(),
+        "agents": agent_registry.get_available_agents(),
+        "tools": tool_registry.get_tool_status()
+    })
 
-@app.route('/api/key-status', methods=['GET'])
-def key_status():
-    """Check API key status"""
-    status = {
-        "openai": bool(os.getenv("OPENAI_API_KEY")),
-        "google": bool(os.getenv("GOOGLE_API_KEY")),
-        "alpha_vantage": bool(os.getenv("ALPHA_VANTAGE_API_KEY")),
-    }
-    return jsonify(status)
+@app.route('/api/providers', methods=['GET'])
+def get_providers():
+    """Get available providers and their status"""
+    return jsonify(provider_factory.get_provider_status())
+
+@app.route('/api/agents', methods=['GET'])
+def get_agents():
+    """Get available agents"""
+    agents = {}
+    for agent_name in agent_registry.get_available_agents():
+        agents[agent_name] = agent_registry.get_agent_info(agent_name)
+    return jsonify(agents)
+
+@app.route('/api/workflows', methods=['GET'])
+def get_workflows():
+    """Get available workflows"""
+    return jsonify(orchestrator.get_available_workflows())
 
 @app.route('/api/run-workflow', methods=['POST'])
 def run_workflow():
-    """Execute financial analysis workflow with timeout handling"""
+    """Execute financial analysis workflow"""
     try:
         data = request.get_json()
         query = data.get('query', '')
         provider = data.get('provider', 'openai')
+        workflow = data.get('workflow', 'comprehensive')
         
-        logger.info(f"Processing query: '{query}' with provider: {provider}")
-        
-        # Use threading to implement timeout
-        result_container = {}
-        
-        def run_analysis():
-            try:
-                # Try ControlFlow first, then fallback
-                try:
-                    result = run_controlflow_analysis(query, provider)
-                    result_container['result'] = result
-                    result_container['trace'] = "Analysis completed via ControlFlow multi-agent system"
-                except Exception as cf_error:
-                    logger.warning(f"ControlFlow failed: {cf_error}")
-                    result = run_fallback_analysis(query)
-                    result_container['result'] = result
-                    result_container['trace'] = "Analysis completed via direct OpenAI API (fallback mode)"
-            except Exception as e:
-                logger.error(f"Analysis failed: {e}")
-                result_container['error'] = str(e)
-        
-        # Run analysis in a separate thread with timeout
-        analysis_thread = threading.Thread(target=run_analysis)
-        analysis_thread.daemon = True
-        analysis_thread.start()
-        
-        # Wait for up to 45 seconds
-        analysis_thread.join(timeout=45)
-        
-        if analysis_thread.is_alive():
-            logger.error("Analysis timed out after 45 seconds")
+        if not query:
             return jsonify({
-                "result": f"I received your query about '{query}' but the analysis is taking longer than expected. This might be due to API rate limits or high demand. Please try again in a moment.",
-                "trace": "Analysis timed out"
-            })
+                "error": "Query is required"
+            }), 400
         
-        if 'error' in result_container:
-            raise Exception(result_container['error'])
+        logger.info(f"Processing query: '{query}' with provider: {provider}, workflow: {workflow}")
         
-        if 'result' not in result_container:
-            raise Exception("No result generated")
+        # Execute workflow
+        result = orchestrator.execute_workflow(
+            query=query,
+            provider=provider,
+            workflow_name=workflow,
+            timeout=45
+        )
         
-        logger.info("Analysis completed successfully")
-        return jsonify({
-            "result": result_container['result'],
-            "trace": result_container['trace']
-        })
+        # Format response
+        response = {
+            "result": result.result,
+            "trace": result.trace,
+            "success": result.success,
+            "execution_time": result.execution_time
+        }
+        
+        # Add agent invocations if available
+        if result.agent_invocations:
+            response["agent_invocations"] = result.agent_invocations
+        
+        # Add error if present
+        if result.error:
+            response["error"] = result.error
+        
+        logger.info(f"Analysis completed successfully in {result.execution_time:.2f}s")
+        return jsonify(response)
         
     except Exception as e:
         logger.error(f"Workflow error: {e}")
         return jsonify({
-            "result": f"I encountered an error while processing your query about '{query}'. Please try again.",
-            "trace": f"Error: {str(e)}"
-        })
+            "result": f"I encountered an error while processing your query. Please try again.",
+            "trace": f"Error: {str(e)}",
+            "success": False,
+            "error": str(e)
+        }), 500
 
-def run_controlflow_analysis(query: str, provider: str) -> str:
-    """Try to run ControlFlow analysis using cached agents"""
-    try:
-        import controlflow as cf
-        
-        # Get cached agent
-        analyst = get_cached_agents(provider)
-        if not analyst:
-            raise Exception("Agent not available")
-        
-        # Run the analysis with minimal logging
-        result = cf.run(
-            objective=f"Provide a comprehensive financial analysis for: {query}",
-            agents=[analyst],
-            handlers=[]  # No handlers to prevent display issues
-        )
-        
-        return str(result)
-        
-    except Exception as e:
-        logger.error(f"ControlFlow execution failed: {e}")
-        raise
+@app.route('/api/analyze', methods=['POST'])
+def analyze():
+    """Legacy endpoint for backward compatibility"""
+    return run_workflow()
 
+# Fallback analysis function for backward compatibility
 def run_fallback_analysis(query: str) -> str:
     """Fallback to direct OpenAI API"""
     try:
         import openai
         
-        client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        client = openai.OpenAI(api_key=settings.openai_api_key)
         
         response = client.chat.completions.create(
             model="gpt-4o-mini",
@@ -202,7 +154,27 @@ def run_fallback_analysis(query: str) -> str:
         logger.error(f"OpenAI API failed: {e}")
         raise Exception(f"OpenAI API error: {str(e)}")
 
+@app.errorhandler(FintelError)
+def handle_fintel_error(error):
+    """Handle custom Fintel errors"""
+    return jsonify({
+        "error": str(error),
+        "type": error.__class__.__name__
+    }), 400
+
+@app.errorhandler(500)
+def handle_internal_error(error):
+    """Handle internal server errors"""
+    logger.error(f"Internal server error: {error}")
+    return jsonify({
+        "error": "Internal server error",
+        "message": "An unexpected error occurred"
+    }), 500
+
 if __name__ == '__main__':
     port = int(os.getenv('BACKEND_PORT', os.getenv('PORT', 5001)))
     logger.info(f"Starting Flask server on port {port}")
+    logger.info(f"Available providers: {list(provider_factory.get_available_providers().keys())}")
+    logger.info(f"Available agents: {agent_registry.get_available_agents()}")
+    
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False, threaded=True)
