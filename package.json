@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently \"vite\" \"npm run dev:backend\"",
-    "dev:backend": "nix-shell dev.nix --run \"source backend/venv/bin/activate && python -m gunicorn --chdir backend 'app:app' -w 1 -b 0.0.0.0:5001\"",
+    "dev:backend": "cd backend && source venv/bin/activate && python -m gunicorn 'app:app' -w 1 -b 0.0.0.0:5001 --timeout 120",
     "build": "vite build",
     "start": "vite preview",
     "preview": "vite preview"

@@ -1,25 +1,19 @@
 # backend/agents.py
 
+import inspect
 import controlflow as cf
+import tools
 import config
 
 def get_agents_from_config(provider='openai', base_url=None):
     """
     Creates and returns a dictionary of agents based on the provided configuration.
     """
-    # Import tools directly - they are Tool objects, not functions
-    try:
-        from tools import get_market_data, get_company_overview, get_economic_data_from_fred
-        print("✓ Successfully imported all tools")
-        
-        # These are already Tool objects, not functions
-        available_tools = [get_market_data, get_company_overview, get_economic_data_from_fred]
-        
-        print(f"✓ Available tools: {[tool.name if hasattr(tool, 'name') else str(tool) for tool in available_tools]}")
-        
-    except ImportError as e:
-        print(f"✗ Error importing tools: {e}")
-        available_tools = []
+    # Only get functions defined in tools.py, not imported ones
+    available_tools = {
+        name: func for name, func in inspect.getmembers(tools, inspect.isfunction)
+        if func.__module__ == tools.__name__
+    }
 
     # --- Model Configuration ---
     if provider == 'openai':
@@ -31,9 +25,7 @@ def get_agents_from_config(provider='openai', base_url=None):
 
     # --- Agent Definitions ---
     
-    # Market Analyst Agent - gets market and company tools
-    market_tools = [get_market_data, get_company_overview]
-    
+    # Market Analyst Agent
     market_analyst = cf.Agent(
         name="MarketAnalyst",
         instructions="""
@@ -41,13 +33,11 @@ def get_agents_from_config(provider='openai', base_url=None):
         Use the available tools to gather market data and provide insights on stock performance,
         technical indicators, and market sentiment.
         """,
-        tools=market_tools,
+        tools=[available_tools.get("get_market_data")],
         model=model
     )
 
-    # Economic Forecaster Agent - gets economic data tool
-    economic_tools = [get_economic_data_from_fred]
-    
+    # Economic Forecaster Agent
     economic_forecaster = cf.Agent(
         name="EconomicForecaster",
         instructions="""
@@ -55,35 +45,29 @@ def get_agents_from_config(provider='openai', base_url=None):
         Use the available tools to gather economic data and provide insights on economic indicators,
         trends, and their potential impact on markets.
         """,
-        tools=economic_tools,
+        tools=[available_tools.get("get_economic_data")],
         model=model
     )
 
-    # Financial Analyst Agent (Main coordinator) - gets all tools
+    # Financial Analyst Agent (Main coordinator) - SIMPLIFIED
     financial_analyst = cf.Agent(
         name="financial_analyst",
         instructions="""
         You are a comprehensive financial analyst. Provide direct, actionable financial analysis.
         
         For investment questions:
-        1. Use available tools to gather relevant data about the company/market
-        2. Analyze the company's fundamentals (if stock ticker provided)
-        3. Consider market conditions and economic factors
-        4. Provide a clear recommendation with reasoning
-        5. Include risk assessment and key considerations
+        1. Analyze the company's fundamentals (if stock ticker provided)
+        2. Consider market conditions and economic factors
+        3. Provide a clear recommendation with reasoning
+        4. Include risk assessment and key considerations
         
-        Provide your own analysis based on the data you gather.
+        Use the available tools to gather data, but provide your own analysis.
         Do NOT try to delegate to other agents - you are the primary analyst.
         Keep your response focused, practical, and actionable.
         """,
-        tools=available_tools,  # All tools
+        tools=list(available_tools.values()),
         model=model
     )
-
-    print(f"✓ Created agents successfully")
-    print(f"✓ Market analyst has {len(market_tools)} tools")
-    print(f"✓ Economic forecaster has {len(economic_tools)} tools") 
-    print(f"✓ Financial analyst has {len(available_tools)} tools")
 
     return {
         "MarketAnalyst": market_analyst,

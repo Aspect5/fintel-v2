@@ -1,10 +1,8 @@
 # backend/app.py
 
 import os
-# Disable all ControlFlow display features
+# Configure ControlFlow to avoid Prefect server issues
 os.environ["PREFECT_API_URL"] = ""
-os.environ["CONTROLFLOW_ENABLE_EXPERIMENTAL_TUI"] = "false"
-os.environ["CONTROLFLOW_ENABLE_PRINT_HANDLER"] = "false"
 
 import logging
 from flask import Flask, request, jsonify
@@ -17,15 +15,8 @@ import google.generativeai as genai
 import config
 from agents import get_agents_from_config
 
-# Set environment variables from config
-os.environ["OPENAI_API_KEY"] = config.OPENAI_API_KEY or ""
-os.environ["GOOGLE_API_KEY"] = config.GOOGLE_API_KEY or ""
-
 # --- Logging Configuration ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-# Suppress Prefect event logging
-logging.getLogger("prefect.events.utilities").setLevel(logging.CRITICAL)
 
 # --- Flask App Initialization ---
 app = Flask(__name__)
@@ -70,21 +61,18 @@ def run_workflow():
              logging.error("Configuration error: 'financial_analyst' agent not found.")
              return jsonify({"error": "Configuration error: 'financial_analyst' not found."}), 500
 
-        # --- Direct Execution ---
+        # --- Direct Execution (bypassing Prefect orchestration) ---
         logging.info("Running financial analysis...")
         try:
-            # Disable all handlers to prevent display issues
-            cf.settings.enable_experimental_tui = False
-            
-            # Run with minimal configuration
+            # Use ControlFlow's simple run function
             final_result = cf.run(
                 objective=query,
                 agents=[financial_analyst],
-                handlers=[]  # No handlers to prevent display issues
+                
+                
             )
-            
-            trace = "Analysis completed successfully via ControlFlow"
-            logging.info("Analysis completed successfully")
+            trace = "Analysis completed successfully"
+            logging.info("Analysis completed.")
             
         except Exception as cf_error:
             logging.warning(f"ControlFlow execution failed: {cf_error}")
@@ -96,7 +84,9 @@ def run_workflow():
                 client = openai.OpenAI(api_key=config.OPENAI_API_KEY)
                 
                 # Create a comprehensive prompt based on the query
-                system_prompt = """You are a financial analyst. Provide a comprehensive financial analysis based on the user's query. Include relevant market insights, economic context, and actionable recommendations."""
+                system_prompt = """You are a financial analyst with access to market data and economic indicators. 
+                Provide a comprehensive financial analysis based on the user's query. Include relevant market insights, 
+                economic context, and actionable recommendations where appropriate."""
                 
                 response = client.chat.completions.create(
                     model="gpt-4o-mini",
@@ -117,17 +107,10 @@ def run_workflow():
                 final_result = f"I received your financial analysis request: '{query}'. However, I'm currently experiencing technical difficulties with the analysis engine. Please try again in a few moments."
                 trace = f"Error: {str(api_error)}"
 
-        # Ensure we have a valid response
-        if not final_result:
-            final_result = "Analysis completed but no result was returned. Please try again."
-            
-        response_data = {
+        return jsonify({
             "result": final_result,
             "trace": trace
-        }
-        
-        logging.info(f"Returning response to frontend: {len(str(final_result))} characters")
-        return jsonify(response_data)
+        })
 
     except Exception as e:
         logging.error(f"An error occurred during workflow execution: {e}", exc_info=True)

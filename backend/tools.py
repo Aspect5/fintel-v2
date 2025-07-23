@@ -18,95 +18,163 @@ FRED_API_KEY = os.getenv("FRED_API_KEY")
 def get_market_data(ticker: str) -> dict:
     """
     Retrieves the latest daily market data (price, volume, change) for a stock ticker.
-    Powered by Alpha Vantage.
-
-    :param ticker: The stock ticker symbol (e.g., 'AAPL').
+    
+    Args:
+        ticker: Stock ticker symbol (e.g., 'AAPL', 'GOOGL')
+    
+    Returns:
+        Dictionary containing market data or mock data if API unavailable
     """
     if not ALPHA_VANTAGE_API_KEY:
-        cf.log(f"ALPHA_VANTAGE_API_KEY not found. Returning mock data for {ticker}.")
-        return { "ticker": ticker, "price": 150.0, "change": "+1.5" }
-
-    url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={ticker}&apikey={ALPHA_VANTAGE_API_KEY}"
-    try:
-        response = requests.get(url)
-        response.raise_for_status()
-        data = response.json().get('Global Quote', {})
-        if not data:
-            raise ValueError(f"No data for {ticker}. It may be an invalid symbol.")
+        # Return mock data when API key is not available
         return {
-            "ticker": data.get("01. symbol"),
-            "price": float(data.get("05. price")),
-            "change": float(data.get("09. change"))
+            "symbol": ticker.upper(),
+            "price": "$150.25",
+            "change": "+2.35 (+1.59%)",
+            "volume": "1,234,567",
+            "note": "Mock data - Alpha Vantage API key not configured"
         }
-    except (requests.RequestException, ValueError) as e:
-        raise e
-
-@cf.tool
-def get_economic_data_from_fred(series_id: str, limit: int = 10) -> dict:
-    """
-    Retrieves a time series of a specific economic data series from FRED.
-
-    :param series_id: The FRED series ID to fetch (e.g., 'GNPCA', 'UNRATE').
-    :param limit: The number of recent data points to retrieve.
-    """
-    if not FRED_API_KEY:
-        cf.log(f"FRED_API_KEY not found. Returning mock data for {series_id}.")
-        return { "series_id": series_id, "data": [
-            {"date": "2024-01-01", "value": "3.5"},
-            {"date": "2024-02-01", "value": "3.6"},
-        ]}
-
-    url = f"https://api.stlouisfed.org/fred/series/observations?series_id={series_id}&api_key={FRED_API_KEY}&file_type=json&limit={limit}&sort_order=desc"
+    
     try:
-        response = requests.get(url)
-        response.raise_for_status()
-        data = response.json().get('observations', [])
-        if not data:
-            raise ValueError(f"No data for FRED series {series_id}.")
-        return {"series_id": series_id, "data": data}
-    except (requests.RequestException, ValueError) as e:
-        raise e
+        url = f"https://www.alphavantage.co/query"
+        params = {
+            "function": "GLOBAL_QUOTE",
+            "symbol": ticker,
+            "apikey": ALPHA_VANTAGE_API_KEY
+        }
+        
+        response = requests.get(url, params=params, timeout=10)
+        data = response.json()
+        
+        if "Global Quote" in data:
+            quote = data["Global Quote"]
+            return {
+                "symbol": quote.get("01. symbol", ticker),
+                "price": quote.get("05. price", "N/A"),
+                "change": quote.get("09. change", "N/A"),
+                "change_percent": quote.get("10. change percent", "N/A"),
+                "volume": quote.get("06. volume", "N/A")
+            }
+        else:
+            return {
+                "symbol": ticker.upper(),
+                "error": "Unable to fetch real-time data",
+                "note": "API limit reached or invalid ticker"
+            }
+            
+    except Exception as e:
+        return {
+            "symbol": ticker.upper(),
+            "error": f"Error fetching data: {str(e)}",
+            "note": "Using fallback response"
+        }
 
 @cf.tool
 def get_company_overview(ticker: str) -> dict:
     """
-    Fetches fundamental company data like market cap, P/E ratio, and description.
-
-    :param ticker: The stock ticker symbol (e.g., 'AAPL').
+    Retrieves company overview and fundamental data for a stock ticker.
+    
+    Args:
+        ticker: Stock ticker symbol (e.g., 'AAPL', 'GOOGL')
+    
+    Returns:
+        Dictionary containing company overview data
     """
     if not ALPHA_VANTAGE_API_KEY:
-        cf.log(f"ALPHA_VANTAGE_API_KEY not found. Returning mock data for {ticker}.")
-        return { "ticker": ticker, "name": "Mock Apple Inc.", "market_cap": "3T", "pe_ratio": "30" }
-
-    url = f"https://www.alphavantage.co/query?function=OVERVIEW&symbol={ticker}&apikey={ALPHA_VANTAGE_API_KEY}"
-    try:
-        response = requests.get(url)
-        response.raise_for_status()
-        data = response.json()
-        if not data or 'Symbol' not in data:
-            raise ValueError(f"No overview data for {ticker}.")
         return {
-            "ticker": data.get("Symbol"),
-            "name": data.get("Name"),
-            "description": data.get("Description"),
-            "market_cap": data.get("MarketCapitalization"),
-            "pe_ratio": data.get("PERatio")
+            "symbol": ticker.upper(),
+            "name": f"{ticker.upper()} Corporation",
+            "sector": "Technology",
+            "market_cap": "$1.2T",
+            "pe_ratio": "25.4",
+            "note": "Mock data - Alpha Vantage API key not configured"
         }
-    except (requests.RequestException, ValueError) as e:
-        raise e
-
-# (FIX) Even if you don't have this tool, simplifying type hints in any
-# function that uses an imported module is the key to solving the problem.
-@cf.tool
-def read_file_content(filepath: str) -> str:
-    """
-    Reads the content of a file at the given path.
-    By using 'filepath: str', we avoid the inspection error.
-    """
-    if not os.path.exists(filepath):
-        return f"Error: File not found at path: {filepath}"
+    
     try:
-        with open(filepath, 'r', encoding='utf-8') as f:
-            return f.read()
+        url = f"https://www.alphavantage.co/query"
+        params = {
+            "function": "OVERVIEW",
+            "symbol": ticker,
+            "apikey": ALPHA_VANTAGE_API_KEY
+        }
+        
+        response = requests.get(url, params=params, timeout=10)
+        data = response.json()
+        
+        if "Symbol" in data:
+            return {
+                "symbol": data.get("Symbol", ticker),
+                "name": data.get("Name", "N/A"),
+                "sector": data.get("Sector", "N/A"),
+                "industry": data.get("Industry", "N/A"),
+                "market_cap": data.get("MarketCapitalization", "N/A"),
+                "pe_ratio": data.get("PERatio", "N/A"),
+                "dividend_yield": data.get("DividendYield", "N/A"),
+                "description": data.get("Description", "N/A")[:200] + "..."
+            }
+        else:
+            return {
+                "symbol": ticker.upper(),
+                "error": "Company overview not available",
+                "note": "API limit reached or invalid ticker"
+            }
+            
     except Exception as e:
-        return f"Error reading file: {e}"
+        return {
+            "symbol": ticker.upper(),
+            "error": f"Error fetching company data: {str(e)}"
+        }
+
+@cf.tool
+def get_economic_data_from_fred(series_id: str = "GDP") -> dict:
+    """
+    Retrieves economic data from FRED (Federal Reserve Economic Data).
+    
+    Args:
+        series_id: FRED series ID (e.g., 'GDP', 'UNRATE', 'FEDFUNDS')
+    
+    Returns:
+        Dictionary containing economic data
+    """
+    if not FRED_API_KEY:
+        return {
+            "series_id": series_id,
+            "title": f"Economic Indicator: {series_id}",
+            "latest_value": "Mock data",
+            "date": "2024-01-01",
+            "note": "Mock data - FRED API key not configured"
+        }
+    
+    try:
+        url = f"https://api.stlouisfed.org/fred/series/observations"
+        params = {
+            "series_id": series_id,
+            "api_key": FRED_API_KEY,
+            "file_type": "json",
+            "limit": 1,
+            "sort_order": "desc"
+        }
+        
+        response = requests.get(url, params=params, timeout=10)
+        data = response.json()
+        
+        if "observations" in data and data["observations"]:
+            obs = data["observations"][0]
+            return {
+                "series_id": series_id,
+                "latest_value": obs.get("value", "N/A"),
+                "date": obs.get("date", "N/A"),
+                "note": "Data from FRED"
+            }
+        else:
+            return {
+                "series_id": series_id,
+                "error": "No data available",
+                "note": "Invalid series ID or API issue"
+            }
+            
+    except Exception as e:
+        return {
+            "series_id": series_id,
+            "error": f"Error fetching FRED data: {str(e)}"
+        }

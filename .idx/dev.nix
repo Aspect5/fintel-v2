@@ -3,6 +3,9 @@
   packages = [
     pkgs.nodejs_20
     pkgs.gcc
+    pkgs.python3
+    pkgs.python3Packages.pip
+    pkgs.python3Packages.virtualenv
   ];
   idx.extensions = [
     "svelte.svelte-vscode"

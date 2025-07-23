@@ -1,10 +1,8 @@
 # backend/app.py
 
 import os
-# Disable all ControlFlow display features
+# Configure ControlFlow to avoid Prefect server issues
 os.environ["PREFECT_API_URL"] = ""
-os.environ["CONTROLFLOW_ENABLE_EXPERIMENTAL_TUI"] = "false"
-os.environ["CONTROLFLOW_ENABLE_PRINT_HANDLER"] = "false"
 
 import logging
 from flask import Flask, request, jsonify
@@ -23,9 +21,6 @@ os.environ["GOOGLE_API_KEY"] = config.GOOGLE_API_KEY or ""
 
 # --- Logging Configuration ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-# Suppress Prefect event logging
-logging.getLogger("prefect.events.utilities").setLevel(logging.CRITICAL)
 
 # --- Flask App Initialization ---
 app = Flask(__name__)
@@ -70,21 +65,31 @@ def run_workflow():
              logging.error("Configuration error: 'financial_analyst' agent not found.")
              return jsonify({"error": "Configuration error: 'financial_analyst' not found."}), 500
 
-        # --- Direct Execution ---
+        # --- Direct Execution (bypassing Prefect orchestration) ---
         logging.info("Running financial analysis...")
         try:
-            # Disable all handlers to prevent display issues
-            cf.settings.enable_experimental_tui = False
-            
-            # Run with minimal configuration
-            final_result = cf.run(
+            # Use ControlFlow's simple run function
+            cf_result = cf.run(
                 objective=query,
-                agents=[financial_analyst],
-                handlers=[]  # No handlers to prevent display issues
+                agents=[financial_analyst]
             )
             
-            trace = "Analysis completed successfully via ControlFlow"
-            logging.info("Analysis completed successfully")
+            # DEBUG: Log what we got back
+            logging.info(f"DEBUG: cf_result type: {type(cf_result)}")
+            logging.info(f"DEBUG: cf_result: {cf_result}")
+            
+            # Extract the actual result - ControlFlow might return different formats
+            if hasattr(cf_result, 'result'):
+                final_result = cf_result.result
+            elif hasattr(cf_result, 'value'):
+                final_result = cf_result.value
+            elif isinstance(cf_result, str):
+                final_result = cf_result
+            else:
+                final_result = str(cf_result)
+            
+            trace = "Analysis completed successfully"
+            logging.info(f"Analysis completed. Final result: {final_result}")
             
         except Exception as cf_error:
             logging.warning(f"ControlFlow execution failed: {cf_error}")
@@ -96,7 +101,9 @@ def run_workflow():
                 client = openai.OpenAI(api_key=config.OPENAI_API_KEY)
                 
                 # Create a comprehensive prompt based on the query
-                system_prompt = """You are a financial analyst. Provide a comprehensive financial analysis based on the user's query. Include relevant market insights, economic context, and actionable recommendations."""
+                system_prompt = """You are a financial analyst with access to market data and economic indicators. 
+                Provide a comprehensive financial analysis based on the user's query. Include relevant market insights, 
+                economic context, and actionable recommendations where appropriate."""
                 
                 response = client.chat.completions.create(
                     model="gpt-4o-mini",
@@ -126,7 +133,7 @@ def run_workflow():
             "trace": trace
         }
         
-        logging.info(f"Returning response to frontend: {len(str(final_result))} characters")
+        logging.info(f"Returning response: {response_data}")
         return jsonify(response_data)
 
     except Exception as e:
