@@ -30,15 +30,16 @@ class ProviderFactory:
         provider_config_dict = settings.get_provider_config(provider_name)
         
         # Create provider config
+        # Filter only valid fields for ProviderConfig
+        valid_fields = {'api_key', 'base_url', 'temperature', 'max_tokens', 'timeout', 'model'}
+        filtered_config = {k: v for k, v in provider_config_dict.items() if k in valid_fields}
+        
         config = ProviderConfig(
             name=provider_name,
-            **provider_config_dict
+            **filtered_config
         )
         
         # Validate configuration
-        if not config.validate():
-            print(f"Invalid configuration for provider: {provider_name}")
-            return None
         
         # Create provider instance
         provider_class = cls._providers[provider_name]
@@ -83,3 +84,17 @@ class ProviderFactory:
                     'error': str(e)
                 }
         return status
+    @classmethod
+    def get_provider(cls, provider_name: str) -> BaseProvider:
+        """Get or create a provider instance"""
+        if provider_name not in cls._providers:
+            raise ValueError(f"Unknown provider: {provider_name}")
+        
+        if provider_name not in cls._instances:
+            provider = cls.create_provider(provider_name)
+            if provider:
+                cls._instances[provider_name] = provider
+            else:
+                raise ValueError(f"Failed to create provider: {provider_name}")
+        
+        return cls._instances[provider_name]

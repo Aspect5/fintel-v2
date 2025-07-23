@@ -59,6 +59,15 @@ class ToolRegistry:
             'get_economic_data_from_fred': get_economic_data_from_fred
         }
     
+    def get_tools(self, tool_names: List[str]) -> List[Any]:
+        """Get specific tools by name"""
+        tools = []
+        for name in tool_names:
+            if name in self._tools:
+                tools.append(self._tools[name])
+        return tools
+
+
     def get_tools_by_category(self, category: str) -> List[Any]:
         """Get tools by category"""
         categories = {

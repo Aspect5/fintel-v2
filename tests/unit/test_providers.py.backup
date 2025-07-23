@@ -33,7 +33,7 @@ class TestProviderFactory:
             mock_instance = Mock()
             mock_provider.return_value = mock_instance
             
-            provider = factory.get_provider("google")
+            provider = factory.get_provider("gemini")
             assert provider is not None
 
     @pytest.mark.unit
@@ -41,14 +41,12 @@ class TestProviderFactory:
         """Test getting local provider"""
         factory = ProviderFactory()
         
-        with patch('providers.local_provider.requests.get') as mock_get:
-            mock_get.return_value.status_code = 200
-            with patch('providers.factory.LocalProvider') as mock_provider:
-                mock_instance = Mock()
-                mock_provider.return_value = mock_instance
-                
-                provider = factory.get_provider("local")
-                assert provider is not None
+        with patch('providers.factory.LocalProvider') as mock_provider:
+            mock_instance = Mock()
+            mock_provider.return_value = mock_instance
+            
+            provider = factory.get_provider("local")
+            assert provider is not None
 
     @pytest.mark.unit
     def test_invalid_provider(self):
@@ -62,25 +60,21 @@ class TestOpenAIProvider:
     @pytest.mark.unit
     def test_openai_provider_initialization(self, mock_api_keys):
         """Test OpenAI provider initialization"""
-        from config.providers import ProviderConfig
-        config = ProviderConfig(name="openai", model="gpt-4", api_key="test-key")
-        provider = OpenAIProvider(config)
-        assert provider.config.name == "openai"
+        with patch('providers.openai_provider.openai'):
+            provider = OpenAIProvider()
+            assert hasattr(provider, 'client')
 
 class TestGeminiProvider:
     @pytest.mark.unit
     def test_gemini_provider_initialization(self, mock_api_keys):
         """Test Gemini provider initialization"""
-        from config.providers import ProviderConfig
-        config = ProviderConfig(name="google", model="gemini-pro", api_key="test-key")
-        provider = GeminiProvider(config)
-        assert provider.config.name == "google"
+        with patch('providers.gemini_provider.genai'):
+            provider = GeminiProvider()
+            assert hasattr(provider, 'model')
 
 class TestLocalProvider:
     @pytest.mark.unit
     def test_local_provider_initialization(self):
         """Test local provider initialization"""
-        from config.providers import ProviderConfig
-        config = ProviderConfig(name="local", model="llama2", base_url="http://localhost:8080")
-        provider = LocalProvider(config)
-        assert provider.config.name == "local"
+        provider = LocalProvider()
+        assert hasattr(provider, 'model_name')

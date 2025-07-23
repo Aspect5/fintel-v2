@@ -52,6 +52,17 @@ def health_check():
         "tools": tool_registry.get_tool_status()
     })
 
+@app.route('/api/status/keys', methods=['GET'])
+def get_key_status():
+    """Get the status of API keys"""
+    settings = get_settings()
+    return jsonify({
+        'openai': bool(settings.openai_api_key),
+        'google': bool(settings.google_api_key),
+        'alpha_vantage': bool(settings.alpha_vantage_api_key),
+        'fred': bool(settings.fred_api_key),
+    })
+
 @app.route('/api/providers', methods=['GET'])
 def get_providers():
     """Get available providers and their status"""

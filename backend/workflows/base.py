@@ -10,6 +10,7 @@ class WorkflowResult:
     trace: str
     agent_invocations: List[Dict[str, Any]]
     execution_time: float
+    workflow_name: str
     error: Optional[str] = None
 
 class BaseWorkflow(ABC):

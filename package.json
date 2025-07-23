@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "npm run start",
     "start": "bash -c 'export PORT=${PORT:-9002} && export HOST=${HOST:-0.0.0.0} && concurrently --kill-others \"npm run start:backend\" \"npm run start:frontend\"'",
-    "start:backend": "cd backend && source venv/bin/activate && BACKEND_PORT=5001 python simple-app.py",
+    "start:backend": "cd backend && source venv/bin/activate && BACKEND_PORT=5001 python app.py",
     "start:frontend": "vite --host $HOST --port $PORT",
     "build": "vite build",
     "preview": "vite preview --host ${HOST:-0.0.0.0} --port ${PORT:-4173}",

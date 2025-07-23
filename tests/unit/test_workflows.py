@@ -28,6 +28,8 @@ class TestWorkflowOrchestrator:
                 mock_result = WorkflowResult(
                     success=True,
                     result="Analysis complete",
+                    trace="Test trace",
+                    agent_invocations=[],
                     execution_time=10.5,
                     workflow_name="comprehensive"
                 )
@@ -60,6 +62,8 @@ class TestMultiAgentCoordinator:
             mock_result = WorkflowResult(
                 success=True,
                 result="Multi-agent analysis complete",
+                trace="Test trace",
+                agent_invocations=[],
                 execution_time=15.2,
                 workflow_name="multi_agent_analysis"
             )
@@ -82,14 +86,15 @@ class TestWorkflowResult:
             result="Test analysis result",
             execution_time=5.0,
             workflow_name="test_workflow",
-            metadata={'key': 'value'}
+            trace="Test trace",
+            agent_invocations=[],
+            
         )
         
         assert result.success is True
         assert result.result == "Test analysis result"
         assert result.execution_time == 5.0
         assert result.workflow_name == "test_workflow"
-        assert result.metadata == {'key': 'value'}
 
     @pytest.mark.unit
     def test_workflow_result_failure(self):
@@ -97,6 +102,8 @@ class TestWorkflowResult:
         result = WorkflowResult(
             success=False,
             result="Error occurred",
+            trace="Error trace",
+            agent_invocations=[],
             execution_time=2.0,
             workflow_name="failed_workflow",
             error="Connection timeout"
