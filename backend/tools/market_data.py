@@ -1,19 +1,31 @@
+# backend/tools/market_data.py
 import requests
 from typing import Dict, Any
 from .base import BaseTool
+from .mock_data import MOCK_MARKET_DATA, MOCK_COMPANY_OVERVIEW
 
 class MarketDataTool(BaseTool):
     """Tool for fetching market data from Alpha Vantage"""
     
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str = None):
         super().__init__("market_data", "Fetch real-time market data for stocks")
         self.api_key = api_key
+        self.use_mock = not bool(api_key)
     
     def execute(self, ticker: str) -> Dict[str, Any]:
         """Execute market data fetch"""
+        ticker = ticker.upper()
+        
+        # Use mock data if no API key
+        if self.use_mock:
+            mock_data = MOCK_MARKET_DATA.get(ticker, MOCK_MARKET_DATA["DEFAULT"]).copy()
+            mock_data["symbol"] = ticker
+            mock_data["note"] = "Using mock data - no API key configured"
+            return mock_data
+        
         if not self.can_execute():
             return {
-                "symbol": ticker.upper(),
+                "symbol": ticker,
                 "error": "Rate limit exceeded",
                 "note": "Please wait before making another request"
             }
@@ -32,11 +44,11 @@ class MarketDataTool(BaseTool):
             self.record_execution()
             
             if "Note" in data:
-                return {
-                    "symbol": ticker.upper(),
-                    "error": "API limit reached",
-                    "note": "Alpha Vantage API calls per minute exceeded"
-                }
+                # API limit reached, return mock data
+                mock_data = MOCK_MARKET_DATA.get(ticker, MOCK_MARKET_DATA["DEFAULT"]).copy()
+                mock_data["symbol"] = ticker
+                mock_data["note"] = "API limit reached - using mock data"
+                return mock_data
             
             if "Global Quote" in data and data["Global Quote"]:
                 quote = data["Global Quote"]
@@ -49,31 +61,41 @@ class MarketDataTool(BaseTool):
                     "status": "success"
                 }
             else:
-                return {
-                    "symbol": ticker.upper(),
-                    "error": "No data available",
-                    "note": "Invalid ticker or market closed"
-                }
+                # No data available, return mock
+                mock_data = MOCK_MARKET_DATA.get(ticker, MOCK_MARKET_DATA["DEFAULT"]).copy()
+                mock_data["symbol"] = ticker
+                mock_data["note"] = "No live data available - using mock data"
+                return mock_data
                 
         except Exception as e:
-            return {
-                "symbol": ticker.upper(),
-                "error": f"Request failed: {str(e)}",
-                "note": "Network or API error occurred"
-            }
+            # On any error, return mock data
+            mock_data = MOCK_MARKET_DATA.get(ticker, MOCK_MARKET_DATA["DEFAULT"]).copy()
+            mock_data["symbol"] = ticker
+            mock_data["note"] = f"Error occurred - using mock data: {str(e)}"
+            return mock_data
 
 class CompanyOverviewTool(BaseTool):
     """Tool for fetching company overview from Alpha Vantage"""
     
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str = None):
         super().__init__("company_overview", "Fetch company fundamentals and overview")
         self.api_key = api_key
+        self.use_mock = not bool(api_key)
     
     def execute(self, ticker: str) -> Dict[str, Any]:
         """Execute company overview fetch"""
+        ticker = ticker.upper()
+        
+        # Use mock data if no API key
+        if self.use_mock:
+            mock_data = MOCK_COMPANY_OVERVIEW.get(ticker, MOCK_COMPANY_OVERVIEW["DEFAULT"]).copy()
+            mock_data["symbol"] = ticker
+            mock_data["note"] = "Using mock data - no API key configured"
+            return mock_data
+        
         if not self.can_execute():
             return {
-                "symbol": ticker.upper(),
+                "symbol": ticker,
                 "error": "Rate limit exceeded",
                 "note": "Please wait before making another request"
             }
@@ -92,11 +114,11 @@ class CompanyOverviewTool(BaseTool):
             self.record_execution()
             
             if "Note" in data:
-                return {
-                    "symbol": ticker.upper(),
-                    "error": "API limit reached",
-                    "note": "Alpha Vantage API calls per minute exceeded"
-                }
+                # API limit reached, return mock data
+                mock_data = MOCK_COMPANY_OVERVIEW.get(ticker, MOCK_COMPANY_OVERVIEW["DEFAULT"]).copy()
+                mock_data["symbol"] = ticker
+                mock_data["note"] = "API limit reached - using mock data"
+                return mock_data
             
             if "Symbol" in data and data["Symbol"]:
                 return {
@@ -111,15 +133,15 @@ class CompanyOverviewTool(BaseTool):
                     "status": "success"
                 }
             else:
-                return {
-                    "symbol": ticker.upper(),
-                    "error": "No company data available",
-                    "note": "Invalid ticker symbol or API issue"
-                }
+                # No data available, return mock
+                mock_data = MOCK_COMPANY_OVERVIEW.get(ticker, MOCK_COMPANY_OVERVIEW["DEFAULT"]).copy()
+                mock_data["symbol"] = ticker
+                mock_data["note"] = "No live data available - using mock data"
+                return mock_data
                 
         except Exception as e:
-            return {
-                "symbol": ticker.upper(),
-                "error": f"Request failed: {str(e)}",
-                "note": "Network or API error occurred"
-            }
+            # On any error, return mock data
+            mock_data = MOCK_COMPANY_OVERVIEW.get(ticker, MOCK_COMPANY_OVERVIEW["DEFAULT"]).copy()
+            mock_data["symbol"] = ticker
+            mock_data["note"] = f"Error occurred - using mock data: {str(e)}"
+            return mock_data

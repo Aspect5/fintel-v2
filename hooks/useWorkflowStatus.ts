@@ -21,7 +21,6 @@ export const useWorkflowStatus = (workflowId: string | null) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
 
   const fetchStatus = useCallback(async () => {
     if (!workflowId) return;
@@ -30,23 +29,27 @@ export const useWorkflowStatus = (workflowId: string | null) => {
       const response = await fetch(`/api/workflow-status/${workflowId}`);
       if (response.ok) {
         const status = await response.json();
+        
+        // Log the received data for debugging
+        console.log('Workflow status update:', {
+          id: workflowId,
+          status: status.status,
+          nodes: status.nodes?.length || 0,
+          edges: status.edges?.length || 0
+        });
+        
         setWorkflowStatus(status);
         
         // Stop polling if workflow is complete
         if (status.status === 'completed' || status.status === 'failed') {
           setIsLoading(false);
-          // Clear the interval
           if (intervalRef.current) {
             clearInterval(intervalRef.current);
             intervalRef.current = null;
           }
-          // Close event source
-          if (eventSourceRef.current) {
-            eventSourceRef.current.close();
-            eventSourceRef.current = null;
-          }
         }
       } else if (response.status === 404) {
+        console.error('Workflow not found:', workflowId);
         setError('Workflow not found');
         setIsLoading(false);
         if (intervalRef.current) {
@@ -61,8 +64,12 @@ export const useWorkflowStatus = (workflowId: string | null) => {
   }, [workflowId]);
 
   useEffect(() => {
-    if (!workflowId) return;
+    if (!workflowId) {
+      setWorkflowStatus(null);
+      return;
+    }
 
+    console.log('Starting to poll workflow:', workflowId);
     setIsLoading(true);
     setError(null);
 
@@ -77,10 +84,6 @@ export const useWorkflowStatus = (workflowId: string | null) => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
-      }
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
       }
       setIsLoading(false);
     };

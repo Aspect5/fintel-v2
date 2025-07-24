@@ -37,6 +37,11 @@ const App: React.FC = () => {
     // Update nodes and edges when workflow status changes
     useEffect(() => {
         if (workflowStatus?.nodes && workflowStatus?.edges) {
+            console.log('Updating canvas with workflow data:', {
+                nodes: workflowStatus.nodes,
+                edges: workflowStatus.edges,
+                status: workflowStatus.status
+            });
             setNodes(workflowStatus.nodes);
             setEdges(workflowStatus.edges);
         }

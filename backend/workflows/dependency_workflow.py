@@ -47,6 +47,15 @@ class DependencyDrivenWorkflow(BaseWorkflow):
         
         logger.info(f"Starting workflow for query: {query}")
         
+        # Initialize workflow visualization FIRST
+        self._initialize_workflow_nodes(query)
+        
+        # Make sure the initial nodes/edges are in the status
+        self._update_status({
+            'nodes': self.workflow_status.get('nodes', []),
+            'edges': self.workflow_status.get('edges', [])
+        })
+        
         try:
             from backend.agents.registry import get_agent_registry
             agent_registry = get_agent_registry()
@@ -55,9 +64,6 @@ class DependencyDrivenWorkflow(BaseWorkflow):
             market_agent = agent_registry.get_agent("MarketAnalyst", provider)
             economic_agent = agent_registry.get_agent("EconomicAnalyst", provider)
             financial_agent = agent_registry.get_agent("FinancialAnalyst", provider)
-            
-            # Initialize workflow visualization with proper architecture
-            self._initialize_workflow_nodes(query)
             
             with cf.Flow(name="financial_analysis_flow") as flow:
                 # Update visualization to show workflow start
@@ -194,13 +200,13 @@ class DependencyDrivenWorkflow(BaseWorkflow):
                 'position': {'x': 50, 'y': 200},
                 'data': {
                     'label': 'User Query',
-                    'details': query,
+                    'details': query[:100] + '...' if len(query) > 100 else query,
                     'status': 'running'
                 }
             },
             {
                 'id': 'market_analysis',
-                'type': 'agent',
+                'type': 'default',
                 'position': {'x': 350, 'y': 100},
                 'data': {
                     'label': 'Market Analyst',
@@ -212,7 +218,7 @@ class DependencyDrivenWorkflow(BaseWorkflow):
             },
             {
                 'id': 'economic_analysis',
-                'type': 'agent',
+                'type': 'default',
                 'position': {'x': 350, 'y': 300},
                 'data': {
                     'label': 'Economic Analyst',
@@ -224,10 +230,10 @@ class DependencyDrivenWorkflow(BaseWorkflow):
             },
             {
                 'id': 'risk_assessment',
-                'type': 'agent',
+                'type': 'default',
                 'position': {'x': 650, 'y': 200},
                 'data': {
-                    'label': 'Financial Analyst',
+                    'label': 'Risk Assessment',
                     'agentType': 'FinancialAnalyst',
                     'details': 'Assessing investment risks',
                     'status': 'pending',
@@ -236,7 +242,7 @@ class DependencyDrivenWorkflow(BaseWorkflow):
             },
             {
                 'id': 'final_synthesis',
-                'type': 'synthesizer',
+                'type': 'output',
                 'position': {'x': 950, 'y': 200},
                 'data': {
                     'label': 'Final Report',
@@ -257,9 +263,15 @@ class DependencyDrivenWorkflow(BaseWorkflow):
             {'id': 'e7', 'source': 'economic_analysis', 'target': 'final_synthesis', 'animated': False, 'style': {'stroke': '#666'}}
         ]
         
+        # Update the workflow_status
         self.workflow_status['nodes'] = nodes
         self.workflow_status['edges'] = edges
-        self._update_status({'nodes': nodes, 'edges': edges})
+        
+        # Trigger the update callback
+        self._update_status({
+            'nodes': nodes,
+            'edges': edges
+        })
     
     def _update_node_status(self, node_id: str, status: str, result: str = None):
         """Update specific node status"""

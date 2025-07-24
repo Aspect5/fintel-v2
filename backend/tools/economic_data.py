@@ -1,16 +1,28 @@
+# backend/tools/economic_data.py
 import requests
 from typing import Dict, Any, List
 from .base import BaseTool
+from .mock_data import MOCK_ECONOMIC_DATA
 
 class EconomicDataTool(BaseTool):
     """Tool for fetching economic data from FRED"""
     
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str = None):
         super().__init__("economic_data", "Fetch economic data from FRED")
         self.api_key = api_key
+        self.use_mock = not bool(api_key)
     
     def execute(self, series_id: str, limit: int = 10) -> Dict[str, Any]:
         """Execute economic data fetch"""
+        series_id = series_id.upper()
+        
+        # Use mock data if no API key
+        if self.use_mock:
+            mock_data = MOCK_ECONOMIC_DATA.get(series_id, MOCK_ECONOMIC_DATA["DEFAULT"]).copy()
+            mock_data["series_id"] = series_id
+            mock_data["note"] = "Using mock data - no API key configured"
+            return mock_data
+        
         if not self.can_execute():
             return {
                 "series_id": series_id,
@@ -34,11 +46,11 @@ class EconomicDataTool(BaseTool):
             self.record_execution()
             
             if "error_code" in data:
-                return {
-                    "series_id": series_id,
-                    "error": f"FRED API Error: {data.get('error_message', 'Unknown error')}",
-                    "note": "Check series ID or API key"
-                }
+                # API error, return mock data
+                mock_data = MOCK_ECONOMIC_DATA.get(series_id, MOCK_ECONOMIC_DATA["DEFAULT"]).copy()
+                mock_data["series_id"] = series_id
+                mock_data["note"] = f"API error - using mock data: {data.get('error_message', 'Unknown error')}"
+                return mock_data
             
             if "observations" in data:
                 observations = data["observations"]
@@ -55,15 +67,15 @@ class EconomicDataTool(BaseTool):
                     "status": "success"
                 }
             else:
-                return {
-                    "series_id": series_id,
-                    "error": "No data available",
-                    "note": "Series may not exist or have no recent data"
-                }
+                # No data, return mock
+                mock_data = MOCK_ECONOMIC_DATA.get(series_id, MOCK_ECONOMIC_DATA["DEFAULT"]).copy()
+                mock_data["series_id"] = series_id
+                mock_data["note"] = "No live data available - using mock data"
+                return mock_data
                 
         except Exception as e:
-            return {
-                "series_id": series_id,
-                "error": f"Request failed: {str(e)}",
-                "note": "Network or API error occurred"
-            }
+            # On any error, return mock data
+            mock_data = MOCK_ECONOMIC_DATA.get(series_id, MOCK_ECONOMIC_DATA["DEFAULT"]).copy()
+            mock_data["series_id"] = series_id
+            mock_data["note"] = f"Error occurred - using mock data: {str(e)}"
+            return mock_data
