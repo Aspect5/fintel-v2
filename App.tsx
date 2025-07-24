@@ -1,3 +1,4 @@
+// App.tsx - Move chat state to App level
 import React, { useState, useEffect } from 'react';
 import { useNodesState, useEdgesState } from 'reactflow';
 import { ChatMessage } from './types';
@@ -9,7 +10,7 @@ import Notification from './components/Notification';
 import { useWorkflowStatus } from './hooks/useWorkflowStatus';
 
 const App: React.FC = () => {
-    const [chatMessages] = useState<ChatMessage[]>([]);
+    const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [currentWorkflowId, setCurrentWorkflowId] = useState<string | null>(null);
@@ -64,11 +65,16 @@ const App: React.FC = () => {
         }
     }, [workflowStatus]);
 
+    const handleAddMessage = (message: ChatMessage) => {
+        setChatMessages(prev => [...prev, message]);
+    };
+
     return (
         <div className="flex h-screen bg-brand-bg text-white font-sans">
             <SidePanel
                 chatMessages={chatMessages}
                 onSendMessage={handleSendMessage}
+                onAddMessage={handleAddMessage}
                 isLoading={isLoading}
                 onWorkflowStart={handleWorkflowStart}
             />
@@ -102,6 +108,11 @@ const App: React.FC = () => {
                                     {workflowStatus.status}
                                 </span>
                             </div>
+                            {workflowStatus.execution_time && (
+                                <div className="text-sm text-brand-text-secondary mt-1">
+                                    Execution time: {workflowStatus.execution_time.toFixed(2)}s
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>

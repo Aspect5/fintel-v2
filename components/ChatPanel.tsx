@@ -9,27 +9,23 @@ import { useStore } from '../store';
 interface ChatPanelProps {
   chatMessages: ChatMessage[];
   onSendMessage: (message: string) => void;
+  onAddMessage: (message: ChatMessage) => void;
   isLoading: boolean;
   onWorkflowStart?: (workflowId: string) => void;
 }
 
 const ChatPanel: React.FC<ChatPanelProps> = ({
   chatMessages,
+  onAddMessage,
   onWorkflowStart
 }) => {
   const [query, setQuery] = useState('');
   const [workflowId, setWorkflowId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>(chatMessages);
-  const hasAddedResult = useRef(false); // Track if we've added the result
+  const hasAddedResult = useRef(false);
   
   const { workflowStatus } = useWorkflowStatus(workflowId);
   const { controlFlowProvider } = useStore();
-
-  // Update messages when chatMessages prop changes
-  useEffect(() => {
-    setMessages(chatMessages);
-  }, [chatMessages]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,11 +33,11 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
     
     setIsLoading(true);
     setWorkflowId(null);
-    hasAddedResult.current = false; // Reset the flag
+    hasAddedResult.current = false;
     
     // Add user message
     const userMessage: ChatMessage = { role: 'user', content: query };
-    setMessages(prev => [...prev, userMessage]);
+    onAddMessage(userMessage);
     
     try {
       const response = await fetch('/api/run-workflow', {
@@ -71,7 +67,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
         role: 'assistant',
         content: `Error: ${error instanceof Error ? error.message : 'Failed to start analysis'}`
       };
-      setMessages(prev => [...prev, errorMessage]);
+      onAddMessage(errorMessage);
       setIsLoading(false);
     }
     
@@ -83,7 +79,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
     if (!workflowStatus || hasAddedResult.current) return;
     
     if (workflowStatus.status === 'completed' && workflowStatus.result) {
-      hasAddedResult.current = true; // Mark that we've added the result
+      hasAddedResult.current = true;
       setIsLoading(false);
       
       // Add assistant message with result
@@ -92,9 +88,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
         content: workflowStatus.result,
         trace: workflowStatus.trace
       };
-      setMessages(prev => [...prev, assistantMessage]);
+      onAddMessage(assistantMessage);
     } else if (workflowStatus.status === 'failed') {
-      hasAddedResult.current = true; // Mark that we've added the error
+      hasAddedResult.current = true;
       setIsLoading(false);
       
       // Add error message
@@ -102,22 +98,22 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
         role: 'assistant',
         content: `Analysis failed: ${workflowStatus.error || 'Unknown error'}`
       };
-      setMessages(prev => [...prev, errorMessage]);
+      onAddMessage(errorMessage);
     }
-  }, [workflowStatus]);
+  }, [workflowStatus, onAddMessage]);
 
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
   
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [chatMessages]);
 
   return (
     <div className="flex flex-col h-full bg-brand-bg">
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto p-4">
         <div className="space-y-4">
-          {messages.map((msg, index) => (
+          {chatMessages.map((msg, index) => (
             <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-xl p-3 rounded-lg ${
                 msg.role === 'user' 
@@ -174,7 +170,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
                 workflowStatus.status === 'completed' ? 'text-green-400' :
                 workflowStatus.status === 'failed' ? 'text-red-400' :
                 workflowStatus.status === 'running' ? 'text-yellow-400' :
-                'text-blue-400'
+                'text-blue -400'
               }`}>
                 {workflowStatus.status}
               </span>

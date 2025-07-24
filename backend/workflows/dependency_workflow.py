@@ -56,10 +56,15 @@ class DependencyDrivenWorkflow(BaseWorkflow):
             economic_agent = agent_registry.get_agent("EconomicAnalyst", provider)
             financial_agent = agent_registry.get_agent("FinancialAnalyst", provider)
             
-            # Initialize workflow visualization
+            # Initialize workflow visualization with proper architecture
             self._initialize_workflow_nodes(query)
             
             with cf.Flow(name="financial_analysis_flow") as flow:
+                # Update visualization to show workflow start
+                self._update_node_status('query_input', 'completed')
+                self._update_edge_status('e1', 'active')
+                self._update_edge_status('e2', 'active')
+                
                 # Task A: Market Analysis
                 self._update_node_status('market_analysis', 'running')
                 market_analysis_task = cf.Task(
@@ -90,7 +95,21 @@ class DependencyDrivenWorkflow(BaseWorkflow):
                     result_type=str
                 )
                 
+                # Execute parallel tasks
+                logger.info("Executing market analysis...")
+                market_result = market_analysis_task.run()
+                self._update_node_status('market_analysis', 'completed', result=market_result)
+                self._update_edge_status('e1', 'completed')
+                self._update_edge_status('e3', 'active')
+                
+                logger.info("Executing economic analysis...")
+                economic_result = economic_analysis_task.run()
+                self._update_node_status('economic_analysis', 'completed', result=economic_result)
+                self._update_edge_status('e2', 'completed')
+                self._update_edge_status('e4', 'active')
+                
                 # Task C: Risk Assessment (depends on both A and B)
+                self._update_node_status('risk_assessment', 'running')
                 risk_assessment_task = cf.Task(
                     objective="Assess investment risks based on market and economic analysis",
                     depends_on=[market_analysis_task, economic_analysis_task],
@@ -98,7 +117,15 @@ class DependencyDrivenWorkflow(BaseWorkflow):
                     result_type=str
                 )
                 
+                logger.info("Executing risk assessment...")
+                risk_result = risk_assessment_task.run()
+                self._update_node_status('risk_assessment', 'completed', result=risk_result)
+                self._update_edge_status('e3', 'completed')
+                self._update_edge_status('e4', 'completed')
+                self._update_edge_status('e5', 'active')
+                
                 # Task D: Final Synthesis (depends on all previous)
+                self._update_node_status('final_synthesis', 'running')
                 final_synthesis_task = cf.Task(
                     objective=f"""Provide comprehensive investment recommendation for: {query}
                     
@@ -113,24 +140,12 @@ class DependencyDrivenWorkflow(BaseWorkflow):
                     result_type=str
                 )
                 
-                # Execute tasks with status tracking
-                logger.info("Executing market analysis...")
-                market_result = market_analysis_task.run()
-                self._update_node_status('market_analysis', 'success', result=market_result)
-                
-                logger.info("Executing economic analysis...")
-                economic_result = economic_analysis_task.run()
-                self._update_node_status('economic_analysis', 'success', result=economic_result)
-                
-                logger.info("Executing risk assessment...")
-                self._update_node_status('risk_assessment', 'running')
-                risk_result = risk_assessment_task.run()
-                self._update_node_status('risk_assessment', 'success', result=risk_result)
-                
                 logger.info("Executing final synthesis...")
-                self._update_node_status('final_synthesis', 'running')
                 final_result = final_synthesis_task.run()
-                self._update_node_status('final_synthesis', 'success', result=final_result)
+                self._update_node_status('final_synthesis', 'completed', result=final_result)
+                self._update_edge_status('e5', 'completed')
+                self._update_edge_status('e6', 'completed')
+                self._update_edge_status('e7', 'completed')
             
             execution_time = time.time() - start_time
             self.workflow_status['status'] = 'completed'
@@ -150,7 +165,7 @@ class DependencyDrivenWorkflow(BaseWorkflow):
                 agent_invocations=[],
                 execution_time=execution_time,
                 workflow_name=self.name,
-                workflow_status=self.workflow_status  # Include for frontend
+                workflow_status=self.workflow_status
             )
             
         except Exception as e:
@@ -171,25 +186,26 @@ class DependencyDrivenWorkflow(BaseWorkflow):
             )
     
     def _initialize_workflow_nodes(self, query):
-        """Initialize workflow nodes for visualization"""
+        """Initialize workflow nodes showing the actual architecture"""
         nodes = [
             {
-                'id': 'coordinator',
-                'type': 'coordinator',
-                'position': {'x': 100, 'y': 200},
+                'id': 'query_input',
+                'type': 'input',
+                'position': {'x': 50, 'y': 200},
                 'data': {
-                    'label': 'Workflow Coordinator',
-                    'details': f'Analyzing: {query}',
+                    'label': 'User Query',
+                    'details': query,
                     'status': 'running'
                 }
             },
             {
                 'id': 'market_analysis',
                 'type': 'agent',
-                'position': {'x': 400, 'y': 100},
+                'position': {'x': 350, 'y': 100},
                 'data': {
                     'label': 'Market Analyst',
-                    'details': 'Gathering market data and analyzing trends',
+                    'agentType': 'MarketAnalyst',
+                    'details': 'Analyzing market data and trends',
                     'status': 'pending',
                     'toolCalls': []
                 }
@@ -197,10 +213,11 @@ class DependencyDrivenWorkflow(BaseWorkflow):
             {
                 'id': 'economic_analysis',
                 'type': 'agent',
-                'position': {'x': 400, 'y': 300},
+                'position': {'x': 350, 'y': 300},
                 'data': {
                     'label': 'Economic Analyst',
-                    'details': 'Analyzing economic indicators and context',
+                    'agentType': 'EconomicAnalyst',
+                    'details': 'Analyzing economic indicators',
                     'status': 'pending',
                     'toolCalls': []
                 }
@@ -208,10 +225,11 @@ class DependencyDrivenWorkflow(BaseWorkflow):
             {
                 'id': 'risk_assessment',
                 'type': 'agent',
-                'position': {'x': 700, 'y': 150},
+                'position': {'x': 650, 'y': 200},
                 'data': {
-                    'label': 'Risk Analyst',
-                    'details': 'Assessing investment risks and opportunities',
+                    'label': 'Financial Analyst',
+                    'agentType': 'FinancialAnalyst',
+                    'details': 'Assessing investment risks',
                     'status': 'pending',
                     'toolCalls': []
                 }
@@ -219,23 +237,24 @@ class DependencyDrivenWorkflow(BaseWorkflow):
             {
                 'id': 'final_synthesis',
                 'type': 'synthesizer',
-                'position': {'x': 1000, 'y': 200},
+                'position': {'x': 950, 'y': 200},
                 'data': {
-                    'label': 'Final Synthesis',
-                    'details': 'Generating comprehensive investment recommendation',
+                    'label': 'Final Report',
+                    'agentType': 'FinancialAnalyst',
+                    'details': 'Synthesizing comprehensive recommendation',
                     'status': 'pending'
                 }
             }
         ]
         
         edges = [
-            {'id': 'e1', 'source': 'coordinator', 'target': 'market_analysis'},
-            {'id': 'e2', 'source': 'coordinator', 'target': 'economic_analysis'},
-            {'id': 'e3', 'source': 'market_analysis', 'target': 'risk_assessment'},
-            {'id': 'e4', 'source': 'economic_analysis', 'target': 'risk_assessment'},
-            {'id': 'e5', 'source': 'risk_assessment', 'target': 'final_synthesis'},
-            {'id': 'e6', 'source': 'market_analysis', 'target': 'final_synthesis'},
-            {'id': 'e7', 'source': 'economic_analysis', 'target': 'final_synthesis'}
+            {'id': 'e1', 'source': 'query_input', 'target': 'market_analysis', 'animated': False, 'style': {'stroke': '#666'}},
+            {'id': 'e2', 'source': 'query_input', 'target': 'economic_analysis', 'animated': False, 'style': {'stroke': '#666'}},
+            {'id': 'e3', 'source': 'market_analysis', 'target': 'risk_assessment', 'animated': False, 'style': {'stroke': '#666'}},
+            {'id': 'e4', 'source': 'economic_analysis', 'target': 'risk_assessment', 'animated': False, 'style': {'stroke': '#666'}},
+            {'id': 'e5', 'source': 'risk_assessment', 'target': 'final_synthesis', 'animated': False, 'style': {'stroke': '#666'}},
+            {'id': 'e6', 'source': 'market_analysis', 'target': 'final_synthesis', 'animated': False, 'style': {'stroke': '#666'}},
+            {'id': 'e7', 'source': 'economic_analysis', 'target': 'final_synthesis', 'animated': False, 'style': {'stroke': '#666'}}
         ]
         
         self.workflow_status['nodes'] = nodes
@@ -253,3 +272,17 @@ class DependencyDrivenWorkflow(BaseWorkflow):
         
         self._update_status({'nodes': self.workflow_status['nodes']})
         logger.info(f"Node {node_id} status updated to {status}")
+    
+    def _update_edge_status(self, edge_id: str, status: str):
+        """Update edge visualization based on status"""
+        for edge in self.workflow_status['edges']:
+            if edge['id'] == edge_id:
+                if status == 'active':
+                    edge['animated'] = True
+                    edge['style'] = {'stroke': '#58A6FF', 'strokeWidth': 2}
+                elif status == 'completed':
+                    edge['animated'] = False
+                    edge['style'] = {'stroke': '#3FB950', 'strokeWidth': 2}
+                break
+        
+        self._update_status({'edges': self.workflow_status['edges']})

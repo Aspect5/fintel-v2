@@ -1,4 +1,4 @@
-// Update components/SidePanel.tsx (continued)
+// components/SidePanel.tsx
 import React, { useState } from 'react';
 import { ChatMessage } from '../types';
 import ChatPanel from './ChatPanel';
@@ -11,9 +11,10 @@ import { useKeyStatus } from '../hooks/useKeyStatus';
 const SidePanel: React.FC<{
     chatMessages: ChatMessage[];
     onSendMessage: (message: string) => void;
+    onAddMessage: (message: ChatMessage) => void;
     isLoading: boolean;
     onWorkflowStart?: (workflowId: string) => void;
-}> = ({ chatMessages, onSendMessage, isLoading, onWorkflowStart }) => {
+}> = ({ chatMessages, onSendMessage, onAddMessage, isLoading, onWorkflowStart }) => {
     const [activeTab, setActiveTab] = useState<'chat' | 'toolkit'>('chat');
     
     const {
@@ -105,6 +106,7 @@ const SidePanel: React.FC<{
                     <ChatPanel
                         chatMessages={chatMessages}
                         onSendMessage={onSendMessage}
+                        onAddMessage={onAddMessage}
                         isLoading={isLoading}
                         onWorkflowStart={onWorkflowStart}
                     />
