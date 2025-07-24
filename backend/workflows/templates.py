@@ -1,6 +1,19 @@
 from typing import Dict, Any, List
 from .base import BaseWorkflow, WorkflowResult
 from .coordinator import MultiAgentCoordinator
+from .dependency_workflow import DependencyDrivenWorkflow
+
+class WorkflowTemplates:
+    """Collection of predefined workflow templates"""
+    
+    def __init__(self):
+        self._workflows: Dict[str, BaseWorkflow] = {
+            "comprehensive": DependencyDrivenWorkflow(),
+            "dependency_driven": DependencyDrivenWorkflow(),
+            "market_analysis": SingleAgentWorkflow("MarketAnalyst"),
+            "economic_analysis": SingleAgentWorkflow("EconomicAnalyst"),
+            "financial_analysis": SingleAgentWorkflow("FinancialAnalyst")
+        }
 
 class SingleAgentWorkflow(BaseWorkflow):
     """Simple single-agent workflow"""
@@ -88,7 +101,7 @@ class BestPracticeWorkflowTemplates:
     def get_workflow(self, name: str) -> BaseWorkflow:
         """Get workflow by name with fallback to coordinated approach"""
         return self._workflows.get(name, self._workflows["coordinated"])
-        
+
 class WorkflowTemplates:
     """Collection of predefined workflow templates"""
     

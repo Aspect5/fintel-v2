@@ -30,7 +30,7 @@ class AgentRegistry:
     
     def _load_yaml_agents(self):
         """Load agents from agents.yaml file"""
-        yaml_path = Path(__file__).parent.parent / "agents.yaml"
+        yaml_path = Path(__file__).parent.parent / "config" / "agents.yaml"
         if not yaml_path.exists():
             return
         

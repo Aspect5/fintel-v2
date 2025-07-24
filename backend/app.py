@@ -81,31 +81,30 @@ def get_workflows():
     """Get available workflows"""
     return jsonify(orchestrator.get_available_workflows())
 
+# Replace the /api/run-workflow endpoint
 @app.route('/api/run-workflow', methods=['POST'])
 def run_workflow():
-    """Execute financial analysis workflow"""
+    """Execute financial analysis workflow using dependency-driven approach"""
     try:
         data = request.get_json()
         query = data.get('query', '')
         provider = data.get('provider', 'openai')
-        workflow = data.get('workflow', 'comprehensive')
+        workflow = data.get('workflow', 'dependency_driven')
         
         if not query:
-            return jsonify({
-                "error": "Query is required"
-            }), 400
+            return jsonify({"error": "Query is required"}), 400
         
-        logger.info(f"Processing query: '{query}' with provider: {provider}, workflow: {workflow}")
+        logger.info(f"Processing query: '{query}' with provider: {provider}")
         
-        # Execute workflow
-        result = orchestrator.execute_workflow(
+        # Use dependency-driven workflow exclusively
+        from backend.workflows.dependency_workflow import DependencyDrivenWorkflow
+        workflow_instance = DependencyDrivenWorkflow()
+        
+        result = workflow_instance.execute(
             query=query,
-            provider=provider,
-            workflow_name=workflow,
-            timeout=45
+            provider=provider
         )
         
-        # Format response
         response = {
             "result": result.result,
             "trace": result.trace,
@@ -113,26 +112,41 @@ def run_workflow():
             "execution_time": result.execution_time
         }
         
-        # Add agent invocations if available
         if result.agent_invocations:
             response["agent_invocations"] = result.agent_invocations
         
-        # Add error if present
         if result.error:
             response["error"] = result.error
         
-        logger.info(f"Analysis completed successfully in {result.execution_time:.2f}s")
+        logger.info(f"Analysis completed in {result.execution_time:.2f}s")
         return jsonify(response)
         
     except Exception as e:
-        logger.error(f"Workflow error: {e}")
+        logger.error(f"Workflow execution failed: {e}", exc_info=True)
         return jsonify({
-            "result": f"I encountered an error while processing your query. Please try again.",
+            "result": "An internal error occurred during workflow execution.",
             "trace": f"Error: {str(e)}",
             "success": False,
             "error": str(e)
         }), 500
 
+@app.route('/api/tools', methods=['GET'])
+def get_tools():
+    """Get available tools from backend registry"""
+    tool_registry = get_tool_registry()
+    available_tools = tool_registry.get_available_tools()
+    
+    tools_info = {}
+    for name, tool_func in available_tools.items():
+        # Extract tool information
+        tools_info[name] = {
+            "name": name,
+            "description": getattr(tool_func, '__doc__', 'No description available'),
+            "available": True
+        }
+    
+    return jsonify(tools_info)
+    
 @app.route('/api/analyze', methods=['POST'])
 def analyze():
     """Legacy endpoint for backward compatibility"""

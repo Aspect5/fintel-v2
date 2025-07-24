@@ -17,7 +17,7 @@ const App: React.FC = () => {
     const [nodes, , onNodesChange] = useNodesState([]);
     const [edges, , onEdgesChange] = useEdgesState([]);
 
-    // Get global state from the Zustand store
+    // Get global state from the Zustand store - PRESERVE executionEngine
     const { executionEngine, controlFlowProvider, customBaseUrl, setIsApiKeyModalOpen } = useStore();
 
     // Effect to show the API key modal on first visit
@@ -52,7 +52,7 @@ const App: React.FC = () => {
                 const geminiResponse = await window.ai.prompt(message);
                 assistantMessage = { role: 'assistant', content: geminiResponse.text() };
             } else {
-                console.log('🤖 Using ControlFlow engine');
+                console.log('🤖 Using ControlFlow engine (now with dependency-driven workflow)');
                 const agentResponse = await runAgent(message, controlFlowProvider, customBaseUrl);
                 console.log('🎉 Got agent response:', agentResponse);
                 
@@ -67,15 +67,26 @@ const App: React.FC = () => {
             
             setChatMessages(prev => {
                 console.log('📝 Adding assistant message to chat');
-                console.log('�� Assistant message content length:', assistantMessage.content?.length);
+                console.log('📏 Assistant message content length:', assistantMessage.content?.length);
                 return [...prev, assistantMessage];
             });
             
         } catch (e: any) {
             console.error("❌ Error processing message:", e);
-            const errorMessage = e.message || "An unexpected error occurred.";
+            
+            // IMPROVED ERROR HANDLING: Extract more specific error messages
+            let errorMessage = "An unexpected error occurred.";
+            if (e.response?.data?.error) {
+                errorMessage = e.response.data.error;
+            } else if (e.message) {
+                errorMessage = e.message;
+            }
+            
             setError(errorMessage);
-            const errorChatMessage: ChatMessage = { role: 'assistant', content: `Error: ${errorMessage}` };
+            const errorChatMessage: ChatMessage = { 
+                role: 'assistant', 
+                content: `Error: ${errorMessage}` 
+            };
             setChatMessages(prev => [...prev, errorChatMessage]);
         } finally {
             console.log('🏁 Setting loading to false');
@@ -83,8 +94,7 @@ const App: React.FC = () => {
         }
     };
 
-    // --- THIS IS THE CORRECTED LOGIC ---
-    // The tool handler for the Gemini Visual engine now calls our secure backend proxy.
+    // PRESERVE TOOL PROXY HANDLER - This is critical for Gemini Visual engine
     if (window.ai) {
         window.ai.tool = async (toolName: string, parameters: any) => {
             console.log(`Proxying tool call for: ${toolName}`, parameters);
@@ -92,7 +102,7 @@ const App: React.FC = () => {
             // The toolName (e.g., 'alpha_vantage') becomes the provider path for the proxy.
             const provider = toolName;
             
-            // Convert the parameters object into a URL query string (e.g., "?function=TIME_SERIES_DAILY&symbol=IBM")
+            // Convert the parameters object into a URL query string
             const queryParams = new URLSearchParams(parameters).toString();
             const proxyUrl = `http://127.0.0.1:5001/api/proxy/${provider}?${queryParams}`;
 
