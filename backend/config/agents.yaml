@@ -16,7 +16,7 @@ agents:
       - Leverage specialized agents for their expertise.
       - Focus on synthesis and high-level insights.
       - Do NOT call any data-gathering tools directly.
-    tools: []
+    tools: ["get_market_data", "get_company_overview"]
     
   - name: "MarketAnalyst"
     instructions: |

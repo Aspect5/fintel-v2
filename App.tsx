@@ -1,7 +1,7 @@
-// App.tsx - Move chat state to App level
+// App.tsx - Simplified layout structure
 import React, { useState, useEffect } from 'react';
 import { useNodesState, useEdgesState } from 'reactflow';
-import { ChatMessage } from './types';
+import { ChatMessage, Node } from './types';
 import { useStore } from './store';
 import SidePanel from './components/SidePanel';
 import WorkflowCanvas from './components/WorkflowCanvas';
@@ -42,15 +42,10 @@ const App: React.FC = () => {
                 edges: workflowStatus.edges,
                 status: workflowStatus.status
             });
-            setNodes(workflowStatus.nodes);
+            setNodes(workflowStatus.nodes as Node[]);
             setEdges(workflowStatus.edges);
         }
     }, [workflowStatus, setNodes, setEdges]);
-
-    const handleSendMessage = async () => {
-        // This is now handled by the ChatPanel component
-        // which will call handleWorkflowStart when a workflow begins
-    };
 
     const handleWorkflowStart = (workflowId: string) => {
         setCurrentWorkflowId(workflowId);
@@ -59,7 +54,6 @@ const App: React.FC = () => {
     };
 
     const handleNodeDoubleClick = (_event: React.MouseEvent, node: any) => {
-        // This could open a modal with detailed information about the node
         console.log('Node double-clicked:', node);
     };
 
@@ -78,12 +72,14 @@ const App: React.FC = () => {
         <div className="flex h-screen bg-brand-bg text-white font-sans">
             <SidePanel
                 chatMessages={chatMessages}
-                onSendMessage={handleSendMessage}
                 onAddMessage={handleAddMessage}
                 isLoading={isLoading}
                 onWorkflowStart={handleWorkflowStart}
+                onSendMessage={() => {}}
             />
-            <main className="flex-1 flex flex-col">
+            {/* The main content area where the workflow canvas will be displayed */}
+            <main className="flex-1 flex flex-col overflow-hidden">
+                {/* This container will grow to fill the available space */}
                 <div className="flex-1 relative">
                     <WorkflowCanvas
                         nodes={nodes}
@@ -95,7 +91,7 @@ const App: React.FC = () => {
                     
                     {/* Workflow info overlay */}
                     {workflowStatus && (
-                        <div className="absolute top-4 left-4 bg-brand-surface p-4 rounded-lg shadow-lg max-w-md">
+                        <div className="absolute top-4 left-4 bg-brand-surface p-4 rounded-lg shadow-lg max-w-md z-10">
                             <h3 className="text-lg font-semibold text-brand-text-primary mb-2">
                                 Workflow Analysis
                             </h3>

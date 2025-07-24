@@ -1,5 +1,5 @@
 // components/WorkflowCanvas.tsx
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect } from 'react';
 import ReactFlow, { 
   Background, 
   Controls, 
@@ -18,7 +18,7 @@ import 'reactflow/dist/style.css';
 
 import SpinnerIcon from './icons/SpinnerIcon';
 import CheckCircleIcon from './icons/CheckCircleIcon';
-import XCircleIcon from './icons/XCircleIcon';
+import XCircleIcon from './icons-solid/XCircleIcon';
 
 // Custom node component
 const CustomNode: React.FC<{ data: any }> = ({ data }) => {
@@ -129,7 +129,7 @@ const WorkflowCanvasContent: React.FC<WorkflowCanvasProps> = ({
 
 const WorkflowCanvas: React.FC<WorkflowCanvasProps> = (props) => {
   return (
-    <div style={{ width: '100%', height: '100vh' }} className="relative">
+    <div style={{ width: '100%', height: '100%' }} className="relative">
       <ReactFlowProvider>
         <WorkflowCanvasContent {...props} />
       </ReactFlowProvider>

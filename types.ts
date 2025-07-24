@@ -1,4 +1,6 @@
-import type { Node, Edge } from 'reactflow';
+import { Node, Edge } from 'reactflow';
+
+export type { Node, Edge };
 
 // --- Core Chat and Notification Types ---
 

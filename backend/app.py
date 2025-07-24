@@ -39,6 +39,7 @@ from backend.tools.registry import get_tool_registry
 from backend.workflows.orchestrator import get_orchestrator
 from backend.utils.logging import setup_logging
 from backend.utils.errors import FintelError
+from backend.workflows.dependency_workflow import DependencyDrivenWorkflow
 
 # Setup logging
 logger = setup_logging()
@@ -148,12 +149,9 @@ def workflow_stream(workflow_id):
     def generate():
         while workflow_id in active_workflows:
             try:
-                # Send current status
                 status = active_workflows.get(workflow_id, {})
-                yield f"data: {json.dumps(status)}\n\n"
-                time.sleep(1)  # Update every second
-                
-                # Stop if workflow is completed or failed
+                yield f"data: {json.dumps(status)}"
+                time.sleep(1)
                 if status.get('status') in ['completed', 'failed']:
                     break
             except Exception as e:
@@ -173,70 +171,58 @@ def run_workflow():
         if not query:
             return jsonify({"error": "Query is required"}), 400
         
-        # Generate unique workflow ID
         workflow_id = str(uuid.uuid4())
-        
         logger.info(f"Starting workflow {workflow_id} for query: '{query}'")
         
-        # Initialize workflow
-        from backend.workflows.dependency_workflow import DependencyDrivenWorkflow
         workflow_instance = DependencyDrivenWorkflow()
         
-        # Add status callback to update global status
-        def status_callback(status):
-            active_workflows[workflow_id] = {
-                **status,
-                'workflow_id': workflow_id,
-                'query': query
-            }
-        
+        def status_callback(status_update):
+            with threading.Lock():
+                if workflow_id in active_workflows:
+                    active_workflows[workflow_id].update(status_update)
+
         workflow_instance.add_status_callback(status_callback)
         
-        # Initialize workflow status
-        active_workflows[workflow_id] = {
+        # FIX: Initialize the workflow nodes and edges SYNCHRONOUSLY
+        workflow_instance._initialize_workflow_nodes(query)
+        
+        initial_status = workflow_instance.workflow_status.copy()
+        initial_status.update({
             'workflow_id': workflow_id,
             'query': query,
-            'status': 'initializing',
-            'nodes': [],
-            'edges': []
-        }
+            'status': 'initializing'
+        })
+        active_workflows[workflow_id] = initial_status
         
-        # Execute workflow in background thread for real-time updates
-        def execute_workflow():
+        def execute_workflow_target():
             try:
                 result = workflow_instance.execute(query=query, provider=provider)
-                active_workflows[workflow_id].update({
+                final_update = {
                     'result': result.result,
                     'success': result.success,
                     'execution_time': result.execution_time,
                     'status': 'completed' if result.success else 'failed',
                     'trace': result.trace
-                })
+                }
+                status_callback(final_update)
+
             except Exception as e:
-                active_workflows[workflow_id].update({
-                    'status': 'failed',
-                    'error': str(e)
-                })
-                logger.error(f"Workflow {workflow_id} failed: {e}", exc_info=True)
+                logger.error(f"Workflow {workflow_id} execution failed: {e}", exc_info=True)
+                status_callback({'status': 'failed', 'error': str(e)})
         
-        # Start workflow in background
-        thread = threading.Thread(target=execute_workflow)
+        thread = threading.Thread(target=execute_workflow_target)
         thread.daemon = True
         thread.start()
         
-        # Return workflow ID for status tracking
         return jsonify({
             "workflow_id": workflow_id,
             "status": "started",
-            "message": "Workflow started. Use /api/workflow-status/{workflow_id} to track progress."
+            "message": f"Workflow started. Use /api/workflow-status/{workflow_id} to track progress."
         })
         
     except Exception as e:
         logger.error(f"Workflow startup failed: {e}", exc_info=True)
-        return jsonify({
-            "error": str(e),
-            "success": False
-        }), 500
+        return jsonify({"error": str(e), "success": False}), 500
 
 def cleanup_old_workflows():
     """Clean up workflows older than 1 hour"""
@@ -245,27 +231,30 @@ def cleanup_old_workflows():
             current_time = datetime.now()
             workflows_to_remove = []
             
-            for workflow_id, workflow_data in active_workflows.items():
-                if 'start_time' in workflow_data:
-                    start_time = datetime.fromisoformat(workflow_data['start_time'])
+            # Create a copy of items to avoid runtime errors during iteration
+            for workflow_id, workflow_data in list(active_workflows.items()):
+                start_time_str = workflow_data.get('start_time')
+                if start_time_str:
+                    start_time = datetime.fromisoformat(start_time_str)
                     if current_time - start_time > timedelta(hours=1):
                         workflows_to_remove.append(workflow_id)
             
             for workflow_id in workflows_to_remove:
-                del active_workflows[workflow_id]
-                logger.info(f"Cleaned up old workflow: {workflow_id}")
+                with threading.Lock():
+                    if workflow_id in active_workflows:
+                        del active_workflows[workflow_id]
+                        logger.info(f"Cleaned up old workflow: {workflow_id}")
             
-            time.sleep(300)  # Check every 5 minutes
+            time.sleep(300)
         except Exception as e:
             logger.error(f"Error in workflow cleanup: {e}")
             time.sleep(300)
 
-# Start cleanup thread when app starts
-cleanup_thread = threading.Thread(target=cleanup_old_workflows)
-cleanup_thread.daemon = True
-cleanup_thread.start()
-
 if __name__ == '__main__':
+    cleanup_thread = threading.Thread(target=cleanup_old_workflows)
+    cleanup_thread.daemon = True
+    cleanup_thread.start()
+    
     port = int(os.getenv('BACKEND_PORT', os.getenv('PORT', 5001)))
     logger.info(f"Starting Flask server on port {port}")
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False, threaded=True)
