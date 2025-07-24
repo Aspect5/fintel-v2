@@ -9,7 +9,8 @@ class TestMarketDataTools:
     def test_get_stock_quote_mocked(self, mock_get, sample_market_data):
         """Test getting a stock quote with a mocked API call."""
         mock_response = Mock()
-        mock_response.json.return_value = sample_market_data
+        # The API returns a dictionary with a "Global Quote" key
+        mock_response.json.return_value = {"Global Quote": sample_market_data['Global Quote']}
         mock_get.return_value = mock_response
 
         tool = MarketDataTool(api_key="test-key")
@@ -20,7 +21,8 @@ class TestMarketDataTools:
             params={'function': 'GLOBAL_QUOTE', 'symbol': 'AAPL', 'apikey': 'test-key'},
             timeout=10
         )
-        assert result['Global Quote']['01. symbol'] == 'AAPL'
+        assert result['symbol'] == 'AAPL'
+        assert result['price'] == '150.25'
 
     @pytest.mark.unit
     @patch('requests.get')
@@ -38,8 +40,8 @@ class TestMarketDataTools:
             params={'function': 'OVERVIEW', 'symbol': 'AAPL', 'apikey': 'test-key'},
             timeout=10
         )
-        assert result['Symbol'] == 'AAPL'
-        assert result['Name'] == 'Apple Inc.'
+        assert result['symbol'] == 'AAPL'
+        assert result['name'] == 'Apple Inc.'
 
 class TestEconomicDataTool:
     @pytest.mark.unit
@@ -47,7 +49,7 @@ class TestEconomicDataTool:
     def test_get_real_gdp_mocked(self, mock_get):
         """Test getting real GDP data with a mocked API call."""
         mock_response = Mock()
-        mock_response.json.return_value = {"data": "some_gdp_data"}
+        mock_response.json.return_value = {"observations": [{"date": "2023-01-01", "value": "21987.89"}]}
         mock_get.return_value = mock_response
 
         tool = EconomicDataTool(api_key="test-key")
@@ -55,7 +57,8 @@ class TestEconomicDataTool:
 
         mock_get.assert_called_once_with(
             "https://api.stlouisfed.org/fred/series/observations",
-            params={'series_id': 'GDPC1', 'api_key': 'test-key', 'file_type': 'json', 'limit': 100, 'sort_order': 'desc'},
+            params={'series_id': 'GDPC1', 'api_key': 'test-key', 'file_type': 'json', 'limit': 10, 'sort_order': 'desc'},
             timeout=10
         )
-        assert result == {"data": "some_gdp_data"}
+        assert 'data' in result
+        assert result['data'][0]['value'] == '21987.89'

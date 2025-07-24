@@ -1,11 +1,13 @@
-# FINTEL: Flexible Agentic Environment
+# FINTEL v2: Refactored Multi-Agent Financial Intelligence Assistant
 
-FINTEL is a sophisticated, web-based workflow development environment for creating, visualizing, and executing multi-agent financial analysis tasks. It features a dual-architecture design for robust A/B testing and comparative analysis:
+FINTEL v2 is a sophisticated, web-based workflow development environment for creating, visualizing, and executing multi-agent financial analysis tasks. It is built on a robust, backend-driven architecture that ensures a single source of truth for all business logic, including agent capabilities and tool definitions.
 
-1.  **Gemini (Visual):** A lightweight, client-side engine using Google's Gemini API directly from the browser. It provides a visual, step-by-step representation of the agent workflow, making it ideal for debugging and understanding agentic processes.
-2.  **ControlFlow (Python):** A powerful, server-side engine that uses the `controlflow` library. It orchestrates a team of specialized agents that can be powered by multiple LLM providers (OpenAI, Gemini, or local models) to handle complex financial analysis tasks.
+The system uses a unified, declarative workflow model powered by the `controlflow` library. This model orchestrates a team of specialized agents to handle complex financial analysis tasks, with a Directed Acyclic Graph (DAG) of tasks being defined and executed by the `controlflow` library.
 
-All API keys and secrets are managed exclusively by the secure Python backend.
+## Key Architectural Principles
+
+*   **Backend as a Single Source of Truth**: The Python backend is the sole authority for all business logic, including agent capabilities and tool definitions. The frontend is a "dumb" client that renders data and forwards user input, dynamically learning about capabilities from the backend's API.
+*   **Unified, Declarative Workflow**: The system uses a single, consistent pattern for agent orchestration. The chosen pattern is a Dependency-Driven Workflow, where a Directed Acyclic Graph (DAG) of tasks is defined and executed by the `controlflow` library.
 
 ## Getting Started
 
@@ -28,7 +30,7 @@ These steps only need to be performed once to prepare the project.
     ```
 2.  **Activate the Virtual Environment:**
     *   **macOS/Linux:** `source backend/venv/bin/activate`
-    *   **Windows:** `backendenv\Scripts\activate`
+    *   **Windows:** `backend env\Scripts\activate`
 3.  **Install Python Dependencies:** With the virtual environment active, run:
     ```bash
     pip install -r backend/requirements.txt
@@ -61,9 +63,8 @@ You can now open your browser to `http://localhost:5173`.
 
 ### How to Use
 
-1.  **Select Execution Engine:** In the UI, choose between `Gemini (Visual)` or `ControlFlow (Python)`.
-2.  **Configure `ControlFlow` Provider:** If you selected `ControlFlow`, choose your desired LLM provider (OpenAI, Gemini, or Local) and enter a base URL if needed.
-3.  **Submit Query:** Type your financial analysis request and send the message. The selected engine will handle the workflow.
+1.  **Configure LLM Provider:** Choose your desired LLM provider (OpenAI, Gemini, or Local) and enter a base URL if needed.
+2.  **Submit Query:** Type your financial analysis request and send the message. The backend will handle the workflow.
 
 ---
 ### **Advanced: Manual Server Startup**
