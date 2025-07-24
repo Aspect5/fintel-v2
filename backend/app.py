@@ -54,15 +54,18 @@ def health_check():
 
 @app.route('/api/status/keys', methods=['GET'])
 def get_key_status():
-    """Get the status of API keys"""
+    """
+    Checks if all necessary API keys are configured on the backend.
+    Returns a single boolean to avoid leaking information about server capabilities.
+    """
     settings = get_settings()
-    provider = request.args.get('provider', 'openai')
-    is_configured = False
-    if provider == 'openai':
-        is_configured = bool(settings.openai_api_key)
-    elif provider == 'google':
-        is_configured = bool(settings.google_api_key)
-    # Add other providers as needed
+    
+    # All necessary keys must be present for the system to be considered configured.
+    is_configured = all([
+        settings.openai_api_key,
+        settings.google_api_key,
+        settings.fred_api_key,
+    ])
     
     return jsonify({'is_configured': is_configured})
 
