@@ -4,9 +4,9 @@ import os
 import sys
 from pathlib import Path
 
-# Add backend directory to path
-backend_dir = Path(__file__).parent
-sys.path.insert(0, str(backend_dir))
+# Add project root to path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
 
 # Configure environment before imports
 os.environ["PREFECT_API_URL"] = ""
@@ -17,15 +17,16 @@ os.environ["PREFECT_LOGGING_LEVEL"] = "CRITICAL"
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import logging
+import time
 
 # Import our modules
-from config.settings import get_settings
-from providers.factory import ProviderFactory
-from agents.registry import get_agent_registry
-from tools.registry import get_tool_registry
-from workflows.orchestrator import get_orchestrator
-from utils.logging import setup_logging
-from utils.errors import FintelError
+from backend.config.settings import get_settings
+from backend.providers.factory import ProviderFactory
+from backend.agents.registry import get_agent_registry
+from backend.tools.registry import get_tool_registry
+from backend.workflows.orchestrator import get_orchestrator
+from backend.utils.logging import setup_logging
+from backend.utils.errors import FintelError
 
 # Setup logging
 logger = setup_logging()
@@ -35,11 +36,21 @@ app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 # Initialize global components
+logger.info("Initializing global components...")
 settings = get_settings()
+logger.info("Settings loaded")
+
 provider_factory = ProviderFactory()
+logger.info("Provider factory initialized")
+
 agent_registry = get_agent_registry()
+logger.info(f"Agent registry initialized with agents: {agent_registry.get_available_agents()}")
+
 tool_registry = get_tool_registry()
+logger.info(f"Tool registry initialized: {type(tool_registry)}")
+
 orchestrator = get_orchestrator()
+logger.info("Orchestrator initialized")
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -54,20 +65,14 @@ def health_check():
 
 @app.route('/api/status/keys', methods=['GET'])
 def get_key_status():
-    """
-    Checks if all necessary API keys are configured on the backend.
-    Returns a single boolean to avoid leaking information about server capabilities.
-    """
+    """Get individual API key status"""
     settings = get_settings()
-    
-    # All necessary keys must be present for the system to be considered configured.
-    is_configured = all([
-        settings.openai_api_key,
-        settings.google_api_key,
-        settings.fred_api_key,
-    ])
-    
-    return jsonify({'is_configured': is_configured})
+    return jsonify({
+        'openai': bool(settings.openai_api_key),
+        'google': bool(settings.google_api_key),
+        'alpha_vantage': bool(settings.alpha_vantage_api_key),
+        'fred': bool(settings.fred_api_key)
+    })
 
 @app.route('/api/providers', methods=['GET'])
 def get_providers():
@@ -85,8 +90,13 @@ def get_agents():
 @app.route('/api/tools', methods=['GET'])
 def get_tools():
     """Get available tools"""
-    tools = tool_registry.get_all_tools()
-    tool_list = [{"name": name, "description": tool.__doc__} for name, tool in tools.items()]
+    tools = tool_registry.get_available_tools()
+    tool_list = []
+    for name, tool in tools.items():
+        tool_list.append({
+            "name": name,
+            "description": tool.__doc__ or 'No description available'
+        })
     return jsonify(tool_list)
 
 @app.route('/api/workflows', methods=['GET'])
@@ -94,31 +104,29 @@ def get_workflows():
     """Get available workflows"""
     return jsonify(orchestrator.get_available_workflows())
 
-# Replace the /api/run-workflow endpoint
 @app.route('/api/run-workflow', methods=['POST'])
-def run_workflow():
-    """Execute financial analysis workflow using dependency-driven approach"""
+def run_workflow_endpoint():
+    """Execute financial analysis workflow"""
     try:
         data = request.get_json()
         query = data.get('query', '')
         provider = data.get('provider', 'openai')
-        workflow = data.get('workflow', 'dependency_driven')
         
         if not query:
             return jsonify({"error": "Query is required"}), 400
         
         logger.info(f"Processing query: '{query}' with provider: {provider}")
         
-        # Use dependency-driven workflow exclusively
         from backend.workflows.dependency_workflow import DependencyDrivenWorkflow
         workflow_instance = DependencyDrivenWorkflow()
         
         result = workflow_instance.execute(
             query=query,
-            provider=provider
+            provider=provider,
+            max_execution_time=240  # 4 minutes max
         )
         
-        response = {
+        response_data = {
             "result": result.result,
             "trace": result.trace,
             "success": result.success,
@@ -126,13 +134,22 @@ def run_workflow():
         }
         
         if result.agent_invocations:
-            response["agent_invocations"] = result.agent_invocations
+            response_data["agent_invocations"] = result.agent_invocations
         
         if result.error:
-            response["error"] = result.error
+            response_data["error"] = result.error
         
         logger.info(f"Analysis completed in {result.execution_time:.2f}s")
-        return jsonify(response)
+        return jsonify(response_data)
+        
+    except TimeoutError:
+        logger.error("Request timed out after 4 minutes")
+        return jsonify({
+            "result": "Analysis timed out. Please try a simpler query or try again later.",
+            "trace": "Request exceeded maximum execution time",
+            "success": False,
+            "error": "Request timeout"
+        }), 503
         
     except Exception as e:
         logger.error(f"Workflow execution failed: {e}", exc_info=True)
@@ -142,38 +159,6 @@ def run_workflow():
             "success": False,
             "error": str(e)
         }), 500
-
-@app.route('/api/analyze', methods=['POST'])
-def analyze():
-    """Legacy endpoint for backward compatibility"""
-    return run_workflow()
-
-# Fallback analysis function for backward compatibility
-def run_fallback_analysis(query: str) -> str:
-    """Fallback to direct OpenAI API"""
-    try:
-        import openai
-        
-        client = openai.OpenAI(api_key=settings.openai_api_key)
-        
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system", 
-                    "content": "You are a financial analyst. Provide comprehensive financial analysis including market insights, economic context, and actionable recommendations."
-                },
-                {"role": "user", "content": query}
-            ],
-            max_tokens=2000,
-            temperature=0.7
-        )
-        
-        return response.choices[0].message.content
-        
-    except Exception as e:
-        logger.error(f"OpenAI API failed: {e}")
-        raise Exception(f"OpenAI API error: {str(e)}")
 
 @app.errorhandler(FintelError)
 def handle_fintel_error(error):
@@ -186,7 +171,6 @@ def handle_fintel_error(error):
 @app.errorhandler(500)
 def handle_internal_error(error):
     """Handle internal server errors"""
-    logger.error(f"Internal server error: {error}")
     return jsonify({
         "error": "Internal server error",
         "message": "An unexpected error occurred"
@@ -195,7 +179,4 @@ def handle_internal_error(error):
 if __name__ == '__main__':
     port = int(os.getenv('BACKEND_PORT', os.getenv('PORT', 5001)))
     logger.info(f"Starting Flask server on port {port}")
-    logger.info(f"Available providers: {list(provider_factory.get_available_providers().keys())}")
-    logger.info(f"Available agents: {agent_registry.get_available_agents()}")
-    
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False, threaded=True)

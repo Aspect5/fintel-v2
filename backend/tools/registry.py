@@ -90,6 +90,10 @@ class ToolRegistry:
         """Get all available tools"""
         return self._tools.copy()
 
+    def get_all_tools(self) -> Dict[str, Any]:
+        """Get all available tools with their metadata"""
+        return self._tools.copy()
+
 # Global registry instance
 _registry = None
 

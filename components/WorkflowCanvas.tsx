@@ -104,6 +104,8 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ nodes, edges, onNodesCh
     synthesizer: SynthesizerNode,
   }), []);
 
+  const edgeTypes = useMemo(() => ({}), []);
+
   return (
     <div className="w-full h-full" style={{ width: '100%', height: '100%' }}>
       <ReactFlow
@@ -113,6 +115,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ nodes, edges, onNodesCh
         onEdgesChange={onEdgesChange}
         onNodeDoubleClick={onNodeDoubleClick}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         fitView
         proOptions={{ hideAttribution: true }}
         className="bg-brand-bg"

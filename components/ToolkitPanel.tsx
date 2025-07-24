@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import CodeBracketIcon from './icons/CodeBracketIcon';
 
@@ -20,15 +19,26 @@ const ToolCard: React.FC<{ tool: Tool }> = ({ tool }) => (
 const ToolkitPanel: React.FC = () => {
     const [tools, setTools] = useState<Tool[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         const fetchTools = async () => {
             try {
                 const response = await fetch('/api/tools');
-                const data: Tool[] = await response.json();
-                setTools(data);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                const data = await response.json();
+                
+                if (Array.isArray(data)) {
+                    setTools(data);
+                } else {
+                    console.error("Expected array but got:", data);
+                    setError("Invalid data format received from server");
+                }
             } catch (error) {
                 console.error("Failed to fetch tools:", error);
+                setError(error instanceof Error ? error.message : "Unknown error occurred");
             } finally {
                 setLoading(false);
             }
@@ -36,6 +46,21 @@ const ToolkitPanel: React.FC = () => {
 
         fetchTools();
     }, []);
+
+    if (error) {
+        return (
+            <div className="p-4 text-red-400">
+                <h3 className="text-lg font-semibold mb-2">Error Loading Tools</h3>
+                <p className="text-sm">{error}</p>
+                <button 
+                    onClick={() => window.location.reload()} 
+                    className="mt-2 px-3 py-1 bg-red-600 text-white rounded text-sm"
+                >
+                    Retry
+                </button>
+            </div>
+        );
+    }
 
     return (
         <div className="p-4 h-full overflow-y-auto">
