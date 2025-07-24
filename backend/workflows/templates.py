@@ -63,6 +63,32 @@ class SingleAgentWorkflow(BaseWorkflow):
                 error=str(e)
             )
 
+# backend/workflows/templates.py
+from typing import Dict, Any, List
+from .base import BaseWorkflow, WorkflowResult
+from .coordinator import MultiAgentCoordinator
+from .dependency_workflow import DependencyDrivenWorkflow
+
+class BestPracticeWorkflowTemplates:
+    """Workflow templates following ControlFlow best practices"""
+    
+    def __init__(self):
+        self._workflows: Dict[str, BaseWorkflow] = {
+            # Moderated coordination strategy
+            "coordinated": MultiAgentCoordinator(),
+            
+            # Dependency-driven DAG workflow  
+            "dependency_driven": DependencyDrivenWorkflow(),
+            
+            # Single agent workflows for simple cases
+            "market_focus": SingleAgentWorkflow("MarketAnalyst"),
+            "economic_focus": SingleAgentWorkflow("EconomicAnalyst"),
+        }
+    
+    def get_workflow(self, name: str) -> BaseWorkflow:
+        """Get workflow by name with fallback to coordinated approach"""
+        return self._workflows.get(name, self._workflows["coordinated"])
+        
 class WorkflowTemplates:
     """Collection of predefined workflow templates"""
     

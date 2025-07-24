@@ -4,6 +4,7 @@ type BackendKeyStatus = {
   openai: boolean;
   google: boolean;
   alpha_vantage: boolean;
+  fred: boolean;
 };
 
 export const useKeyStatus = () => {
@@ -11,6 +12,7 @@ export const useKeyStatus = () => {
     openai: false,
     google: false,
     alpha_vantage: false,
+    fred: false,
   });
 
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -20,7 +22,7 @@ export const useKeyStatus = () => {
     const fetchKeyStatus = async () => {
       try {
         // Use the correct endpoint that exists in the backend
-        const response = await fetch('/api/key-status');
+        const response = await fetch('/api/status/keys');
 
         if (!response.ok) {
           throw new Error(`Failed to fetch: ${response.status} ${response.statusText}`);

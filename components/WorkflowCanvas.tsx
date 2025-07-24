@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import ReactFlow, { Background, Controls, MiniMap, Node, Edge, OnNodesChange, OnEdgesChange, Handle, Position } from 'reactflow';
 import { AgentNodeData } from '../types';
 
@@ -88,12 +88,6 @@ const SynthesizerNode: React.FC<{ data: AgentNodeData }> = ({ data }) => {
     );
 };
 
-const nodeTypes = {
-  coordinator: CoordinatorNode,
-  agent: AgentNode,
-  synthesizer: SynthesizerNode,
-};
-
 interface WorkflowCanvasProps {
     nodes: Node[];
     edges: Edge[];
@@ -103,8 +97,15 @@ interface WorkflowCanvasProps {
 }
 
 const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ nodes, edges, onNodesChange, onEdgesChange, onNodeDoubleClick }) => {
+  // Memoize nodeTypes to prevent recreation on every render
+  const nodeTypes = useMemo(() => ({
+    coordinator: CoordinatorNode,
+    agent: AgentNode,
+    synthesizer: SynthesizerNode,
+  }), []);
+
   return (
-    <div className="w-full h-full">
+    <div className="w-full h-full" style={{ width: '100%', height: '100%' }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -115,6 +116,7 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ nodes, edges, onNodesCh
         fitView
         proOptions={{ hideAttribution: true }}
         className="bg-brand-bg"
+        style={{ width: '100%', height: '100%' }}
       >
         <Background gap={24} color="#30363D" />
         <Controls className="react-flow__controls-brand"/>
