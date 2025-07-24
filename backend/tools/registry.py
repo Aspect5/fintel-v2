@@ -1,8 +1,9 @@
+# backend/tools/registry.py
 from typing import Dict, List, Any, Optional
 import controlflow as cf
 from .market_data import MarketDataTool, CompanyOverviewTool
 from .economic_data import EconomicDataTool
-from config.settings import get_settings
+from backend.config.settings import get_settings
 
 class ToolRegistry:
     """Central registry for all tools"""
@@ -10,6 +11,7 @@ class ToolRegistry:
     def __init__(self):
         self._tools: Dict[str, Any] = {}
         self._tool_instances: Dict[str, Any] = {}
+        self._tool_descriptions: Dict[str, str] = {}  # Add this to store descriptions
         self._initialize_tools()
     
     def _initialize_tools(self):
@@ -33,30 +35,37 @@ class ToolRegistry:
         
         @cf.tool
         def get_market_data(ticker: str) -> dict:
-            """Get market data for a stock ticker"""
+            """Get real-time market data for a stock ticker including price, volume, and daily changes"""
             if 'market_data' in self._tool_instances:
                 return self._tool_instances['market_data'].execute(ticker=ticker)
             return {"error": "Market data tool not available", "ticker": ticker}
         
         @cf.tool
         def get_company_overview(ticker: str) -> dict:
-            """Get company overview for a stock ticker"""
+            """Get comprehensive company overview including sector, industry, market cap, P/E ratio, and business description"""
             if 'company_overview' in self._tool_instances:
                 return self._tool_instances['company_overview'].execute(ticker=ticker)
             return {"error": "Company overview tool not available", "ticker": ticker}
         
         @cf.tool
         def get_economic_data_from_fred(series_id: str, limit: int = 10) -> dict:
-            """Get economic data from FRED"""
+            """Get economic data from Federal Reserve (FRED) for indicators like GDP, unemployment rate, and interest rates"""
             if 'economic_data' in self._tool_instances:
                 return self._tool_instances['economic_data'].execute(series_id=series_id, limit=limit)
             return {"error": "Economic data tool not available", "series_id": series_id}
         
-        # Store tools for agent assignment
+        # Store tools and their descriptions
         self._tools = {
             'get_market_data': get_market_data,
             'get_company_overview': get_company_overview,
             'get_economic_data_from_fred': get_economic_data_from_fred
+        }
+        
+        # Store descriptions separately
+        self._tool_descriptions = {
+            'get_market_data': 'Get real-time market data for a stock ticker including price, volume, and daily changes',
+            'get_company_overview': 'Get comprehensive company overview including sector, industry, market cap, P/E ratio, and business description',
+            'get_economic_data_from_fred': 'Get economic data from Federal Reserve (FRED) for indicators like GDP, unemployment rate, and interest rates'
         }
     
     def get_tools(self, tool_names: List[str]) -> List[Any]:
@@ -66,7 +75,6 @@ class ToolRegistry:
             if name in self._tools:
                 tools.append(self._tools[name])
         return tools
-
 
     def get_tools_by_category(self, category: str) -> List[Any]:
         """Get tools by category"""
@@ -89,6 +97,10 @@ class ToolRegistry:
     def get_available_tools(self) -> Dict[str, Any]:
         """Get all available tools"""
         return self._tools.copy()
+    
+    def get_tool_descriptions(self) -> Dict[str, str]:
+        """Get tool descriptions"""
+        return self._tool_descriptions.copy()
 
     def get_all_tools(self) -> Dict[str, Any]:
         """Get all available tools with their metadata"""

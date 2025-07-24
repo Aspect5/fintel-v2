@@ -101,13 +101,15 @@ def get_agents():
 
 @app.route('/api/tools', methods=['GET'])
 def get_tools():
-    """Get available tools"""
+    """Get available tools with descriptions"""
     tools = tool_registry.get_available_tools()
+    descriptions = tool_registry.get_tool_descriptions()
+    
     tool_list = []
-    for name, tool in tools.items():
+    for name in tools.keys():
         tool_list.append({
             "name": name,
-            "description": tool.__doc__ or 'No description available'
+            "description": descriptions.get(name, 'No description available')
         })
     return jsonify(tool_list)
 
