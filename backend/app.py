@@ -138,9 +138,13 @@ def handle_internal_error(error):
 @app.route('/api/workflow-status/<workflow_id>', methods=['GET'])
 def get_workflow_status(workflow_id):
     """Get current workflow status for visualization"""
+    logger.debug(f"Status request for workflow: {workflow_id}")
     if workflow_id in active_workflows:
-        return jsonify(active_workflows[workflow_id])
+        status = active_workflows[workflow_id]
+        logger.debug(f"Returning status: {status.get('status')}, nodes: {len(status.get('nodes', []))}")
+        return jsonify(status)
     else:
+        logger.warning(f"Workflow not found: {workflow_id}")
         return jsonify({"error": "Workflow not found"}), 404
 
 @app.route('/api/workflow-stream/<workflow_id>')
@@ -151,6 +155,7 @@ def workflow_stream(workflow_id):
             try:
                 status = active_workflows.get(workflow_id, {})
                 yield f"data: {json.dumps(status)}"
+                
                 time.sleep(1)
                 if status.get('status') in ['completed', 'failed']:
                     break
@@ -196,13 +201,16 @@ def run_workflow():
         
         def execute_workflow_target():
             try:
+                status_callback({'status': 'running', 'current_task': 'Starting analysis...'})
                 result = workflow_instance.execute(query=query, provider=provider)
                 final_update = {
                     'result': result.result,
                     'success': result.success,
                     'execution_time': result.execution_time,
                     'status': 'completed' if result.success else 'failed',
-                    'trace': result.trace
+                    'trace': result.trace,
+                    'nodes': workflow_instance.workflow_status.get('nodes', []),
+                    'edges': workflow_instance.workflow_status.get('edges', [])
                 }
                 status_callback(final_update)
 
@@ -231,13 +239,14 @@ def cleanup_old_workflows():
             current_time = datetime.now()
             workflows_to_remove = []
             
-            # Create a copy of items to avoid runtime errors during iteration
-            for workflow_id, workflow_data in list(active_workflows.items()):
-                start_time_str = workflow_data.get('start_time')
-                if start_time_str:
-                    start_time = datetime.fromisoformat(start_time_str)
-                    if current_time - start_time > timedelta(hours=1):
-                        workflows_to_remove.append(workflow_id)
+            with threading.Lock():
+                for workflow_id, workflow_data in list(active_workflows.items()):
+                    if workflow_data.get('status') in ['completed', 'failed']:
+                        start_time_str = workflow_data.get('start_time')
+                        if start_time_str:
+                            start_time = datetime.fromisoformat(start_time_str)
+                            if current_time - start_time > timedelta(hours=1):
+                                workflows_to_remove.append(workflow_id)
             
             for workflow_id in workflows_to_remove:
                 with threading.Lock():

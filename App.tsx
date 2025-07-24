@@ -1,7 +1,7 @@
 // App.tsx - Simplified layout structure
 import React, { useState, useEffect } from 'react';
 import { useNodesState, useEdgesState } from 'reactflow';
-import { ChatMessage, Node } from './types';
+import { ChatMessage, CustomNode } from './types';
 import { useStore } from './store';
 import SidePanel from './components/SidePanel';
 import WorkflowCanvas from './components/WorkflowCanvas';
@@ -37,12 +37,16 @@ const App: React.FC = () => {
     // Update nodes and edges when workflow status changes
     useEffect(() => {
         if (workflowStatus?.nodes && workflowStatus?.edges) {
-            console.log('Updating canvas with workflow data:', {
-                nodes: workflowStatus.nodes,
-                edges: workflowStatus.edges,
-                status: workflowStatus.status
-            });
-            setNodes(workflowStatus.nodes as Node[]);
+            const typedNodes = workflowStatus.nodes.map((node: any) => ({
+                ...node,
+                type: node.type || 'default',
+                data: {
+                    ...node.data,
+                    status: node.data?.status || 'pending'
+                }
+            }));
+            
+            setNodes(typedNodes as CustomNode[]);
             setEdges(workflowStatus.edges);
         }
     }, [workflowStatus, setNodes, setEdges]);
@@ -53,7 +57,7 @@ const App: React.FC = () => {
         setError(null);
     };
 
-    const handleNodeDoubleClick = (_event: React.MouseEvent, node: any) => {
+    const handleNodeDoubleClick = (_event: React.MouseEvent, node: CustomNode) => {
         console.log('Node double-clicked:', node);
     };
 

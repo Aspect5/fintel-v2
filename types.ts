@@ -99,6 +99,14 @@ export type CustomNodeData = BasicNodeData | AgentNodeData;
 export type CustomNode = Node<CustomNodeData>;
 export type CustomEdge = Edge;
 
+export interface WorkflowStatus {
+    nodes: CustomNode[];
+    edges: CustomEdge[];
+    status: 'initializing' | 'running' | 'completed' | 'failed';
+    query?: string;
+    execution_time?: number;
+}
+
 // --- Global Type Declarations ---
 
 /**

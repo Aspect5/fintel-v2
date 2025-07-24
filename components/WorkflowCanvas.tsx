@@ -94,12 +94,15 @@ const WorkflowCanvasContent: React.FC<WorkflowCanvasProps> = ({
 }) => {
   const { fitView } = useReactFlow();
 
-  // Fit view when nodes change
   useEffect(() => {
-    if (nodes.length > 0) {
-      setTimeout(() => {
-        fitView({ padding: 0.2 });
-      }, 100);
+    try {
+      if (nodes.length > 0) {
+        setTimeout(() => {
+          fitView({ padding: 0.2, duration: 800 });
+        }, 100);
+      }
+    } catch (error) {
+      console.error('Error fitting view:', error);
     }
   }, [nodes, fitView]);
 

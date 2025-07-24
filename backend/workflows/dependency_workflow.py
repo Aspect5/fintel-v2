@@ -32,22 +32,22 @@ class DependencyDrivenWorkflow(BaseWorkflow):
     
     def _update_status(self, update):
         """Update workflow status and notify callbacks"""
-        # In a multi-threaded environment, it's safer to update the dictionary this way
-        current_status = self.workflow_status
-        current_status.update(update)
-        for callback in self.status_callbacks:
-            try:
-                # Pass a copy to avoid race conditions if the callback modifies the dict
-                callback(current_status.copy())
-            except Exception as e:
-                logger.error(f"Status callback error: {e}")
+        with threading.Lock():
+            # Create a new dict to avoid race conditions
+            new_status = dict(self.workflow_status)
+            new_status.update(update)
+            self.workflow_status = new_status
+            
+            for callback in self.status_callbacks:
+                try:
+                    # Pass a copy to avoid modifications during iteration
+                    callback(new_status.copy())
+                except Exception as e:
+                    logger.error(f"Status callback error: {e}")
     
     def execute(self, query: str, provider: str = "openai", **kwargs) -> WorkflowResult:
         """Execute workflow with real-time status updates"""
         start_time = time.time()
-        
-        # This is now handled in app.py before the thread starts
-        # self.workflow_status['start_time'] = datetime.now().isoformat()
         
         self._update_status({'status': 'running'})
         
@@ -158,8 +158,13 @@ class DependencyDrivenWorkflow(BaseWorkflow):
             {'id': 'e5', 'source': 'risk_assessment', 'target': 'final_synthesis', 'animated': False},
         ]
         
-        self.workflow_status.update({'nodes': nodes, 'edges': edges, 'start_time': datetime.now().isoformat()})
-        self._update_status({}) # Trigger initial callback with node data
+        self.workflow_status.update({
+            'nodes': nodes, 
+            'edges': edges, 
+            'start_time': datetime.now().isoformat(),
+            'query': query
+        })
+        self._update_status({'initialized': True})
     
     def _update_node_status(self, node_id: str, status: str, result: str = None):
         """Update a specific node's status and optionally its result."""
