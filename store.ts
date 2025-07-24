@@ -2,15 +2,9 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { Notification } from './types';
 
-// PRESERVE both execution engines
-export type ExecutionEngine = 'Gemini (Visual)' | 'ControlFlow (Python)';
 export type ControlFlowProvider = 'openai' | 'google' | 'local';
 
 export interface AppState {
-  // KEEP executionEngine - it's still needed for dual-engine support
-  executionEngine: ExecutionEngine;
-  setExecutionEngine: (engine: ExecutionEngine) => void;
-
   controlFlowProvider: ControlFlowProvider;
   setControlFlowProvider: (provider: ControlFlowProvider) => void;
 
@@ -27,13 +21,11 @@ export interface AppState {
 export const useStore = create<AppState>()(
   persist(
     (set) => ({
-      executionEngine: 'Gemini (Visual)', // Keep default
       controlFlowProvider: 'openai',
       customBaseUrl: '',
       isApiKeyModalOpen: false,
       notification: null,
 
-      setExecutionEngine: (engine) => set({ executionEngine: engine }),
       setControlFlowProvider: (provider) => set({ controlFlowProvider: provider }),
       setCustomBaseUrl: (url) => set({ customBaseUrl: url }),
       setIsApiKeyModalOpen: (isOpen) => set({ isApiKeyModalOpen: isOpen }),
@@ -42,7 +34,6 @@ export const useStore = create<AppState>()(
     {
       name: 'fintel-app-storage',
       partialize: (state) => ({
-        executionEngine: state.executionEngine, // PRESERVE in localStorage
         controlFlowProvider: state.controlFlowProvider,
         customBaseUrl: state.customBaseUrl,
       }),

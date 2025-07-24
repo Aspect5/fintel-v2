@@ -2,6 +2,7 @@
 import controlflow as cf
 from typing import Dict, Any
 from .base import BaseWorkflow, WorkflowResult
+import time
 
 class DependencyDrivenWorkflow(BaseWorkflow):
     """Workflow using proper task dependencies following ControlFlow best practices"""
@@ -17,7 +18,7 @@ class DependencyDrivenWorkflow(BaseWorkflow):
         start_time = time.time()
         
         try:
-            from agents.registry import get_agent_registry
+            from backend.agents.registry import get_agent_registry
             agent_registry = get_agent_registry()
             
             # Get specialized agents

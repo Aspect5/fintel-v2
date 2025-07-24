@@ -3,10 +3,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 import controlflow as cf
 from .base import BaseAgentConfig
-from .financial import FinancialAnalystConfig
-from .market import MarketAnalystConfig
-from .economic import EconomicAnalystConfig
-from providers.factory import ProviderFactory
+from backend.providers.factory import ProviderFactory
 
 class AgentRegistry:
     """Registry for managing agents and their configurations"""
@@ -17,21 +14,14 @@ class AgentRegistry:
         self._initialize_agents()
     
     def _initialize_agents(self):
-        """Initialize agent configurations"""
-        # Built-in specialized agents
-        self._agent_configs = {
-            "FinancialAnalyst": FinancialAnalystConfig(),
-            "MarketAnalyst": MarketAnalystConfig(),
-            "EconomicAnalyst": EconomicAnalystConfig()
-        }
-        
-        # Load additional agents from YAML if exists
+        """Initialize agent configurations from YAML"""
         self._load_yaml_agents()
     
     def _load_yaml_agents(self):
         """Load agents from agents.yaml file"""
         yaml_path = Path(__file__).parent.parent / "config" / "agents.yaml"
         if not yaml_path.exists():
+            print(f"Warning: {yaml_path} not found. No agents will be loaded.")
             return
         
         try:
@@ -39,7 +29,7 @@ class AgentRegistry:
                 data = yaml.safe_load(file)
             
             # Load regular agents
-            if 'agents' in data:
+            if 'agents' in data and data['agents'] is not None:
                 for agent_data in data['agents']:
                     config = BaseAgentConfig(
                         name=agent_data['name'],
@@ -49,7 +39,7 @@ class AgentRegistry:
                     self._agent_configs[agent_data['name']] = config
             
             # Load system agents
-            if 'system_agents' in data:
+            if 'system_agents' in data and data['system_agents'] is not None:
                 for agent_data in data['system_agents']:
                     config = BaseAgentConfig(
                         name=agent_data['name'],
@@ -107,19 +97,18 @@ class AgentRegistry:
             "name": config.name,
             "instructions": config.instructions,
             "tools": config.tools,
-            "specialized": agent_name in ["FinancialAnalyst", "MarketAnalyst", "EconomicAnalyst"]
         }
     
     def get_agents_by_capability(self, capability: str) -> List[str]:
-        """Get agents that have specific capabilities"""
-        capability_map = {
-            "market_analysis": ["MarketAnalyst", "FinancialAnalyst"],
-            "economic_analysis": ["EconomicAnalyst", "FinancialAnalyst"],
-            "comprehensive": ["FinancialAnalyst"],
-            "all": list(self._agent_configs.keys())
-        }
-        
-        return capability_map.get(capability, [])
+        """Get agents that have specific capabilities (tool-based)"""
+        if capability == "all":
+            return self.get_available_agents()
+
+        agents_with_capability = []
+        for agent_name, config in self._agent_configs.items():
+            if capability in config.tools:
+                agents_with_capability.append(agent_name)
+        return agents_with_capability
 
 # Global registry instance
 _registry = None

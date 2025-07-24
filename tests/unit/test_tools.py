@@ -1,50 +1,61 @@
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-from backend.tools.registry import ToolRegistry
+from unittest.mock import Mock, patch
 from backend.tools.market_data import MarketDataTool, CompanyOverviewTool
 from backend.tools.economic_data import EconomicDataTool
 
-class TestToolRegistry:
-    @pytest.mark.unit
-    def test_tool_registry_initialization(self):
-        """Test tool registry initialization"""
-        registry = ToolRegistry()
-        
-        assert hasattr(registry, '_tools')
-        assert hasattr(registry, '_tool_instances')
-
-    @pytest.mark.unit
-    def test_get_tools(self):
-        """Test getting tools from registry"""
-        registry = ToolRegistry()
-        
-        # Mock the get_tools method
-        with patch.object(registry, 'get_tools') as mock_get:
-            mock_get.return_value = [Mock(), Mock()]
-            tools = registry.get_tools(["market_data", "company_overview"])
-            
-            assert len(tools) == 2
-            mock_get.assert_called_once()
-
-class TestMarketDataTool:
-    @pytest.mark.unit
-    def test_market_data_tool_initialization(self):
-        """Test market data tool initialization"""
-        tool = MarketDataTool(api_key="test-key")
-        assert hasattr(tool, 'api_key')
-
+class TestMarketDataTools:
     @pytest.mark.unit
     @patch('requests.get')
-    def test_get_stock_quote(self, mock_get, sample_market_data):
-        """Test getting stock quote"""
-        # Mock API response
+    def test_get_stock_quote_mocked(self, mock_get, sample_market_data):
+        """Test getting a stock quote with a mocked API call."""
         mock_response = Mock()
         mock_response.json.return_value = sample_market_data
         mock_get.return_value = mock_response
-        
+
         tool = MarketDataTool(api_key="test-key")
-        result = tool.execute("AAPL")
-        
-        # Check the result based on what execute returns
-        assert 'symbol' in result
-        assert result['symbol'] == 'AAPL' 
+        result = tool.execute(ticker="AAPL")
+
+        mock_get.assert_called_once_with(
+            "https://www.alphavantage.co/query",
+            params={'function': 'GLOBAL_QUOTE', 'symbol': 'AAPL', 'apikey': 'test-key'},
+            timeout=10
+        )
+        assert result['Global Quote']['01. symbol'] == 'AAPL'
+
+    @pytest.mark.unit
+    @patch('requests.get')
+    def test_get_company_overview_mocked(self, mock_get, sample_company_overview):
+        """Test getting company overview with a mocked API call."""
+        mock_response = Mock()
+        mock_response.json.return_value = sample_company_overview
+        mock_get.return_value = mock_response
+
+        tool = CompanyOverviewTool(api_key="test-key")
+        result = tool.execute(ticker="AAPL")
+
+        mock_get.assert_called_once_with(
+            "https://www.alphavantage.co/query",
+            params={'function': 'OVERVIEW', 'symbol': 'AAPL', 'apikey': 'test-key'},
+            timeout=10
+        )
+        assert result['Symbol'] == 'AAPL'
+        assert result['Name'] == 'Apple Inc.'
+
+class TestEconomicDataTool:
+    @pytest.mark.unit
+    @patch('requests.get')
+    def test_get_real_gdp_mocked(self, mock_get):
+        """Test getting real GDP data with a mocked API call."""
+        mock_response = Mock()
+        mock_response.json.return_value = {"data": "some_gdp_data"}
+        mock_get.return_value = mock_response
+
+        tool = EconomicDataTool(api_key="test-key")
+        result = tool.execute(series_id='GDPC1')
+
+        mock_get.assert_called_once_with(
+            "https://api.stlouisfed.org/fred/series/observations",
+            params={'series_id': 'GDPC1', 'api_key': 'test-key', 'file_type': 'json', 'limit': 100, 'sort_order': 'desc'},
+            timeout=10
+        )
+        assert result == {"data": "some_gdp_data"}

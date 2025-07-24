@@ -2,14 +2,14 @@ import time
 from typing import Dict, Any, Optional
 from .base import WorkflowResult
 from .templates import get_workflow_templates
-from .coordinator import MultiAgentCoordinator
+from .dependency_workflow import DependencyDrivenWorkflow
 
 class WorkflowOrchestrator:
     """Main orchestrator for workflow execution"""
     
     def __init__(self):
         self.templates = get_workflow_templates()
-        self.default_workflow = MultiAgentCoordinator()
+        self.default_workflow = DependencyDrivenWorkflow()
     
     def execute_workflow(
         self,

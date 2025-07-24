@@ -41,12 +41,23 @@ def mock_api_keys():
 def sample_market_data():
     """Sample market data for testing"""
     return {
-        'symbol': 'AAPL',
-        'price': 150.25,
-        'change': 2.50,
-        'change_percent': 1.69,
-        'volume': 50000000,
-        'market_cap': 2500000000000
+        'Global Quote': {
+            '01. symbol': 'AAPL',
+            '05. price': '150.25',
+            '09. change': '2.50',
+            '10. change percent': '1.69%',
+        }
+    }
+
+@pytest.fixture
+def sample_company_overview():
+    """Sample company overview data for testing"""
+    return {
+        'Symbol': 'AAPL',
+        'Name': 'Apple Inc.',
+        'Description': 'Apple Inc. designs, manufactures, and markets smartphones, personal computers, tablets, wearables, and accessories worldwide.',
+        'PERatio': '25.5',
+        'MarketCapitalization': '2500000000000',
     }
 
 @pytest.fixture

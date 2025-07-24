@@ -56,12 +56,15 @@ def health_check():
 def get_key_status():
     """Get the status of API keys"""
     settings = get_settings()
-    return jsonify({
-        'openai': bool(settings.openai_api_key),
-        'google': bool(settings.google_api_key),
-        'alpha_vantage': bool(settings.alpha_vantage_api_key),
-        'fred': bool(settings.fred_api_key),
-    })
+    provider = request.args.get('provider', 'openai')
+    is_configured = False
+    if provider == 'openai':
+        is_configured = bool(settings.openai_api_key)
+    elif provider == 'google':
+        is_configured = bool(settings.google_api_key)
+    # Add other providers as needed
+    
+    return jsonify({'is_configured': is_configured})
 
 @app.route('/api/providers', methods=['GET'])
 def get_providers():
@@ -75,6 +78,13 @@ def get_agents():
     for agent_name in agent_registry.get_available_agents():
         agents[agent_name] = agent_registry.get_agent_info(agent_name)
     return jsonify(agents)
+
+@app.route('/api/tools', methods=['GET'])
+def get_tools():
+    """Get available tools"""
+    tools = tool_registry.get_all_tools()
+    tool_list = [{"name": name, "description": tool.__doc__} for name, tool in tools.items()]
+    return jsonify(tool_list)
 
 @app.route('/api/workflows', methods=['GET'])
 def get_workflows():
@@ -130,23 +140,6 @@ def run_workflow():
             "error": str(e)
         }), 500
 
-@app.route('/api/tools', methods=['GET'])
-def get_tools():
-    """Get available tools from backend registry"""
-    tool_registry = get_tool_registry()
-    available_tools = tool_registry.get_available_tools()
-    
-    tools_info = {}
-    for name, tool_func in available_tools.items():
-        # Extract tool information
-        tools_info[name] = {
-            "name": name,
-            "description": getattr(tool_func, '__doc__', 'No description available'),
-            "available": True
-        }
-    
-    return jsonify(tools_info)
-    
 @app.route('/api/analyze', methods=['POST'])
 def analyze():
     """Legacy endpoint for backward compatibility"""
