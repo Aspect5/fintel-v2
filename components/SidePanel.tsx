@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+// Update components/SidePanel.tsx (continued)
+import React, { useState } from 'react';
 import { ChatMessage } from '../types';
 import ChatPanel from './ChatPanel';
 import CodeBracketIcon from './icons/CodeBracketIcon';
@@ -7,15 +8,12 @@ import ToolkitPanel from './ToolkitPanel';
 import { useStore } from '../store';
 import { useKeyStatus } from '../hooks/useKeyStatus';
 
-/**
- * The main side panel component that contains the configuration controls,
- * chat interface, and toolkit viewer.
- */
 const SidePanel: React.FC<{
     chatMessages: ChatMessage[];
     onSendMessage: (message: string) => void;
     isLoading: boolean;
-}> = ({ chatMessages, onSendMessage, isLoading }) => {
+    onWorkflowStart?: (workflowId: string) => void;
+}> = ({ chatMessages, onSendMessage, isLoading, onWorkflowStart }) => {
     const [activeTab, setActiveTab] = useState<'chat' | 'toolkit'>('chat');
     
     const {
@@ -42,8 +40,8 @@ const SidePanel: React.FC<{
             onClick={() => setActiveTab(tabName)}
             className={`flex-1 flex items-center justify-center p-3 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === tabName
-                    ? 'text-indigo-400 border-indigo-400'
-                    : 'text-gray-400 border-transparent hover:bg-gray-800'
+                    ? 'text-brand-primary border-brand-primary'
+                    : 'text-brand-text-secondary border-transparent hover:bg-brand-surface'
             }`}
             aria-label={`Switch to ${label} tab`}
         >
@@ -53,19 +51,19 @@ const SidePanel: React.FC<{
     );
 
     return (
-        <aside className="w-[450px] flex-shrink-0 border-r border-gray-700 flex flex-col bg-gray-900 text-white">
+        <aside className="w-[450px] flex-shrink-0 border-r border-brand-border flex flex-col bg-brand-surface text-white">
             {/* --- Configuration Section --- */}
-            <div className="p-4 border-b border-gray-700 space-y-4">
-                <div className="p-3 bg-gray-800/70 rounded-md space-y-4 animate-fade-in">
+            <div className="p-4 border-b border-brand-border space-y-4">
+                <div className="p-3 bg-brand-bg rounded-md space-y-4 animate-fade-in">
                     <div>
-                        <label htmlFor="provider-select" className="block text-sm font-medium text-gray-300 mb-1">
+                        <label htmlFor="provider-select" className="block text-sm font-medium text-brand-text-secondary mb-1">
                             LLM Provider
                         </label>
                         <select
                             id="provider-select"
                             value={controlFlowProvider}
                             onChange={handleProviderChange}
-                            className="w-full p-2 bg-gray-800 border border-gray-600 rounded-md focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                            className="w-full p-2 bg-brand-bg border border-brand-border rounded-md focus:ring-2 focus:ring-brand-primary focus:outline-none text-brand-text-primary"
                         >
                             <option value="openai">OpenAI</option>
                             <option value="google">Gemini</option>
@@ -74,7 +72,7 @@ const SidePanel: React.FC<{
                     </div>
                     {controlFlowProvider === 'local' && (
                         <div>
-                            <label htmlFor="base-url-input" className="block text-sm font-medium text-gray-300 mb-1">
+                            <label htmlFor="base-url-input" className="block text-sm font-medium text-brand-text-secondary mb-1">
                                 Custom Base URL
                             </label>
                             <input
@@ -83,7 +81,7 @@ const SidePanel: React.FC<{
                                 value={customBaseUrl}
                                 onChange={(e) => setCustomBaseUrl(e.target.value)}
                                 placeholder="e.g., http://localhost:8080/v1"
-                                className="w-full p-2 bg-gray-800 border border-gray-600 rounded-md focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                className="w-full p-2 bg-brand-bg border border-brand-border rounded-md focus:ring-2 focus:ring-brand-primary focus:outline-none text-brand-text-primary"
                             />
                         </div>
                     )}
@@ -96,7 +94,7 @@ const SidePanel: React.FC<{
             </div>
             
             {/* --- Tab Navigation --- */}
-            <div className="flex border-b border-gray-700 flex-shrink-0">
+            <div className="flex border-b border-brand-border flex-shrink-0">
                 <TabButton tabName="chat" label="Chat"><DocumentTextIcon className="w-5 h-5" /></TabButton>
                 <TabButton tabName="toolkit" label="Toolkit"><CodeBracketIcon className="w-5 h-5" /></TabButton>
             </div>
@@ -108,6 +106,7 @@ const SidePanel: React.FC<{
                         chatMessages={chatMessages}
                         onSendMessage={onSendMessage}
                         isLoading={isLoading}
+                        onWorkflowStart={onWorkflowStart}
                     />
                 )}
                 {activeTab === 'toolkit' && <ToolkitPanel />}

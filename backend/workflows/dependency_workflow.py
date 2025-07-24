@@ -1,205 +1,255 @@
 # backend/workflows/dependency_workflow.py
 import controlflow as cf
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List
 from .base import BaseWorkflow, WorkflowResult
 import time
 import logging
+import threading
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-class TimeoutError(Exception):
-    pass
-
 class DependencyDrivenWorkflow(BaseWorkflow):
-    """Optimized workflow with tool call caching and limits"""
+    """Workflow with real-time status updates for frontend visualization"""
     
     def __init__(self):
         super().__init__(
             name="dependency_driven_analysis",
-            description="Optimized financial analysis with tool call limits"
+            description="Financial analysis with real-time visualization"
         )
-        self.tool_cache = {}  # Cache tool results
-        self.tool_call_counts = {}  # Track tool usage
-        self.max_tool_calls_per_type = 3  # Limit calls per tool type
+        self.workflow_status = {
+            'nodes': [],
+            'edges': [],
+            'current_task': None,
+            'start_time': None,
+            'status': 'pending'
+        }
+        self.status_callbacks = []
     
-    def execute(self, query: str, provider: str = "openai", max_execution_time: int = 240, **kwargs) -> WorkflowResult:
-        """Execute workflow with performance optimizations"""
+    def add_status_callback(self, callback):
+        """Add callback for status updates"""
+        self.status_callbacks.append(callback)
+    
+    def _update_status(self, update):
+        """Update workflow status and notify callbacks"""
+        self.workflow_status.update(update)
+        for callback in self.status_callbacks:
+            try:
+                callback(self.workflow_status)
+            except Exception as e:
+                logger.error(f"Status callback error: {e}")
+    
+    def execute(self, query: str, provider: str = "openai", **kwargs) -> WorkflowResult:
+        """Execute workflow with real-time status updates"""
         start_time = time.time()
-        logger.info(f"Starting optimized workflow for query: {query}")
+        self.workflow_status['start_time'] = datetime.now().isoformat()
+        self.workflow_status['status'] = 'running'
+        
+        logger.info(f"Starting workflow for query: {query}")
         
         try:
             from backend.agents.registry import get_agent_registry
             agent_registry = get_agent_registry()
             
-            # Get agents with tool call limits
+            # Get specialized agents
             market_agent = agent_registry.get_agent("MarketAnalyst", provider)
             economic_agent = agent_registry.get_agent("EconomicAnalyst", provider)
             financial_agent = agent_registry.get_agent("FinancialAnalyst", provider)
             
-            # Add tool call monitoring
-            self._setup_tool_monitoring([market_agent, economic_agent, financial_agent])
+            # Initialize workflow visualization
+            self._initialize_workflow_nodes(query)
             
-            with cf.Flow(name="optimized_financial_analysis") as flow:
-                # Task A: Quick Market Analysis (30 second limit)
+            with cf.Flow(name="financial_analysis_flow") as flow:
+                # Task A: Market Analysis
+                self._update_node_status('market_analysis', 'running')
                 market_analysis_task = cf.Task(
-                    objective=f"""Get essential market data for: {query}
+                    objective=f"""Analyze market data for: {query}
                     
-                    REQUIREMENTS (Complete in 30 seconds):
-                    1. Get current stock price and basic metrics
-                    2. Identify trend direction (up/down/stable)
-                    3. Provide 2 key insights maximum
+                    Requirements:
+                    1. Get current stock price and key metrics
+                    2. Analyze recent price trends
+                    3. Provide 2-3 key market insights
                     
-                    TOOL LIMITS: 
-                    - Call get_market_data ONCE only
-                    - Call get_company_overview ONCE only
-                    - Use received data immediately - NO re-calls
-                    
-                    STOP after getting data and providing brief analysis.""",
+                    Be concise and focus on actionable information.""",
                     agents=[market_agent],
-                    result_type=str,
-                    timeout=30
+                    result_type=str
                 )
                 
-                # Task B: Quick Economic Context (30 second limit)
+                # Task B: Economic Analysis (parallel to market)
+                self._update_node_status('economic_analysis', 'running')
                 economic_analysis_task = cf.Task(
-                    objective=f"""Get economic context for: {query}
+                    objective=f"""Provide economic context for: {query}
                     
-                    REQUIREMENTS (Complete in 30 seconds):
-                    1. Get GDP, unemployment, and interest rate data
-                    2. Assess current economic trend
-                    3. Provide brief economic outlook
+                    Requirements:
+                    1. Get key economic indicators (GDP, unemployment, interest rates)
+                    2. Assess current economic conditions
+                    3. Relate findings to investment implications
                     
-                    TOOL LIMITS:
-                    - Call get_economic_data_from_fred MAXIMUM 3 times
-                    - Use series: GDP, UNRATE, FEDFUNDS only
-                    - NO additional calls after getting these 3 indicators
-                    
-                    STOP after analyzing these 3 indicators.""",
+                    Focus on current data and trends.""",
                     agents=[economic_agent],
-                    result_type=str,
-                    timeout=30
+                    result_type=str
                 )
                 
-                # Task C: Quick Risk Assessment (20 second limit)
+                # Task C: Risk Assessment (depends on both A and B)
                 risk_assessment_task = cf.Task(
-                    objective="""Assess investment risks quickly.
-                    
-                    REQUIREMENTS (Complete in 20 seconds):
-                    1. Identify 2-3 key risks
-                    2. Rate risk level (low/medium/high)
-                    3. Suggest 1-2 mitigation strategies
-                    
-                    TOOL LIMITS: NO additional tool calls - use provided data only
-                    
-                    STOP after brief risk assessment.""",
+                    objective="Assess investment risks based on market and economic analysis",
                     depends_on=[market_analysis_task, economic_analysis_task],
                     agents=[financial_agent],
-                    result_type=str,
-                    timeout=20
+                    result_type=str
                 )
                 
-                # Task D: Final Summary (30 second limit)
+                # Task D: Final Synthesis (depends on all previous)
                 final_synthesis_task = cf.Task(
-                    objective=f"""Provide final investment recommendation for: {query}
+                    objective=f"""Provide comprehensive investment recommendation for: {query}
                     
-                    REQUIREMENTS (Complete in 30 seconds):
-                    1. Executive summary (2-3 sentences)
-                    2. Key findings summary
-                    3. Clear recommendation (buy/hold/sell)
-                    4. Confidence level (1-10)
-                    
-                    TOOL LIMITS: NO tool calls - synthesize from provided data only
-                    
-                    STOP after providing clear recommendation.""",
+                    Include:
+                    1. Executive summary
+                    2. Key findings from market and economic analysis
+                    3. Risk assessment summary
+                    4. Clear investment recommendation
+                    5. Confidence level (1-10)""",
                     depends_on=[market_analysis_task, economic_analysis_task, risk_assessment_task],
                     agents=[financial_agent],
-                    result_type=str,
-                    timeout=30
+                    result_type=str
                 )
                 
-                # Execute with timeout monitoring
-                def execute_with_timeout(task, task_name, timeout_seconds):
-                    task_start = time.time()
-                    logger.info(f"Starting {task_name}...")
-                    
-                    result = task.run()
-                    
-                    task_time = time.time() - task_start
-                    logger.info(f"{task_name} completed in {task_time:.2f}s")
-                    
-                    if task_time > timeout_seconds:
-                        logger.warning(f"{task_name} exceeded timeout of {timeout_seconds}s")
-                    
-                    return result
+                # Execute tasks with status tracking
+                logger.info("Executing market analysis...")
+                market_result = market_analysis_task.run()
+                self._update_node_status('market_analysis', 'success', result=market_result)
                 
-                # Execute tasks with monitoring
-                market_result = execute_with_timeout(market_analysis_task, "Market Analysis", 30)
+                logger.info("Executing economic analysis...")
+                economic_result = economic_analysis_task.run()
+                self._update_node_status('economic_analysis', 'success', result=economic_result)
                 
-                # Check overall timeout
-                if time.time() - start_time > max_execution_time:
-                    raise TimeoutError(f"Workflow exceeded {max_execution_time} second limit")
+                logger.info("Executing risk assessment...")
+                self._update_node_status('risk_assessment', 'running')
+                risk_result = risk_assessment_task.run()
+                self._update_node_status('risk_assessment', 'success', result=risk_result)
                 
-                economic_result = execute_with_timeout(economic_analysis_task, "Economic Analysis", 30)
-                
-                if time.time() - start_time > max_execution_time:
-                    raise TimeoutError(f"Workflow exceeded {max_execution_time} second limit")
-                
-                risk_result = execute_with_timeout(risk_assessment_task, "Risk Assessment", 20)
-                
-                if time.time() - start_time > max_execution_time:
-                    raise TimeoutError(f"Workflow exceeded {max_execution_time} second limit")
-                
-                final_result = execute_with_timeout(final_synthesis_task, "Final Synthesis", 30)
+                logger.info("Executing final synthesis...")
+                self._update_node_status('final_synthesis', 'running')
+                final_result = final_synthesis_task.run()
+                self._update_node_status('final_synthesis', 'success', result=final_result)
             
             execution_time = time.time() - start_time
-            logger.info(f"Optimized workflow completed in {execution_time:.2f} seconds")
+            self.workflow_status['status'] = 'completed'
+            self.workflow_status['execution_time'] = execution_time
             
-            # Log tool usage statistics
-            self._log_tool_usage()
+            logger.info(f"Workflow completed in {execution_time:.2f} seconds")
             
             return WorkflowResult(
                 success=True,
                 result=str(final_result),
-                trace=f"""Market Analysis: {market_result}
-
-Economic Analysis: {economic_result}
-
-Risk Assessment: {risk_result}""",
+                trace={
+                    "market_analysis": market_result,
+                    "economic_analysis": economic_result,
+                    "risk_assessment": risk_result,
+                    "final_synthesis": final_result
+                },
                 agent_invocations=[],
                 execution_time=execution_time,
-                workflow_name=self.name
+                workflow_name=self.name,
+                workflow_status=self.workflow_status  # Include for frontend
             )
             
-        except TimeoutError as e:
-            execution_time = time.time() - start_time
-            logger.error(f"Workflow timed out after {execution_time:.2f} seconds")
-            return WorkflowResult(
-                success=False,
-                result=f"Analysis timed out after {max_execution_time} seconds. Please try a simpler query.",
-                trace=f"Timeout error: {str(e)}",
-                agent_invocations=[],
-                execution_time=execution_time,
-                error=str(e),
-                workflow_name=self.name
-            )
         except Exception as e:
             execution_time = time.time() - start_time
+            self.workflow_status['status'] = 'failed'
+            self.workflow_status['error'] = str(e)
+            
             logger.error(f"Workflow failed: {e}", exc_info=True)
             return WorkflowResult(
                 success=False,
-                result=f"An error occurred: {str(e)}",
+                result=f"Analysis failed: {str(e)}",
                 trace=f"Error: {str(e)}",
                 agent_invocations=[],
                 execution_time=execution_time,
                 error=str(e),
-                workflow_name=self.name
+                workflow_name=self.name,
+                workflow_status=self.workflow_status
             )
     
-    def _setup_tool_monitoring(self, agents):
-        """Setup tool call monitoring for agents"""
-        # This would integrate with ControlFlow's tool monitoring if available
-        logger.info("Tool monitoring enabled for workflow")
+    def _initialize_workflow_nodes(self, query):
+        """Initialize workflow nodes for visualization"""
+        nodes = [
+            {
+                'id': 'coordinator',
+                'type': 'coordinator',
+                'position': {'x': 100, 'y': 200},
+                'data': {
+                    'label': 'Workflow Coordinator',
+                    'details': f'Analyzing: {query}',
+                    'status': 'running'
+                }
+            },
+            {
+                'id': 'market_analysis',
+                'type': 'agent',
+                'position': {'x': 400, 'y': 100},
+                'data': {
+                    'label': 'Market Analyst',
+                    'details': 'Gathering market data and analyzing trends',
+                    'status': 'pending',
+                    'toolCalls': []
+                }
+            },
+            {
+                'id': 'economic_analysis',
+                'type': 'agent',
+                'position': {'x': 400, 'y': 300},
+                'data': {
+                    'label': 'Economic Analyst',
+                    'details': 'Analyzing economic indicators and context',
+                    'status': 'pending',
+                    'toolCalls': []
+                }
+            },
+            {
+                'id': 'risk_assessment',
+                'type': 'agent',
+                'position': {'x': 700, 'y': 150},
+                'data': {
+                    'label': 'Risk Analyst',
+                    'details': 'Assessing investment risks and opportunities',
+                    'status': 'pending',
+                    'toolCalls': []
+                }
+            },
+            {
+                'id': 'final_synthesis',
+                'type': 'synthesizer',
+                'position': {'x': 1000, 'y': 200},
+                'data': {
+                    'label': 'Final Synthesis',
+                    'details': 'Generating comprehensive investment recommendation',
+                    'status': 'pending'
+                }
+            }
+        ]
+        
+        edges = [
+            {'id': 'e1', 'source': 'coordinator', 'target': 'market_analysis'},
+            {'id': 'e2', 'source': 'coordinator', 'target': 'economic_analysis'},
+            {'id': 'e3', 'source': 'market_analysis', 'target': 'risk_assessment'},
+            {'id': 'e4', 'source': 'economic_analysis', 'target': 'risk_assessment'},
+            {'id': 'e5', 'source': 'risk_assessment', 'target': 'final_synthesis'},
+            {'id': 'e6', 'source': 'market_analysis', 'target': 'final_synthesis'},
+            {'id': 'e7', 'source': 'economic_analysis', 'target': 'final_synthesis'}
+        ]
+        
+        self.workflow_status['nodes'] = nodes
+        self.workflow_status['edges'] = edges
+        self._update_status({'nodes': nodes, 'edges': edges})
     
-    def _log_tool_usage(self):
-        """Log tool usage statistics"""
-        logger.info(f"Tool usage stats: {self.tool_call_counts}")
+    def _update_node_status(self, node_id: str, status: str, result: str = None):
+        """Update specific node status"""
+        for node in self.workflow_status['nodes']:
+            if node['id'] == node_id:
+                node['data']['status'] = status
+                if result:
+                    node['data']['result'] = result[:200] + "..." if len(result) > 200 else result
+                break
+        
+        self._update_status({'nodes': self.workflow_status['nodes']})
+        logger.info(f"Node {node_id} status updated to {status}")

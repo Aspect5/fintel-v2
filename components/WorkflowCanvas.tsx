@@ -1,6 +1,8 @@
-import React, { useMemo } from 'react';
+// Update components/WorkflowCanvas.tsx to add node interaction
+import React, { useMemo, useState } from 'react';
 import ReactFlow, { Background, Controls, MiniMap, Node, Edge, OnNodesChange, OnEdgesChange, Handle, Position } from 'reactflow';
 import { AgentNodeData } from '../types';
+import AgentTraceModal from './AgentTraceModal';
 
 import SpinnerIcon from './icons/SpinnerIcon';
 import CheckCircleIcon from './icons/CheckCircleIcon';
@@ -89,31 +91,49 @@ const SynthesizerNode: React.FC<{ data: AgentNodeData }> = ({ data }) => {
 };
 
 interface WorkflowCanvasProps {
-    nodes: Node[];
-    edges: Edge[];
-    onNodesChange: OnNodesChange;
-    onEdgesChange: OnEdgesChange;
-    onNodeDoubleClick?: (event: React.MouseEvent, node: Node) => void;
+  nodes: Node[];
+  edges: Edge[];
+  onNodesChange: OnNodesChange;
+  onEdgesChange: OnEdgesChange;
+  onNodeDoubleClick?: (event: React.MouseEvent, node: Node) => void;
 }
 
-const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ nodes, edges, onNodesChange, onEdgesChange, onNodeDoubleClick }) => {
-  // Memoize nodeTypes to prevent recreation on every render
-  const nodeTypes = useMemo(() => ({
-    coordinator: CoordinatorNode,
-    agent: AgentNode,
-    synthesizer: SynthesizerNode,
-  }), []);
+const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ 
+  nodes, 
+  edges, 
+  onNodesChange, 
+  onEdgesChange, 
+  onNodeDoubleClick 
+}) => {
+const [selectedNode, setSelectedNode] = useState<Node | null>(null);
 
-  const edgeTypes = useMemo(() => ({}), []);
+// Memoize nodeTypes to prevent recreation on every render
+const nodeTypes = useMemo(() => ({
+  coordinator: CoordinatorNode,
+  agent: AgentNode,
+  synthesizer: SynthesizerNode,
+}), []);
 
-  return (
+const edgeTypes = useMemo(() => ({}), []);
+
+const handleNodeDoubleClick = (event: React.MouseEvent, node: Node) => {
+  if (node.type === 'agent' && node.data.status !== 'pending') {
+    setSelectedNode(node);
+  }
+  if (onNodeDoubleClick) {
+    onNodeDoubleClick(event, node);
+  }
+};
+
+return (
+  <>
     <div className="w-full h-full" style={{ width: '100%', height: '100%' }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
-        onNodeDoubleClick={onNodeDoubleClick}
+        onNodeDoubleClick={handleNodeDoubleClick}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         fitView
@@ -149,7 +169,16 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ nodes, edges, onNodesCh
         `}</style>
       </ReactFlow>
     </div>
-  );
+    
+    {/* Agent Trace Modal */}
+    {selectedNode && (
+      <AgentTraceModal 
+        node={selectedNode as any} 
+        onClose={() => setSelectedNode(null)} 
+      />
+    )}
+  </>
+);
 };
 
 export default WorkflowCanvas;

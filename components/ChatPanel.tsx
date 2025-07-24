@@ -1,116 +1,213 @@
-import React, { useRef, useEffect, useState } from 'react';
-import { ChatMessage, Provider, Workflow } from '../types';
+// components/ChatPanel.tsx
+import React, { useState, useEffect, useRef } from 'react';
+import { ChatMessage } from '../types';
 import MarkdownRenderer from './MarkdownRenderer';
-import SendIcon from './icons/SendIcon';
 import SpinnerIcon from './icons/SpinnerIcon';
-import ReportDisplay from './report/ReportDisplay';
+import { useWorkflowStatus } from '../hooks/useWorkflowStatus';
+import { useStore } from '../store';
 
 interface ChatPanelProps {
   chatMessages: ChatMessage[];
-  onSendMessage: (message: string, provider: Provider, workflow: Workflow) => void;
+  onSendMessage: (message: string) => void;
   isLoading: boolean;
-  selectedProvider: Provider;
-  selectedWorkflow: Workflow;
+  onWorkflowStart?: (workflowId: string) => void;
 }
 
 const ChatPanel: React.FC<ChatPanelProps> = ({
   chatMessages,
-  onSendMessage,
-  isLoading,
-  selectedProvider,
-  selectedWorkflow,
+  onWorkflowStart
 }) => {
-  const [input, setInput] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatMessages]);
+  const [query, setQuery] = useState('');
+  const [workflowId, setWorkflowId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [messages, setMessages] = useState<ChatMessage[]>(chatMessages);
+  const hasAddedResult = useRef(false); // Track if we've added the result
   
+  const { workflowStatus } = useWorkflowStatus(workflowId);
+  const { controlFlowProvider } = useStore();
+
+  // Update messages when chatMessages prop changes
+  useEffect(() => {
+    setMessages(chatMessages);
+  }, [chatMessages]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
-
-    setError(null);
-    onSendMessage(input, selectedProvider, selectedWorkflow);
-    setInput('');
+    if (!query.trim()) return;
+    
+    setIsLoading(true);
+    setWorkflowId(null);
+    hasAddedResult.current = false; // Reset the flag
+    
+    // Add user message
+    const userMessage: ChatMessage = { role: 'user', content: query };
+    setMessages(prev => [...prev, userMessage]);
+    
+    try {
+      const response = await fetch('/api/run-workflow', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: query.trim(),
+          provider: controlFlowProvider
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setWorkflowId(data.workflow_id);
+        
+        // Notify parent component about workflow start
+        if (onWorkflowStart) {
+          onWorkflowStart(data.workflow_id);
+        }
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP ${response.status}`);
+      }
+    } catch (error) {
+      console.error('Failed to start workflow:', error);
+      const errorMessage: ChatMessage = {
+        role: 'assistant',
+        content: `Error: ${error instanceof Error ? error.message : 'Failed to start analysis'}`
+      };
+      setMessages(prev => [...prev, errorMessage]);
+      setIsLoading(false);
+    }
+    
+    setQuery('');
   };
 
+  // Update result when workflow completes
+  useEffect(() => {
+    if (!workflowStatus || hasAddedResult.current) return;
+    
+    if (workflowStatus.status === 'completed' && workflowStatus.result) {
+      hasAddedResult.current = true; // Mark that we've added the result
+      setIsLoading(false);
+      
+      // Add assistant message with result
+      const assistantMessage: ChatMessage = {
+        role: 'assistant',
+        content: workflowStatus.result,
+        trace: workflowStatus.trace
+      };
+      setMessages(prev => [...prev, assistantMessage]);
+    } else if (workflowStatus.status === 'failed') {
+      hasAddedResult.current = true; // Mark that we've added the error
+      setIsLoading(false);
+      
+      // Add error message
+      const errorMessage: ChatMessage = {
+        role: 'assistant',
+        content: `Analysis failed: ${workflowStatus.error || 'Unknown error'}`
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    }
+  }, [workflowStatus]);
+
+  const messagesEndRef = React.useRef<HTMLDivElement>(null);
+  
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
   return (
-    <div className="flex flex-col h-full bg-gray-800 text-white">
-      <div className="flex-grow p-4 overflow-y-auto">
+    <div className="flex flex-col h-full bg-brand-bg">
+      {/* Messages area */}
+      <div className="flex-1 overflow-y-auto p-4">
         <div className="space-y-4">
-          {chatMessages.map((msg, index) => (
-            <div key={`msg-${index}`} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div
-                className={`max-w-xl p-3 rounded-lg ${
-                  msg.role === 'user'
-                    ? 'bg-indigo-500 text-white'
-                    : 'bg-gray-700'
-                }`}
-              >
-                {msg.trace && typeof msg.trace === 'object' && msg.trace.fintelQueryAnalysis ? (
-                   <ReportDisplay trace={msg.trace} />
-                ) : (
-                  <div>
-                    <MarkdownRenderer content={msg.content} />
-                    {msg.trace && typeof msg.trace === 'string' && (
-                      <div className="mt-2 text-xs text-gray-400 italic">
-                        Source: {msg.trace}
-                      </div>
-                    )}
-                  </div>
+          {messages.map((msg, index) => (
+            <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div className={`max-w-xl p-3 rounded-lg ${
+                msg.role === 'user' 
+                  ? 'bg-brand-primary text-white' 
+                  : 'bg-brand-surface text-brand-text-primary'
+              }`}>
+                <MarkdownRenderer content={msg.content} />
+                {msg.trace && (
+                  <details className="mt-2 text-xs text-brand-text-secondary">
+                    <summary className="cursor-pointer hover:text-brand-text-primary">
+                      View execution details
+                    </summary>
+                    <pre className="mt-2 p-2 bg-brand-bg rounded overflow-x-auto">
+                      {JSON.stringify(msg.trace, null, 2)}
+                    </pre>
+                  </details>
                 )}
               </div>
             </div>
           ))}
-          {isLoading && (
-             <div className="flex justify-start">
-               <div className="bg-gray-700 p-3 rounded-lg flex items-center space-x-2">
-                 <SpinnerIcon />
-                 <span>Thinking...</span>
-               </div>
-             </div>
-          )}
-          {error && (
+          
+          {/* Loading indicator */}
+          {isLoading && workflowStatus && workflowStatus.status !== 'completed' && workflowStatus.status !== 'failed' && (
             <div className="flex justify-start">
-              <div className="bg-red-700 p-3 rounded-lg flex items-center space-x-2">
-                <span>Error: {error}</span>
+              <div className="bg-brand-surface p-3 rounded-lg">
+                <div className="flex items-center space-x-2">
+                  <SpinnerIcon className="w-5 h-5 text-brand-primary" />
+                  <span className="text-brand-text-primary">
+                    {workflowStatus.status === 'running' 
+                      ? `Analyzing... ${workflowStatus.current_task || ''}`
+                      : 'Starting analysis...'}
+                  </span>
+                </div>
+                {workflowStatus.execution_time && (
+                  <div className="text-xs text-brand-text-secondary mt-1">
+                    Time elapsed: {workflowStatus.execution_time.toFixed(1)}s
+                  </div>
+                )}
               </div>
             </div>
           )}
+          
+          <div ref={messagesEndRef} />
         </div>
-        <div ref={messagesEndRef} />
       </div>
 
-      <div className="p-4 border-t border-gray-700">
-        <form onSubmit={handleSubmit}>
-          <div className="relative">
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyPress={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSubmit(e);
-                }
-              }}
-              placeholder="Ask a question about a stock, company, or financial concept..."
-              className="w-full p-2 pr-10 bg-gray-700 border border-gray-600 rounded-md focus:ring-2 focus:ring-indigo-500 focus:outline-none resize-none"
-              rows={2}
-              disabled={isLoading}
-            />
-            <button
-              type="submit"
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-indigo-400 disabled:text-gray-600"
-              disabled={isLoading || !input.trim()}
-            >
-              <SendIcon />
-            </button>
+      {/* Workflow status bar */}
+      {workflowStatus && (
+        <div className="p-3 border-t border-brand-border bg-brand-surface">
+          <div className="flex items-center justify-between">
+            <div className="text-sm">
+              <span className="text-brand-text-secondary">Status: </span>
+              <span className={`font-semibold ${
+                workflowStatus.status === 'completed' ? 'text-green-400' :
+                workflowStatus.status === 'failed' ? 'text-red-400' :
+                workflowStatus.status === 'running' ? 'text-yellow-400' :
+                'text-blue-400'
+              }`}>
+                {workflowStatus.status}
+              </span>
+            </div>
+            {workflowStatus.execution_time && (
+              <div className="text-sm text-brand-text-secondary">
+                Completed in {workflowStatus.execution_time.toFixed(1)}s
+              </div>
+            )}
           </div>
-        </form>
-      </div>
+        </div>
+      )}
+
+      {/* Input form */}
+      <form onSubmit={handleSubmit} className="p-4 border-t border-brand-border">
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Ask about investments (e.g., 'Should I invest in AAPL?')"
+            className="flex-1 px-3 py-2 bg-brand-surface border border-brand-border rounded text-brand-text-primary placeholder-brand-text-secondary focus:outline-none focus:ring-2 focus:ring-brand-primary"
+            disabled={isLoading}
+          />
+          <button
+            type="submit"
+            disabled={isLoading || !query.trim()}
+            className="px-4 py-2 bg-brand-primary text-white rounded hover:bg-brand-secondary disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {isLoading ? <SpinnerIcon className="w-5 h-5" /> : 'Analyze'}
+          </button>
+        </div>
+      </form>
     </div>
   );
 };
