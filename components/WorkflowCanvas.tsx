@@ -22,7 +22,7 @@ import CheckCircleIcon from './icons/CheckCircleIcon';
 import XCircleIcon from './icons-solid/XCircleIcon';
 
 // Custom node component with proper typing
-const CustomNode: React.FC<NodeProps> = ({ data, id }) => {
+const CustomNode: React.FC<NodeProps> = ({ data }) => {
   const { label, details, status, error } = data;
   
   const getStatusIcon = () => {

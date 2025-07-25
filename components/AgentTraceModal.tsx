@@ -1,5 +1,6 @@
+// components/AgentTraceModal.tsx - Updated to handle missing data
 import React from 'react';
-import { CustomNode, ToolCallResult } from '../types';
+import { AgentNodeData, CustomNode, ToolCallResult } from '../types';
 import XCircleIcon from './icons/XCircleIcon';
 import CodeBracketIcon from './icons/CodeBracketIcon';
 
@@ -20,21 +21,17 @@ const getSummaryStyling = (summary: string): { badge: string; badgeText: string;
     return { badge: 'bg-brand-border text-brand-text-secondary', badgeText: 'INFO', content: summary };
 };
 
-
 const ToolCallDisplay: React.FC<{ toolCall: ToolCallResult }> = ({ toolCall }) => {
-    // Safely stringify JSON content for display
     const prettyPrintJson = (data: any) => {
         try {
-            // If data is already a string (like toolInput), try parsing it first
             const obj = typeof data === 'string' ? JSON.parse(data) : data;
             return JSON.stringify(obj, null, 2);
         } catch (e) {
-            // If it's not valid JSON or already a primitive, return as is
             return String(data);
         }
     };
 
-    const { badge, badgeText, content } = getSummaryStyling(toolCall.toolOutputSummary);
+    const { badge, badgeText, content } = getSummaryStyling(toolCall.toolOutputSummary || '');
 
     return (
         <div className="bg-brand-bg border border-brand-border rounded-lg p-4 mb-4">
@@ -77,9 +74,12 @@ interface AgentTraceModalProps {
 }
 
 const AgentTraceModal: React.FC<AgentTraceModalProps> = ({ node, onClose }) => {
-    if (!node || node.type !== 'agent') return null;
+    if (!node) return null;
 
-    const { label, details, error, result, toolCalls = [] } = node.data;
+    const { label, details, error, result, toolCalls = [] } = node.data as AgentNodeData;
+
+    // For debugging
+    console.log('AgentTraceModal rendering with node:', node);
 
     return (
         <div 
@@ -91,7 +91,7 @@ const AgentTraceModal: React.FC<AgentTraceModalProps> = ({ node, onClose }) => {
                 onClick={e => e.stopPropagation()}
             >
                 <header className="flex items-center justify-between p-4 border-b border-brand-border sticky top-0 bg-brand-surface">
-                    <h3 className="text-xl font-bold text-white">Agent Trace: {label}</h3>
+                    <h3 className="text-xl font-bold text-white">Agent Details: {label}</h3>
                     <button onClick={onClose} className="text-brand-text-secondary hover:text-white">
                         <XCircleIcon className="w-7 h-7" />
                     </button>
@@ -104,21 +104,23 @@ const AgentTraceModal: React.FC<AgentTraceModalProps> = ({ node, onClose }) => {
                         </DetailSection>
                     )}
 
-                    <DetailSection title="Agent Task">
-                        <p>{details}</p>
-                    </DetailSection>
+                    {details && (
+                        <DetailSection title="Agent Task">
+                            <p>{details}</p>
+                        </DetailSection>
+                    )}
 
                     <DetailSection title="Tool Execution">
                         {toolCalls.length > 0 ? (
-                            toolCalls.map((tc, index) => <ToolCallDisplay key={index} toolCall={tc} />)
+                            toolCalls.map((tc: ToolCallResult, index: number) => <ToolCallDisplay key={index} toolCall={tc} />)
                         ) : (
                             <p className="italic">No tool calls were executed for this task.</p>
                         )}
                     </DetailSection>
                     
-                    <DetailSection title="Final Synthesized Response">
+                    <DetailSection title="Final Response">
                         {result ? (
-                             <p className="whitespace-pre-wrap">{result}</p>
+                             <pre className="whitespace-pre-wrap font-sans">{result}</pre>
                         ) : (
                              <p className="italic">No final response was synthesized.</p>
                         )}

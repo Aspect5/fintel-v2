@@ -1,7 +1,7 @@
-// App.tsx - Updated with modal for agent details
+// App.tsx - Updated handleNodeDoubleClick
 import React, { useState, useEffect } from 'react';
 import { useNodesState, useEdgesState } from 'reactflow';
-import { ChatMessage, CustomNode } from './types';
+import { AgentNodeData, ChatMessage, CustomNode, CustomNodeData } from './types';
 import { useStore } from './store';
 import SidePanel from './components/SidePanel';
 import WorkflowCanvas from './components/WorkflowCanvas';
@@ -9,6 +9,12 @@ import { ApiKeyModal } from './components/ApiKeyModal';
 import AgentTraceModal from './components/AgentTraceModal';
 import Notification from './components/Notification';
 import { useWorkflowStatus } from './hooks/useWorkflowStatus';
+
+// Type guard to check if a node is an AgentNode
+const isAgentNode = (node: CustomNode): node is CustomNode & { data: AgentNodeData } => {
+  return 'result' in node.data || 'error' in node.data;
+};
+
 
 const App: React.FC = () => {
     const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -61,9 +67,22 @@ const App: React.FC = () => {
 
     const handleNodeDoubleClick = (_event: React.MouseEvent, node: CustomNode) => {
         console.log('Node double-clicked:', node);
-        // Only show modal for agent nodes that have completed or failed
-        if (node.data.status === 'success' || node.data.status === 'failure') {
+        
+        // Check if this is an agent node (not input/output nodes)
+        const isAgent = node.id !== 'query_input' && node.id !== 'final_synthesis';
+        
+        // Show modal for any agent node that has a result or error
+        if (isAgent && isAgentNode(node)) {
+            console.log('Opening modal for node:', node.id);
             setSelectedNode(node);
+        } else {
+            console.log('Node not eligible for modal:', {
+                id: node.id,
+                isAgent,
+                hasResult: 'result' in node.data,
+                hasError: 'error' in node.data,
+                status: node.data.status
+            });
         }
     };
 
@@ -123,7 +142,7 @@ const App: React.FC = () => {
                                 </div>
                             )}
                             <div className="text-xs text-brand-text-secondary mt-3">
-                                💡 Double-click on completed nodes to see details
+                                💡 Double-click on agent nodes to see details
                             </div>
                         </div>
                     )}
