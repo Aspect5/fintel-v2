@@ -179,33 +179,57 @@ def run_workflow():
         workflow_id = str(uuid.uuid4())
         logger.info(f"Starting workflow {workflow_id} for query: '{query}'")
         
+        # Create workflow instance
         workflow_instance = DependencyDrivenWorkflow()
         
+        # Set up status callback
         def status_callback(status_update):
             with threading.Lock():
-                if workflow_id in active_workflows:
-                    # Ensure workflow_id is preserved in updates
-                    status_update['workflow_id'] = workflow_id
-                    active_workflows[workflow_id].update(status_update)
-
+                # Ensure workflow_id is always present
+                status_update['workflow_id'] = workflow_id
+                
+                # Initialize or update the active workflow
+                if workflow_id not in active_workflows:
+                    active_workflows[workflow_id] = {}
+                
+                # Update while preserving nodes/edges if not in update
+                current = active_workflows[workflow_id]
+                if 'nodes' not in status_update and 'nodes' in current:
+                    status_update['nodes'] = current['nodes']
+                if 'edges' not in status_update and 'edges' in current:
+                    status_update['edges'] = current['edges']
+                    
+                active_workflows[workflow_id].update(status_update)
+                logger.debug(f"Updated workflow {workflow_id}: status={status_update.get('status')}, nodes={len(status_update.get('nodes', []))}")
+        
         workflow_instance.add_status_callback(status_callback)
         
-        # FIX: Initialize the workflow nodes and edges SYNCHRONOUSLY
+        # CRITICAL: Initialize nodes synchronously BEFORE starting thread
         agents = workflow_instance._get_agents_for_query(query, provider)
         workflow_instance._initialize_workflow_nodes(query, agents)
         
+        # Get initial status and store it
         initial_status = workflow_instance.workflow_status.copy()
         initial_status.update({
             'workflow_id': workflow_id,
             'query': query,
             'status': 'initializing'
         })
-        active_workflows[workflow_id] = initial_status
         
+        # Store initial status in active_workflows
+        active_workflows[workflow_id] = initial_status
+        logger.info(f"Stored initial workflow state: {len(initial_status.get('nodes', []))} nodes, {len(initial_status.get('edges', []))} edges")
+        
+        # Execute workflow in background thread
         def execute_workflow_target():
             try:
+                # Update status to running
                 status_callback({'status': 'running', 'current_task': 'Starting analysis...'})
-                result = workflow_instance.execute(query=query, provider=provider)
+                
+                # Execute with workflow_id passed
+                result = workflow_instance.execute(query=query, provider=provider, workflow_id=workflow_id)
+                
+                # Final update with complete results
                 final_update = {
                     'result': result.result,
                     'success': result.success,
@@ -216,15 +240,22 @@ def run_workflow():
                     'edges': workflow_instance.workflow_status.get('edges', [])
                 }
                 status_callback(final_update)
-
+                logger.info(f"Workflow {workflow_id} completed with {len(final_update.get('nodes', []))} nodes")
+                
             except Exception as e:
                 logger.error(f"Workflow {workflow_id} execution failed: {e}", exc_info=True)
-                status_callback({'status': 'failed', 'error': str(e)})
+                status_callback({
+                    'status': 'failed', 
+                    'error': str(e),
+                    'nodes': workflow_instance.workflow_status.get('nodes', []),
+                    'edges': workflow_instance.workflow_status.get('edges', [])
+                })
         
         thread = threading.Thread(target=execute_workflow_target)
         thread.daemon = True
         thread.start()
         
+        # Return immediate response with initial status
         return jsonify({
             "workflow_id": workflow_id,
             "status": "started",

@@ -36,10 +36,30 @@ class DependencyDrivenWorkflow(BaseWorkflow):
     def _update_status(self, update):
         """Update workflow status and notify callbacks"""
         with threading.Lock():
+            # Create a new status dict preserving existing data
             new_status = dict(self.workflow_status)
-            new_status.update(update)
+            
+            # Special handling for nodes and edges to prevent loss
+            if 'nodes' in update and update['nodes']:
+                new_status['nodes'] = update['nodes']
+            elif 'nodes' not in update and 'nodes' in self.workflow_status:
+                # Preserve existing nodes if not in update
+                new_status['nodes'] = self.workflow_status['nodes']
+                
+            if 'edges' in update and update['edges']:
+                new_status['edges'] = update['edges']
+            elif 'edges' not in update and 'edges' in self.workflow_status:
+                # Preserve existing edges if not in update
+                new_status['edges'] = self.workflow_status['edges']
+            
+            # Update other fields
+            for key, value in update.items():
+                if key not in ['nodes', 'edges']:
+                    new_status[key] = value
+            
             self.workflow_status = new_status
             
+            # Notify callbacks with complete status
             for callback in self.status_callbacks:
                 try:
                     callback(new_status.copy())
@@ -150,13 +170,30 @@ class DependencyDrivenWorkflow(BaseWorkflow):
         """Execute workflow with real-time status updates"""
         start_time = time.time()
         
+        # Get agents for the query
         agents = self._get_agents_for_query(query, provider)
+        
+        # CRITICAL FIX: Initialize nodes BEFORE starting any async operations
         self._initialize_workflow_nodes(query, agents)
-        self._update_status({'status': 'running'})
+        
+        # Ensure initial status is properly set
+        initial_status = {
+            'workflow_id': kwargs.get('workflow_id'),  # Get workflow_id if passed
+            'nodes': self.workflow_status['nodes'].copy(),
+            'edges': self.workflow_status['edges'].copy(),
+            'status': 'initializing',
+            'query': query,
+            'start_time': self.workflow_status['start_time']
+        }
+        
+        # Update the workflow status with initial state
+        self._update_status(initial_status)
         
         logger.info(f"Executing workflow for query: {query} with agents: {list(agents.keys())}")
+        logger.info(f"Initial nodes: {len(self.workflow_status['nodes'])}, edges: {len(self.workflow_status['edges'])}")
         
         try:
+            # Continue with the rest of the execution...
             from backend.utils.observability import FintelEventHandler
             
             event_handler = FintelEventHandler()

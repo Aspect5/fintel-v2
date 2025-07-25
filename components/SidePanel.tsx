@@ -1,6 +1,6 @@
 // components/SidePanel.tsx
 import React, { useState } from 'react';
-import { ChatMessage } from '../types';
+import { ChatMessage, WorkflowStatus } from '../types';
 import ChatPanel from './ChatPanel';
 import CodeBracketIcon from './icons/CodeBracketIcon';
 import DocumentTextIcon from './icons/DocumentTextIcon';
@@ -13,7 +13,7 @@ const SidePanel: React.FC<{
     onSendMessage: (message: string) => void;
     onAddMessage: (message: ChatMessage) => void;
     isLoading: boolean;
-    onWorkflowStart?: (workflowId: string) => void;
+    onWorkflowStart?: (status: WorkflowStatus) => void;
 }> = ({ chatMessages, onSendMessage, onAddMessage, isLoading, onWorkflowStart }) => {
     const [activeTab, setActiveTab] = useState<'chat' | 'toolkit'>('chat');
     

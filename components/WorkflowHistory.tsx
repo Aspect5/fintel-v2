@@ -1,5 +1,4 @@
 import React from 'react';
-import { ChatMessage } from '../types';
 
 interface WorkflowHistoryItem {
     id: string;

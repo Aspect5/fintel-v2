@@ -1,7 +1,7 @@
 // App.tsx - Updated handleNodeDoubleClick
 import React, { useState, useEffect } from 'react';
 import { useNodesState, useEdgesState } from 'reactflow';
-import { AgentNodeData, ChatMessage, CustomNode } from './types';
+import { AgentNodeData, ChatMessage, CustomNode, WorkflowStatus } from './types';
 import { useStore } from './store';
 import SidePanel from './components/SidePanel';
 import WorkflowCanvas from './components/WorkflowCanvas';
@@ -23,13 +23,14 @@ const App: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [currentWorkflowId, setCurrentWorkflowId] = useState<string | null>(null);
     const [selectedNode, setSelectedNode] = useState<CustomNode | null>(null);
+    const [initialStateSet, setInitialStateSet] = useState(false);
 
     // State for the react-flow canvas
     const [nodes, setNodes, onNodesChange] = useNodesState([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
     // Get workflow status
-    const { workflowStatus } = useWorkflowStatus(currentWorkflowId);
+    const { workflowStatus, setWorkflowStatus } = useWorkflowStatus(currentWorkflowId, initialStateSet);
 
     // Get global state from the Zustand store
     const { setIsApiKeyModalOpen } = useStore();
@@ -60,40 +61,40 @@ const App: React.FC = () => {
         }
     }, [workflowStatus, setNodes, setEdges]);
 
-    const handleWorkflowStart = (workflowId: string) => {
-        setCurrentWorkflowId(workflowId);
+    const handleWorkflowStart = (initialStatus: WorkflowStatus) => {
         setIsLoading(true);
         setError(null);
+        setInitialStateSet(false); // Reset for the new workflow
         
-        // Clear the previous workflow visualization
-        setNodes([]);
-        setEdges([]);
+        // Use the initial status from the API response
+        if (initialStatus?.nodes && initialStatus?.edges) {
+            setWorkflowStatus(initialStatus);
+            const typedNodes = initialStatus.nodes.map((node: any) => ({
+                ...node,
+                type: node.type || 'default',
+                data: {
+                    ...node.data,
+                    status: node.data?.status || 'pending'
+                }
+            }));
+            setNodes(typedNodes as CustomNode[]);
+            setEdges(initialStatus.edges);
+        }
         
-        // Optionally, set a loading state node
-        setNodes([{
-            id: 'loading',
-            type: 'default',
-            position: { x: 400, y: 200 },
-            data: { 
-                label: 'Initializing Workflow...', 
-                status: 'running',
-                details: 'Preparing analysis...'
-            }
-        }]);
+        setCurrentWorkflowId(initialStatus.workflow_id || null);
+        setInitialStateSet(true); // Signal that the initial state is now set
     };
 
     const handleSelectHistoricalWorkflow = (workflowId: string) => {
         setCurrentWorkflowId(workflowId);
-        // The useEffect watching workflowStatus will handle updating the visualization
+        setInitialStateSet(true); // Assume historical data is complete
     };
 
     const handleNodeDoubleClick = (_event: React.MouseEvent, node: CustomNode) => {
         console.log('Node double-clicked:', node);
         
-        // Check if this is an agent node (not input/output nodes)
         const isAgent = node.id !== 'query_input' && node.id !== 'final_synthesis';
         
-        // Show modal for any agent node that has a result or error
         if (isAgent && isAgentNode(node)) {
             console.log('Opening modal for node:', node.id);
             setSelectedNode(node);
@@ -138,13 +139,11 @@ const App: React.FC = () => {
                         onNodeDoubleClick={handleNodeDoubleClick}
                     />
                     
-                    {/* Add the workflow history dropdown */}
                     <WorkflowHistory 
                         currentWorkflowId={currentWorkflowId}
                         onSelectWorkflow={handleSelectHistoricalWorkflow}
                     />
                     
-                    {/* Workflow info overlay */}
                     {workflowStatus && (
                         <div className="absolute top-4 left-4 bg-brand-surface p-4 rounded-lg shadow-lg max-w-md z-10">
                             <h3 className="text-lg font-semibold text-brand-text-primary mb-2">

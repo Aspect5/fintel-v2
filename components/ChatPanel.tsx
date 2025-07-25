@@ -1,6 +1,6 @@
 // components/ChatPanel.tsx
 import React, { useState, useEffect, useRef } from 'react';
-import { ChatMessage } from '../types';
+import { ChatMessage, WorkflowStatus } from '../types';
 import MarkdownRenderer from './MarkdownRenderer';
 import SpinnerIcon from './icons/SpinnerIcon';
 import { useWorkflowStatus } from '../hooks/useWorkflowStatus';
@@ -11,7 +11,7 @@ interface ChatPanelProps {
   onSendMessage: (message: string) => void;
   onAddMessage: (message: ChatMessage) => void;
   isLoading: boolean;
-  onWorkflowStart?: (workflowId: string) => void;
+  onWorkflowStart?: (status: WorkflowStatus) => void;
 }
 
 const ChatPanel: React.FC<ChatPanelProps> = ({
@@ -22,9 +22,10 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
   const [query, setQuery] = useState('');
   const [workflowId, setWorkflowId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [initialStateSet, setInitialStateSet] = useState(false);
   const hasAddedResult = useRef(false);
   
-  const { workflowStatus } = useWorkflowStatus(workflowId);
+  const { workflowStatus } = useWorkflowStatus(workflowId, initialStateSet);
   const { controlFlowProvider } = useStore();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -33,6 +34,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
     
     setIsLoading(true);
     setWorkflowId(null);
+    setInitialStateSet(false);
     hasAddedResult.current = false;
     
     // Add user message
@@ -53,10 +55,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
         const data = await response.json();
         setWorkflowId(data.workflow_id);
         
-        // Notify parent component about workflow start
+        // Notify parent component with the full initial status
         if (onWorkflowStart) {
-          onWorkflowStart(data.workflow_id);
+          onWorkflowStart(data.workflow_status);
         }
+        setInitialStateSet(true);
+
       } else {
         const errorData = await response.json();
         throw new Error(errorData.error || `HTTP ${response.status}`);
