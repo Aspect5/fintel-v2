@@ -100,10 +100,15 @@ export type CustomNode = Node<CustomNodeData>;
 export type CustomEdge = Edge;
 
 export interface WorkflowStatus {
+    workflow_id?: string;
     nodes: CustomNode[];
     edges: CustomEdge[];
     status: 'initializing' | 'running' | 'completed' | 'failed';
     query?: string;
+    result?: string;
+    trace?: any;
+    error?: string;
+    current_task?: string;
     execution_time?: number;
 }
 

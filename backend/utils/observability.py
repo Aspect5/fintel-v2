@@ -67,13 +67,23 @@ class FintelEventHandler(Handler):
     def on_agent_tool_call(self, event: AgentToolCall):
         """Log agent tool calls"""
         tool_call_data = event.tool_call or {}
+        
+        # Extract parameters from the tool call
+        tool_input = {}
+        if isinstance(tool_call_data, dict):
+            tool_input = tool_call_data.get('args', tool_call_data.get('input', {}))
+        elif hasattr(tool_call_data, 'args'):
+            tool_input = tool_call_data.args
+        elif hasattr(tool_call_data, 'input'):
+            tool_input = tool_call_data.input
+        
         log_data = {
             "event_type": "agent_tool_call",
             "agent_name": event.agent.name,
-            "tool_name": tool_call_data.get('name', 'unknown_tool'),
-            "tool_input": tool_call_data.get('input', {}),
-            "tool_output": tool_call_data.get('result', None),
-            "tool_summary": "Default summary", # Placeholder
+            "tool_name": tool_call_data.get('name', 'unknown_tool') if isinstance(tool_call_data, dict) else getattr(tool_call_data, 'name', 'unknown_tool'),
+            "tool_input": tool_input,  # Now properly extracted
+            "tool_output": None,  # Will be filled by tool_result event
+            "tool_summary": "Default summary",
             "timestamp": datetime.now().isoformat()
         }
         logger.info(f"AGENT TOOL CALL: {json.dumps(log_data, indent=2)}")

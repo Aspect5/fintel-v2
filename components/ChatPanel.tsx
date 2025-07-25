@@ -76,7 +76,10 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
 
   // Update result when workflow completes
   useEffect(() => {
-    if (!workflowStatus || hasAddedResult.current) return;
+    if (!workflowStatus || !workflowId || hasAddedResult.current) return;
+
+    // Make sure this is the current workflow
+    if (workflowStatus.workflow_id !== workflowId) return;
     
     if (workflowStatus.status === 'completed' && workflowStatus.result) {
       hasAddedResult.current = true;
@@ -100,7 +103,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
       };
       onAddMessage(errorMessage);
     }
-  }, [workflowStatus, onAddMessage]);
+  }, [workflowStatus, workflowId, onAddMessage]);
 
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
   

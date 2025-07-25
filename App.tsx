@@ -1,7 +1,7 @@
 // App.tsx - Updated handleNodeDoubleClick
 import React, { useState, useEffect } from 'react';
 import { useNodesState, useEdgesState } from 'reactflow';
-import { AgentNodeData, ChatMessage, CustomNode, CustomNodeData } from './types';
+import { AgentNodeData, ChatMessage, CustomNode } from './types';
 import { useStore } from './store';
 import SidePanel from './components/SidePanel';
 import WorkflowCanvas from './components/WorkflowCanvas';

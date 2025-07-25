@@ -184,6 +184,8 @@ def run_workflow():
         def status_callback(status_update):
             with threading.Lock():
                 if workflow_id in active_workflows:
+                    # Ensure workflow_id is preserved in updates
+                    status_update['workflow_id'] = workflow_id
                     active_workflows[workflow_id].update(status_update)
 
         workflow_instance.add_status_callback(status_callback)
