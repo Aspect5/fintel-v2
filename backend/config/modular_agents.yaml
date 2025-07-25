@@ -1,0 +1,10 @@
+agent_definitions:
+  - name: "CryptoAnalyst"
+    base_template: "DataAnalyst"
+    parameters:
+      domain: "cryptocurrency markets"
+      focus_area: "DeFi"
+    additional_tools:
+      - "get_crypto_market_data"
+      - "get_on_chain_analytics"
+    keywords: ["crypto", "bitcoin", "ethereum", "blockchain"]

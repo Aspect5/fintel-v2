@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from typing import List, Dict, Any, Optional
 import controlflow as cf
-from tools.registry import get_tool_registry
 
 @dataclass
 class BaseAgentConfig:
@@ -14,6 +13,7 @@ class BaseAgentConfig:
     
     def create_agent(self, model: str) -> cf.Agent:
         """Create ControlFlow agent instance"""
+        from backend.tools.registry import get_tool_registry
         tool_registry = get_tool_registry()
         available_tools = tool_registry.get_available_tools()
         

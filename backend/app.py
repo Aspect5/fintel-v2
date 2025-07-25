@@ -234,6 +234,93 @@ def run_workflow():
         logger.error(f"Workflow startup failed: {e}", exc_info=True)
         return jsonify({"error": str(e), "success": False}), 500
 
+@app.route('/api/agent-templates', methods=['GET'])
+def get_agent_templates():
+    """Get available agent templates"""
+    from backend.agents.templates import AgentTemplateRegistry
+    registry = AgentTemplateRegistry()
+    
+    templates = {}
+    for name, template in registry.templates.items():
+        templates[name] = {
+            "name": template.name,
+            "parameters": template.parameters,
+            "required_tools": template.required_tools,
+            "optional_tools": template.optional_tools
+        }
+    
+    return jsonify(templates)
+
+@app.route('/api/create-agent', methods=['POST'])
+def create_agent():
+    """Create a new agent from a template"""
+    from backend.agents.templates import AgentTemplateRegistry
+    
+    data = request.get_json()
+    template_name = data.get('template')
+    agent_name = data.get('name')
+    parameters = data.get('parameters', {})
+    additional_tools = data.get('additional_tools', [])
+    additional_instructions = data.get('additional_instructions', '')
+    
+    try:
+        registry = AgentTemplateRegistry()
+        agent = registry.create_agent_from_template(
+            template_name,
+            name=agent_name,
+            additional_instructions=additional_instructions,
+            additional_tools=additional_tools,
+            **parameters
+        )
+        
+        # Save to the main agent registry
+        agent_registry = get_agent_registry()
+        agent_registry._agents[agent_name] = agent
+        
+        return jsonify({
+            "success": True,
+            "agent_name": agent_name,
+            "message": f"Agent '{agent_name}' created successfully"
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 400
+
+@app.route('/api/available-tools', methods=['GET'])
+def get_available_tools():
+    """Get all available tools including plugins"""
+    tool_registry = get_tool_registry()
+    tools = tool_registry.get_available_tools()
+    descriptions = tool_registry.get_tool_descriptions()
+    
+    # Group tools by category
+    categorized_tools = {
+        "market_data": [],
+        "economic_data": [],
+        "analysis": [],
+        "custom": []
+    }
+    
+    for tool_name , tool in tools.items():
+        tool_info = {
+            "name": tool_name,
+            "description": descriptions.get(tool_name, "No description available")
+        }
+        
+        if "market" in tool_name or "company" in tool_name:
+            categorized_tools["market_data"].append(tool_info)
+        elif "economic" in tool_name:
+            categorized_tools["economic_data"].append(tool_info)
+        elif "analyze" in tool_name or "calculate" in tool_name:
+            categorized_tools["analysis"].append(tool_info)
+        else:
+            categorized_tools["custom"].append(tool_info)
+    
+    return jsonify(categorized_tools)
+
 def cleanup_old_workflows():
     """Clean up workflows older than 24 hours (increased from 1 hour)"""
     while True:

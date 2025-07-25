@@ -46,37 +46,79 @@ class DependencyDrivenWorkflow(BaseWorkflow):
                 except Exception as e:
                     logger.error(f"Status callback error: {e}")
     
-    def _initialize_workflow_nodes(self, query):
-        """Initialize workflow nodes for frontend visualization."""
-        nodes = [
-            {'id': 'query_input', 'type': 'input', 'position': {'x': 50, 'y': 200}, 
-             'data': {'label': 'User Query', 'details': query, 'status': 'running'}},
-            {'id': 'market_analysis', 'type': 'default', 'position': {'x': 350, 'y': 100}, 
-             'data': {'label': 'Market Analyst', 'status': 'pending', 'toolCalls': []}},
-            {'id': 'economic_analysis', 'type': 'default', 'position': {'x': 350, 'y': 300}, 
-             'data': {'label': 'Economic Analyst', 'status': 'pending', 'toolCalls': []}},
-            {'id': 'risk_assessment', 'type': 'default', 'position': {'x': 650, 'y': 200}, 
-             'data': {'label': 'Risk Assessment', 'status': 'pending', 'toolCalls': []}},
-            {'id': 'final_synthesis', 'type': 'output', 'position': {'x': 950, 'y': 200}, 
-             'data': {'label': 'Final Report', 'status': 'pending'}},
-        ]
+    def _get_agents_for_query(self, query: str, provider: str) -> Dict[str, cf.Agent]:
+        """Dynamically select agents based on query content"""
+        from backend.agents.registry import get_agent_registry
+        agent_registry = get_agent_registry()
+        agents = {}
         
-        edges = [
-            {'id': 'e1', 'source': 'query_input', 'target': 'market_analysis', 'animated': False},
-            {'id': 'e2', 'source': 'query_input', 'target': 'economic_analysis', 'animated': False},
-            {'id': 'e3', 'source': 'market_analysis', 'target': 'risk_assessment', 'animated': False},
-            {'id': 'e4', 'source': 'economic_analysis', 'target': 'risk_assessment', 'animated': False},
-            {'id': 'e5', 'source': 'risk_assessment', 'target': 'final_synthesis', 'animated': False},
-        ]
+        # Base agents always included
+        agents['coordinator'] = agent_registry.get_agent("FinancialAnalyst", provider)
         
+        # Conditionally add agents based on query content
+        query_lower = query.lower()
+        
+        if any(word in query_lower for word in ['market', 'stock', 'price', 'trading']):
+            agents['market'] = agent_registry.get_agent("MarketAnalyst", provider)
+        
+        if any(word in query_lower for word in ['economy', 'gdp', 'inflation', 'rates']):
+            agents['economic'] = agent_registry.get_agent("EconomicAnalyst", provider)
+        
+        if any(word in query_lower for word in ['risk', 'volatility', 'beta']):
+            agents['risk'] = agent_registry.get_agent("RiskAssessment", provider)
+        
+        # Check for custom agents that might be relevant
+        for agent_name in agent_registry.get_available_agents():
+            if agent_name not in ['FinancialAnalyst', 'MarketAnalyst', 'EconomicAnalyst', "RiskAssessment"]:
+                agent_info = agent_registry.get_agent_info(agent_name)
+                # Simple keyword matching - could be made more sophisticated
+                if any(keyword in query_lower for keyword in agent_info.get('keywords', [])):
+                    agents[agent_name.lower()] = agent_registry.get_agent(agent_name, provider)
+        
+        return agents
+
+    def _initialize_workflow_nodes(self, query: str, agents: Dict[str, cf.Agent]):
+        """Initialize workflow nodes for frontend visualization based on selected agents."""
+        nodes = [{'id': 'query_input', 'type': 'input', 'position': {'x': 50, 'y': 200}, 
+                  'data': {'label': 'User Query', 'details': query, 'status': 'running'}}]
+        edges = []
+        
+        agent_positions = {
+            'market': {'x': 350, 'y': 100},
+            'economic': {'x': 350, 'y': 300},
+            'risk': {'x': 650, 'y': 200}
+        }
+        
+        # Add nodes for each agent
+        for agent_key, position in agent_positions.items():
+            if agent_key in agents:
+                nodes.append({
+                    'id': f'{agent_key}_analysis', 'type': 'default', 'position': position,
+                    'data': {'label': f'{agent_key.title()} Analyst', 'status': 'pending', 'toolCalls': []}
+                })
+                edges.append({'id': f'e_{agent_key}', 'source': 'query_input', 'target': f'{agent_key}_analysis', 'animated': False})
+
+        # Add risk node connections from market and economic if they exist
+        if 'risk' in agents:
+            if 'market' in agents:
+                edges.append({'id': 'e_market_risk', 'source': 'market_analysis', 'target': 'risk_assessment', 'animated': False})
+            if 'economic' in agents:
+                edges.append({'id': 'e_economic_risk', 'source': 'economic_analysis', 'target': 'risk_assessment', 'animated': False})
+        
+        # Add final synthesis node
+        nodes.append({'id': 'final_synthesis', 'type': 'output', 'position': {'x': 950, 'y': 200}, 
+                      'data': {'label': 'Final Report', 'status': 'pending'}})
+
+        # Connect final synthesis to its dependencies
+        synthesis_dependencies = [f'{agent_key}_analysis' for agent_key in agents if agent_key != 'coordinator']
+        for dep in synthesis_dependencies:
+            edges.append({'id': f'e_{dep}_final', 'source': dep, 'target': 'final_synthesis', 'animated': False})
+            
         self.workflow_status.update({
-            'nodes': nodes, 
-            'edges': edges, 
-            'start_time': datetime.now().isoformat(),
-            'query': query
+            'nodes': nodes, 'edges': edges, 'start_time': datetime.now().isoformat(), 'query': query
         })
         self._update_status({'initialized': True})
-    
+        
     def _extract_ticker_from_query(self, query: str) -> str:
         """Extract ticker symbol from query"""
         # Check for ticker in parentheses
@@ -108,115 +150,83 @@ class DependencyDrivenWorkflow(BaseWorkflow):
         """Execute workflow with real-time status updates"""
         start_time = time.time()
         
-        self._initialize_workflow_nodes(query)
+        agents = self._get_agents_for_query(query, provider)
+        self._initialize_workflow_nodes(query, agents)
         self._update_status({'status': 'running'})
         
-        logger.info(f"Executing workflow for query: {query}")
+        logger.info(f"Executing workflow for query: {query} with agents: {list(agents.keys())}")
         
         try:
-            from backend.agents.registry import get_agent_registry
             from backend.utils.observability import FintelEventHandler
-            agent_registry = get_agent_registry()
             
-            # Create event handler to capture tool calls
             event_handler = FintelEventHandler()
-            
-            market_agent = agent_registry.get_agent("MarketAnalyst", provider)
-            economic_agent = agent_registry.get_agent("EconomicAnalyst", provider)
-            financial_agent = agent_registry.get_agent("FinancialAnalyst", provider)
             
             with cf.Flow(name="financial_analysis_flow") as flow:
                 self._update_node_status('query_input', 'completed')
-                self._update_edge_status('e1', 'active')
-                self._update_edge_status('e2', 'active')
                 
-                # Extract ticker first
                 ticker = self._extract_ticker_from_query(query)
                 ticker_hint = f"The ticker symbol is: {ticker}" if ticker else "Extract the ticker from the query"
                 
-                # Market Analysis Task
-                self._update_node_status('market_analysis', 'running')
-                market_analysis_task = cf.Task(
-                    objective=f"""Analyze market data for: '{query}'
-    
-                    {ticker_hint}
-                    
-                    You MUST:
-                    1. Call get_market_data(ticker="{ticker or '[TICKER]'}")
-                    2. Call get_company_overview(ticker="{ticker or '[TICKER]'}")
-                    3. Use ONLY the data from these tool calls
-                    
-                    Remember: Use exact syntax like get_market_data(ticker="GOOG")""",
-                    agents=[market_agent], 
-                    result_type=str
-                )
+                tasks = {}
                 
-                # Economic Analysis Task
-                self._update_node_status('economic_analysis', 'running')
-                economic_analysis_task = cf.Task(
-                    objective=f"""Provide economic context for: '{query}'
-    
-                    REQUIRED STEPS:
-                    1. Call get_economic_data_from_fred(series_id="GDP") for GDP data
-                    2. Call get_economic_data_from_fred(series_id="UNRATE") for unemployment data
-                    3. Call get_economic_data_from_fred(series_id="FEDFUNDS") for interest rate data
-                    4. Analyze the economic indicators in context of the investment query
-                    
-                    Query: {query}""",
-                    agents=[economic_agent], 
-                    result_type=str
-                )
-                
-                logger.info("Executing market and economic analysis...")
-                market_result = market_analysis_task.run(handlers=[event_handler])
-                
-                # Extract tool calls for market analysis
-                market_tool_calls = self._extract_tool_calls(event_handler.events, 'MarketAnalyst')
-                self._update_node_status('market_analysis', 'completed', 
-                                       result=market_result, 
-                                       tool_calls=market_tool_calls)
-                self._update_edge_status('e1', 'completed')
-                self._update_edge_status('e3', 'active')
-                
-                economic_result = economic_analysis_task.run(handlers=[event_handler])
-                
-                # Extract tool calls for economic analysis
-                economic_tool_calls = self._extract_tool_calls(event_handler.events, 'EconomicAnalyst')
-                self._update_node_status('economic_analysis', 'completed', 
-                                       result=economic_result,
-                                       tool_calls=economic_tool_calls)
-                self._update_edge_status('e2', 'completed')
-                self._update_edge_status('e4', 'active')
-                
-                # Risk Assessment
-                self._update_node_status('risk_assessment', 'running')
-                risk_assessment_task = cf.Task(
-                    objective="Assess investment risks based on market and economic analysis",
-                    depends_on=[market_analysis_task, economic_analysis_task],
-                    agents=[financial_agent], 
-                    result_type=str
-                )
-                
-                logger.info("Executing risk assessment...")
-                risk_result = risk_assessment_task.run(handlers=[event_handler])
-                self._update_node_status('risk_assessment', 'completed', result=risk_result)
-                self._update_edge_status('e3', 'completed')
-                self._update_edge_status('e4', 'completed')
-                self._update_edge_status('e5', 'active')
-                
-                # Final Synthesis
+                if 'market' in agents:
+                    self._update_node_status('market_analysis', 'running')
+                    tasks['market'] = cf.Task(
+                        objective=f"""Analyze market data for: '{query}'
+                                    {ticker_hint}
+                                    You MUST:
+                                    1. Call get_market_data(ticker="{ticker or '[TICKER]'}")
+                                    2. Call get_company_overview(ticker="{ticker or '[TICKER]'}")
+                                    3. Use ONLY the data from these tool calls""",
+                        agents=[agents['market']], result_type=str
+                    )
+
+                if 'economic' in agents:
+                    self._update_node_status('economic_analysis', 'running')
+                    tasks['economic'] = cf.Task(
+                        objective=f"""Provide economic context for: '{query}'
+                                    REQUIRED STEPS:
+                                    1. Call get_economic_data_from_fred(series_id="GDP") for GDP data
+                                    2. Call get_economic_data_from_fred(series_id="UNRATE") for unemployment data
+                                    3. Call get_economic_data_from_fred(series_id="FEDFUNDS") for interest rate data
+                                    4. Analyze the economic indicators in context of the investment query""",
+                        agents=[agents['economic']], result_type=str
+                    )
+
+                # Run parallel tasks first
+                cf.Task.run_many([task for key, task in tasks.items() if key in ['market', 'economic']], handlers=[event_handler])
+
+                if 'market' in tasks:
+                    market_result = tasks['market'].result
+                    market_tool_calls = self._extract_tool_calls(event_handler.events, 'MarketAnalyst')
+                    self._update_node_status('market_analysis', 'completed', result=market_result, tool_calls=market_tool_calls)
+
+                if 'economic' in tasks:
+                    economic_result = tasks['economic'].result
+                    economic_tool_calls = self._extract_tool_calls(event_handler.events, 'EconomicAnalyst')
+                    self._update_node_status('economic_analysis', 'completed', result=economic_result, tool_calls=economic_tool_calls)
+
+                if 'risk' in agents:
+                    self._update_node_status('risk_assessment', 'running')
+                    risk_dependencies = [tasks[key] for key in ['market', 'economic'] if key in tasks]
+                    tasks['risk'] = cf.Task(
+                        objective="Assess investment risks based on market and economic analysis",
+                        depends_on=risk_dependencies,
+                        agents=[agents['risk']], result_type=str
+                    )
+                    risk_result = tasks['risk'].run(handlers=[event_handler])
+                    self._update_node_status('risk_assessment', 'completed', result=risk_result)
+
                 self._update_node_status('final_synthesis', 'running')
+                final_dependencies = list(tasks.values())
                 final_synthesis_task = cf.Task(
                     objective=f"Provide comprehensive investment recommendation for: {query}",
-                    depends_on=[risk_assessment_task],
-                    agents=[financial_agent], 
-                    result_type=str
+                    depends_on=final_dependencies,
+                    agents=[agents['coordinator']], result_type=str
                 )
                 
-                logger.info("Executing final synthesis...")
                 final_result = final_synthesis_task.run(handlers=[event_handler])
                 self._update_node_status('final_synthesis', 'completed', result=final_result)
-                self._update_edge_status('e5', 'completed')
 
             execution_time = time.time() - start_time
             self._update_status({'status': 'completed', 'execution_time': execution_time})
@@ -224,18 +234,9 @@ class DependencyDrivenWorkflow(BaseWorkflow):
             logger.info(f"Workflow completed in {execution_time:.2f} seconds")
             
             return WorkflowResult(
-                success=True, 
-                result=str(final_result),
-                trace={
-                    "market": market_result, 
-                    "economic": economic_result, 
-                    "risk": risk_result, 
-                    "final": final_result,
-                    "events": event_handler.events
-                },
-                agent_invocations=[],
-                execution_time=execution_time, 
-                workflow_name=self.name,
+                success=True, result=str(final_result),
+                trace={"events": event_handler.events},
+                agent_invocations=[], execution_time=execution_time, workflow_name=self.name,
                 workflow_status=self.workflow_status
             )
             
@@ -244,13 +245,9 @@ class DependencyDrivenWorkflow(BaseWorkflow):
             self._update_status({'status': 'failed', 'error': str(e)})
             logger.error(f"Workflow failed: {e}", exc_info=True)
             return WorkflowResult(
-                success=False, 
-                result=f"Analysis failed: {str(e)}",
-                agent_invocations=[],
-                trace={},
-                execution_time=execution_time, 
-                error=str(e), 
-                workflow_name=self.name,
+                success=False, result=f"Analysis failed: {str(e)}",
+                agent_invocations=[], trace={}, execution_time=execution_time, 
+                error=str(e), workflow_name=self.name,
                 workflow_status=self.workflow_status
             )
     

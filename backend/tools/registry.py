@@ -1,6 +1,8 @@
-# backend/tools/registry.py
+# backend/tools/registry.py - Add this to the existing file
 from typing import Dict, List, Any, Optional
 import controlflow as cf
+from pathlib import Path
+from .plugins import ToolPluginLoader
 from .market_data import MarketDataTool, CompanyOverviewTool
 from .economic_data import EconomicDataTool
 from backend.config.settings import get_settings
@@ -11,28 +13,15 @@ class ToolRegistry:
     def __init__(self):
         self._tools: Dict[str, Any] = {}
         self._tool_instances: Dict[str, Any] = {}
-        self._tool_descriptions: Dict[str, str] = {}  # Add this to store descriptions
+        self._tool_descriptions: Dict[str, str] = {}
+        self._plugin_loader = ToolPluginLoader()
         self._initialize_tools()
     
     def _initialize_tools(self):
         """Initialize all available tools"""
         settings = get_settings()
         
-        # Market data tools
-        if settings.alpha_vantage_api_key:
-            self._tool_instances['market_data'] = MarketDataTool(settings.alpha_vantage_api_key)
-            self._tool_instances['company_overview'] = CompanyOverviewTool(settings.alpha_vantage_api_key)
-        
-        # Economic data tools
-        if settings.fred_api_key:
-            self._tool_instances['economic_data'] = EconomicDataTool(settings.fred_api_key)
-        
-        # Register ControlFlow tools
-        self._register_controlflow_tools()
-    
-    def _register_controlflow_tools(self):
-        """Register tools with ControlFlow decorators"""
-        
+        # Initialize built-in tools (existing code)
         @cf.tool
         def get_market_data(ticker: str) -> dict:
             """
@@ -102,20 +91,30 @@ class ToolRegistry:
                 return self._tool_instances['economic_data'].execute(series_id=series_id.upper(), limit=limit)
             return {"error": "Economic data tool not available", "series_id": series_id}
         
-        # Store tools and their descriptions
         self._tools = {
             'get_market_data': get_market_data,
             'get_company_overview': get_company_overview,
             'get_economic_data_from_fred': get_economic_data_from_fred
         }
         
-        # Store descriptions separately
-        self._tool_descriptions = {
-            'get_market_data': 'Get real-time market data for a stock ticker including price, volume, and daily changes',
-            'get_company_overview': 'Get comprehensive company overview including sector, industry, market cap, P/E ratio, and business description',
-            'get_economic_data_from_fred': 'Get economic data from Federal Reserve (FRED) for indicators like GDP, unemployment rate, and interest rates'
-        }
+        # Load plugin-based tools
+        self._plugin_loader.load_plugins()
+        
+        # Merge plugin tools with built-in tools
+        plugin_tools = self._plugin_loader.get_all_tool_names()
+        for tool_name in plugin_tools:
+            if tool_name not in self._tools:
+                self._tools[tool_name] = self._plugin_loader._controlflow_tools[tool_name]
+                # Extract description from docstring
+                tool_func = self._plugin_loader._controlflow_tools[tool_name]
+                if hasattr(tool_func, '__doc__') and tool_func.__doc__:
+                    self._tool_descriptions[tool_name] = tool_func.__doc__.strip().split('\n')[0]
     
+    def reload_plugins(self):
+        """Reload all plugins - useful for development"""
+        self._plugin_loader.load_plugins()
+        self._initialize_tools()
+
     def get_tools(self, tool_names: List[str]) -> List[Any]:
         """Get specific tools by name"""
         tools = []
@@ -123,25 +122,7 @@ class ToolRegistry:
             if name in self._tools:
                 tools.append(self._tools[name])
         return tools
-
-    def get_tools_by_category(self, category: str) -> List[Any]:
-        """Get tools by category"""
-        categories = {
-            'market': ['get_market_data', 'get_company_overview'],
-            'economic': ['get_economic_data_from_fred'],
-            'all': list(self._tools.keys())
-        }
         
-        tool_names = categories.get(category, [])
-        return [self._tools[name] for name in tool_names if name in self._tools]
-    
-    def get_tool_status(self) -> Dict[str, Any]:
-        """Get status of all tools"""
-        status = {}
-        for name, instance in self._tool_instances.items():
-            status[name] = instance.get_status()
-        return status
-    
     def get_available_tools(self) -> Dict[str, Any]:
         """Get all available tools"""
         return self._tools.copy()
@@ -149,17 +130,3 @@ class ToolRegistry:
     def get_tool_descriptions(self) -> Dict[str, str]:
         """Get tool descriptions"""
         return self._tool_descriptions.copy()
-
-    def get_all_tools(self) -> Dict[str, Any]:
-        """Get all available tools with their metadata"""
-        return self._tools.copy()
-
-# Global registry instance
-_registry = None
-
-def get_tool_registry() -> ToolRegistry:
-    """Get global tool registry instance"""
-    global _registry
-    if _registry is None:
-        _registry = ToolRegistry()
-    return _registry
