@@ -1,4 +1,4 @@
-// App.tsx - Fixed layout structure
+// App.tsx - Updated with modal for agent details
 import React, { useState, useEffect } from 'react';
 import { useNodesState, useEdgesState } from 'reactflow';
 import { ChatMessage, CustomNode } from './types';
@@ -6,6 +6,7 @@ import { useStore } from './store';
 import SidePanel from './components/SidePanel';
 import WorkflowCanvas from './components/WorkflowCanvas';
 import { ApiKeyModal } from './components/ApiKeyModal';
+import AgentTraceModal from './components/AgentTraceModal';
 import Notification from './components/Notification';
 import { useWorkflowStatus } from './hooks/useWorkflowStatus';
 
@@ -14,6 +15,7 @@ const App: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [currentWorkflowId, setCurrentWorkflowId] = useState<string | null>(null);
+    const [selectedNode, setSelectedNode] = useState<CustomNode | null>(null);
 
     // State for the react-flow canvas
     const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -59,6 +61,10 @@ const App: React.FC = () => {
 
     const handleNodeDoubleClick = (_event: React.MouseEvent, node: CustomNode) => {
         console.log('Node double-clicked:', node);
+        // Only show modal for agent nodes that have completed or failed
+        if (node.data.status === 'success' || node.data.status === 'failure') {
+            setSelectedNode(node);
+        }
     };
 
     // Update loading state based on workflow status
@@ -81,9 +87,7 @@ const App: React.FC = () => {
                 onWorkflowStart={handleWorkflowStart}
                 onSendMessage={() => {}}
             />
-            {/* Fixed: Use relative positioning and absolute child */}
             <main className="flex-1 relative">
-                {/* Fixed: Absolute positioning with inset-0 provides definite dimensions */}
                 <div className="absolute inset-0">
                     <WorkflowCanvas
                         nodes={nodes}
@@ -118,11 +122,20 @@ const App: React.FC = () => {
                                     Execution time: {workflowStatus.execution_time.toFixed(2)}s
                                 </div>
                             )}
+                            <div className="text-xs text-brand-text-secondary mt-3">
+                                💡 Double-click on completed nodes to see details
+                            </div>
                         </div>
                     )}
                 </div>
             </main>
             <ApiKeyModal />
+            {selectedNode && (
+                <AgentTraceModal 
+                    node={selectedNode} 
+                    onClose={() => setSelectedNode(null)} 
+                />
+            )}
             {error && <Notification type="error" message={error} onClose={() => setError(null)} />}
         </div>
     );

@@ -12,7 +12,8 @@ import ReactFlow, {
   Position,
   ConnectionMode,
   ReactFlowProvider,
-  useReactFlow
+  useReactFlow,
+  NodeProps
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
@@ -20,8 +21,8 @@ import SpinnerIcon from './icons/SpinnerIcon';
 import CheckCircleIcon from './icons/CheckCircleIcon';
 import XCircleIcon from './icons-solid/XCircleIcon';
 
-// Custom node component
-const CustomNode: React.FC<{ data: any }> = ({ data }) => {
+// Custom node component with proper typing
+const CustomNode: React.FC<NodeProps> = ({ data }) => {
   const { label, details, status, error } = data;
   
   const getStatusIcon = () => {
@@ -47,7 +48,7 @@ const CustomNode: React.FC<{ data: any }> = ({ data }) => {
   };
 
   return (
-    <div className={`p-4 bg-brand-surface border-2 rounded-lg shadow-lg min-w-[200px] ${getBorderColor()} transition-all duration-300`}>
+    <div className={`p-4 bg-brand-surface border-2 rounded-lg shadow-lg min-w-[200px] ${getBorderColor()} transition-all duration-300 cursor-pointer hover:shadow-xl`}>
       <Handle type="target" position={Position.Left} className="!bg-brand-secondary" />
       
       <div className="flex items-center justify-between mb-2">
@@ -132,32 +133,48 @@ const WorkflowCanvasContent: React.FC<WorkflowCanvasProps> = ({
 
 const WorkflowCanvas: React.FC<WorkflowCanvasProps> = (props) => {
   return (
-    <div className="w-full h-full">
+    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
       <ReactFlowProvider>
         <WorkflowCanvasContent {...props} />
       </ReactFlowProvider>
       <style>{`
+        /* Override React Flow default styles to remove white boxes */
+        .react-flow__node {
+          background: transparent !important;
+          border: none !important;
+          box-shadow: none !important;
+        }
+        
+        .react-flow__node.selected {
+          box-shadow: 0 0 0 2px #58A6FF !important;
+        }
+        
         .react-flow__controls-brand button {
           background-color: #161B22;
           border-bottom: 1px solid #30363D;
           fill: #C9D1D9;
         }
+        
         .react-flow__controls-brand button:hover {
           background-color: #0D1117;
         }
+        
         .react-flow__minimap-brand {
           background-color: #161B22;
           border: 1px solid #30363D;
         }
+        
         .react-flow__minimap-mask {
           fill: rgba(13, 17, 23, 0.6);
         }
+        
         .react-flow__handle {
           background: #58A6FF;
           width: 8px;
           height: 12px;
           border-radius: 2px;
         }
+        
         .react-flow__edge-path {
           stroke-width: 2;
         }

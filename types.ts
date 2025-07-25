@@ -92,8 +92,8 @@ export interface BasicNodeData {
 export interface AgentNodeData extends BasicNodeData {
   error?: string;
   result?: string;
-  toolCalls: ToolCallResult[];
-};
+  toolCalls?: ToolCallResult[];
+}
 
 export type CustomNodeData = BasicNodeData | AgentNodeData;
 export type CustomNode = Node<CustomNodeData>;
