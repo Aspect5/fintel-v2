@@ -2,7 +2,7 @@
 from typing import Dict, List, Any, Optional
 import controlflow as cf
 from pathlib import Path
-from .plugins import ToolPluginLoader
+from backend.tools.plugin_loader import ToolPluginLoader
 from .market_data import MarketDataTool, CompanyOverviewTool
 from .economic_data import EconomicDataTool
 from backend.config.settings import get_settings
@@ -21,6 +21,11 @@ class ToolRegistry:
         """Initialize all available tools"""
         settings = get_settings()
         
+        # Instantiate and register built-in tools
+        self._tool_instances['market_data'] = MarketDataTool()
+        self._tool_instances['company_overview'] = CompanyOverviewTool()
+        self._tool_instances['economic_data'] = EconomicDataTool()
+
         # Initialize built-in tools (existing code)
         @cf.tool
         def get_market_data(ticker: str) -> dict:
@@ -130,3 +135,12 @@ class ToolRegistry:
     def get_tool_descriptions(self) -> Dict[str, str]:
         """Get tool descriptions"""
         return self._tool_descriptions.copy()
+
+_tool_registry_instance = None
+
+def get_tool_registry():
+    """Returns a singleton instance of the ToolRegistry."""
+    global _tool_registry_instance
+    if _tool_registry_instance is None:
+        _tool_registry_instance = ToolRegistry()
+    return _tool_registry_instance

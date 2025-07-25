@@ -1,5 +1,5 @@
 # backend/tools/plugins/financial_tools.py
-from backend.tools.plugins import ToolPlugin
+from backend.tools.plugin_loader import ToolPlugin
 from typing import Dict, Any, List
 
 class FinancialToolsPlugin(ToolPlugin):

@@ -73,7 +73,7 @@ def health_check():
         "version": "2.0.0",
         "providers": provider_factory.get_provider_status(),
         "agents": agent_registry.get_available_agents(),
-        "tools": tool_registry.get_tool_status()
+        "tools": tool_registry.get_tool_descriptions()
     })
 
 @app.route('/api/status/keys', methods=['GET'])
@@ -191,7 +191,8 @@ def run_workflow():
         workflow_instance.add_status_callback(status_callback)
         
         # FIX: Initialize the workflow nodes and edges SYNCHRONOUSLY
-        workflow_instance._initialize_workflow_nodes(query)
+        agents = workflow_instance._get_agents_for_query(query, provider)
+        workflow_instance._initialize_workflow_nodes(query, agents)
         
         initial_status = workflow_instance.workflow_status.copy()
         initial_status.update({
@@ -227,7 +228,8 @@ def run_workflow():
         return jsonify({
             "workflow_id": workflow_id,
             "status": "started",
-            "message": f"Workflow started. Use /api/workflow-status/{workflow_id} to track progress."
+            "message": f"Workflow started. Use /api/workflow-status/{workflow_id} to track progress.",
+            "workflow_status": initial_status
         })
         
     except Exception as e:

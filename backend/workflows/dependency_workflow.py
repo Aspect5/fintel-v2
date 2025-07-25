@@ -194,7 +194,9 @@ class DependencyDrivenWorkflow(BaseWorkflow):
                     )
 
                 # Run parallel tasks first
-                cf.Task.run_many([task for key, task in tasks.items() if key in ['market', 'economic']], handlers=[event_handler])
+                parallel_tasks = [task for key, task in tasks.items() if key in ['market', 'economic']]
+                if parallel_tasks:
+                    cf.run_tasks(parallel_tasks, handlers=[event_handler])
 
                 if 'market' in tasks:
                     market_result = tasks['market'].result
