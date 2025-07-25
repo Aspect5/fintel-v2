@@ -7,6 +7,7 @@ import logging
 import threading
 from datetime import datetime
 import re
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +98,7 @@ class DependencyDrivenWorkflow(BaseWorkflow):
                 return ticker
         
         # Look for uppercase ticker
-        tickers = re.findall(r'[A-Z]{2,5}', query)
+        tickers = re.findall(r' [A-Z]{2,5} ', query)
         if tickers:
             return tickers[0]
         
@@ -256,17 +257,69 @@ class DependencyDrivenWorkflow(BaseWorkflow):
     def _extract_tool_calls(self, events: List[Dict], agent_name: str) -> List[Dict]:
         """Extract tool calls from events for a specific agent"""
         tool_calls = []
+        
+        # Track tool calls and their results
+        pending_calls = {}
+        
         for event in events:
-            if (event.get('event_type') == 'agent_tool_call' and 
-                event.get('agent_name') == agent_name):
-                tool_calls.append({
-                    'toolName': event.get('tool_name', 'unknown'),
-                    'toolInput': event.get('tool_input', {}),
-                    'toolOutput': event.get('tool_output', {}),
-                    'toolOutputSummary': event.get('tool_summary', '')
-                })
+            if event.get('event_type') == 'agent_tool_call' and event.get('agent_name') == agent_name:
+                tool_name = event.get('tool_name', 'unknown')
+                # Store the tool call info
+                pending_calls[tool_name] = {
+                    'name': tool_name,
+                    'parameters': event.get('tool_input', {}),
+                    'result': None
+                }
+                
+            elif event.get('event_type') == 'tool_result':
+                tool_name = event.get('tool_name', 'unknown')
+                if tool_name in pending_calls:
+                    # Update with the result
+                    result_str = event.get('result', 'No result')
+                    try:
+                        # Try to parse if it's JSON string
+                        result_obj = json.loads(result_str) if isinstance(result_str, str) and result_str.startswith('{') else result_str
+                    except:
+                        result_obj = result_str
+                        
+                    pending_calls[tool_name]['result'] = result_obj
+        
+        # Convert to frontend format
+        for tool_name, call_data in pending_calls.items():
+            # Skip internal ControlFlow tools
+            if tool_name.startswith('mark_task_'):
+                continue
+                
+            tool_calls.append({
+                'toolName': tool_name,  # Changed from 'name' to 'toolName'
+                'toolInput': json.dumps(call_data['parameters']) if isinstance(call_data['parameters'], dict) else str(call_data['parameters']),
+                'toolOutput': call_data['result'] or {},
+                'toolOutputSummary': self._generate_tool_summary(tool_name, call_data['result'])
+            })
+        
         return tool_calls
-    
+
+    def _generate_tool_summary(self, tool_name: str, result: Any) -> str:
+        """Generate a summary for tool output"""
+        if not result:
+            return "No result available"
+            
+        if isinstance(result, dict):
+            if result.get('_mock'):
+                return f"[MOCK] {result.get('note', 'Mock data used')}"
+            elif result.get('error'):
+                return f"[ERROR] {result.get('error')}"
+            elif result.get('status') == 'success':
+                if tool_name == 'get_market_data':
+                    return f"[LIVE] Retrieved market data for {result.get('symbol', 'N/A')}"
+                elif tool_name == 'get_company_overview':
+                    return f"[LIVE] Retrieved company overview for {result.get('symbol', 'N/A')}"
+                elif tool_name == 'get_economic_data_from_fred':
+                    return f"[LIVE] Retrieved economic data: {result.get('series_id', 'N/A')}"
+            return f"[INFO] Tool executed successfully"
+        
+        return "[INFO] Tool result received"
+        
     def _update_node_status(self, node_id: str, status: str, result: str = None, error: str = None, tool_calls: list = None):
         """Update a specific node's status and optionally its result."""
         for node in self.workflow_status.get('nodes', []):
@@ -277,10 +330,11 @@ class DependencyDrivenWorkflow(BaseWorkflow):
                 if error:
                     node['data']['error'] = error
                 if tool_calls is not None:
+                    # Ensure we're setting toolCalls with the correct structure
                     node['data']['toolCalls'] = tool_calls
                 break
         self._update_status({'nodes': self.workflow_status['nodes']})
-        logger.debug(f"Node {node_id} status updated to {status}")
+        logger.debug(f"Node {node_id} status updated to {status} with {len(tool_calls or [])} tool calls")
 
     def _update_edge_status(self, edge_id: str, status: str):
         """Update an edge's style based on status."""

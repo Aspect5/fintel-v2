@@ -101,7 +101,7 @@ class FintelEventHandler(Handler):
                     tool_name = getattr(tool_call_obj, 'name', 'unknown_tool')
         
         log_data = {
-            "event_type": "tool_result",
+            "event_type": "tool_result", 
             "tool_name": tool_name,
             "result": result_str[:250] + "..." if len(result_str) > 250 else result_str,
             "is_error": is_error,
