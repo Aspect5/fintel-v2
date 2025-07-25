@@ -1,4 +1,4 @@
-// App.tsx - Simplified layout structure
+// App.tsx - Fixed layout structure
 import React, { useState, useEffect } from 'react';
 import { useNodesState, useEdgesState } from 'reactflow';
 import { ChatMessage, CustomNode } from './types';
@@ -81,10 +81,10 @@ const App: React.FC = () => {
                 onWorkflowStart={handleWorkflowStart}
                 onSendMessage={() => {}}
             />
-            {/* The main content area where the workflow canvas will be displayed */}
-            <main className="flex-1 flex flex-col overflow-hidden">
-                {/* This container will grow to fill the available space */}
-                <div className="flex-1 relative">
+            {/* Fixed: Use relative positioning and absolute child */}
+            <main className="flex-1 relative">
+                {/* Fixed: Absolute positioning with inset-0 provides definite dimensions */}
+                <div className="absolute inset-0">
                     <WorkflowCanvas
                         nodes={nodes}
                         edges={edges}

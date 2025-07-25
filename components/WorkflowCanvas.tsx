@@ -1,5 +1,5 @@
 // components/WorkflowCanvas.tsx
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import ReactFlow, { 
   Background, 
   Controls, 
@@ -70,13 +70,6 @@ const CustomNode: React.FC<{ data: any }> = ({ data }) => {
   );
 };
 
-// Memoize node types to prevent React Flow warnings
-const nodeTypes = {
-  default: CustomNode,
-  input: CustomNode,
-  output: CustomNode,
-};
-
 interface WorkflowCanvasProps {
   nodes: Node[];
   edges: Edge[];
@@ -93,6 +86,13 @@ const WorkflowCanvasContent: React.FC<WorkflowCanvasProps> = ({
   onNodeDoubleClick 
 }) => {
   const { fitView } = useReactFlow();
+
+  // Memoize node types to prevent React Flow warnings
+  const nodeTypes = useMemo(() => ({
+    default: CustomNode,
+    input: CustomNode,
+    output: CustomNode,
+  }), []);
 
   useEffect(() => {
     try {
@@ -132,7 +132,7 @@ const WorkflowCanvasContent: React.FC<WorkflowCanvasProps> = ({
 
 const WorkflowCanvas: React.FC<WorkflowCanvasProps> = (props) => {
   return (
-    <div style={{ width: '100%', height: '100%' }} className="relative">
+    <div className="w-full h-full">
       <ReactFlowProvider>
         <WorkflowCanvasContent {...props} />
       </ReactFlowProvider>
