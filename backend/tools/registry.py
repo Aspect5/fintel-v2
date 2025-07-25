@@ -35,23 +35,71 @@ class ToolRegistry:
         
         @cf.tool
         def get_market_data(ticker: str) -> dict:
-            """Get real-time market data for a stock ticker including price, volume, and daily changes"""
+            """
+            Get real-time market data for a stock ticker.
+            
+            Examples:
+                get_market_data(ticker="GOOG")
+                get_market_data(ticker="AAPL")
+            
+            Args:
+                ticker (str): Stock ticker symbol like GOOG, AAPL, MSFT
+            
+            Returns:
+                dict: Market data with price, change, volume
+            """
+            if not ticker or ticker.strip() == "":
+                return {
+                    "error": "Missing ticker parameter",
+                    "hint": "Call like this: get_market_data(ticker='GOOG')"
+                }
+            
+            ticker = ticker.upper().strip()
             if 'market_data' in self._tool_instances:
                 return self._tool_instances['market_data'].execute(ticker=ticker)
             return {"error": "Market data tool not available", "ticker": ticker}
-        
+
         @cf.tool
         def get_company_overview(ticker: str) -> dict:
-            """Get comprehensive company overview including sector, industry, market cap, P/E ratio, and business description"""
+            """Get comprehensive company overview including sector, industry, market cap, P/E ratio, and business description
+            
+            Args:
+                ticker: The stock ticker symbol (e.g., 'GOOG', 'AAPL', 'MSFT')
+            
+            Returns:
+                dict: Company overview data
+            """
+            if not ticker or ticker.strip() == "":
+                return {
+                    "error": "Missing required parameter 'ticker'",
+                    "message": "Please provide a stock ticker symbol like 'GOOG' or 'AAPL'",
+                    "example_usage": "get_company_overview(ticker='GOOG')"
+                }
+            
             if 'company_overview' in self._tool_instances:
-                return self._tool_instances['company_overview'].execute(ticker=ticker)
+                return self._tool_instances['company_overview'].execute(ticker=ticker.upper())
             return {"error": "Company overview tool not available", "ticker": ticker}
-        
+
         @cf.tool
         def get_economic_data_from_fred(series_id: str, limit: int = 10) -> dict:
-            """Get economic data from Federal Reserve (FRED) for indicators like GDP, unemployment rate, and interest rates"""
+            """Get economic data from Federal Reserve (FRED) for indicators like GDP, unemployment rate, and interest rates
+            
+            Args:
+                series_id: The FRED series ID (e.g., 'GDP', 'UNRATE', 'FEDFUNDS')
+                limit: Number of recent data points to return (default: 10)
+            
+            Returns:
+                dict: Economic data for the specified series
+            """
+            if not series_id or series_id.strip() == "":
+                return {
+                    "error": "Missing required parameter 'series_id'",
+                    "message": "Please provide a FRED series ID like 'GDP', 'UNRATE', or 'FEDFUNDS'",
+                    "example_usage": "get_economic_data_from_fred(series_id='GDP')"
+                }
+            
             if 'economic_data' in self._tool_instances:
-                return self._tool_instances['economic_data'].execute(series_id=series_id, limit=limit)
+                return self._tool_instances['economic_data'].execute(series_id=series_id.upper(), limit=limit)
             return {"error": "Economic data tool not available", "series_id": series_id}
         
         # Store tools and their descriptions

@@ -6,6 +6,7 @@ import time
 import logging
 import threading
 from datetime import datetime
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +76,33 @@ class DependencyDrivenWorkflow(BaseWorkflow):
         })
         self._update_status({'initialized': True})
     
+    def _extract_ticker_from_query(self, query: str) -> str:
+        """Extract ticker symbol from query"""
+        # Check for ticker in parentheses
+        match = re.search(r'\(([A-Z]{1,5})\)', query)
+        if match:
+            return match.group(1)
+        
+        # Common mappings
+        mappings = {
+            'google': 'GOOG', 'alphabet': 'GOOG',
+            'apple': 'AAPL', 'microsoft': 'MSFT',
+            'amazon': 'AMZN', 'tesla': 'TSLA',
+            'meta': 'META', 'nvidia': 'NVDA'
+        }
+        
+        query_lower = query.lower()
+        for company, ticker in mappings.items():
+            if company in query_lower:
+                return ticker
+        
+        # Look for uppercase ticker
+        tickers = re.findall(r'[A-Z]{2,5}', query)
+        if tickers:
+            return tickers[0]
+        
+        return None
+        
     def execute(self, query: str, provider: str = "openai", **kwargs) -> WorkflowResult:
         """Execute workflow with real-time status updates"""
         start_time = time.time()
@@ -101,10 +129,23 @@ class DependencyDrivenWorkflow(BaseWorkflow):
                 self._update_edge_status('e1', 'active')
                 self._update_edge_status('e2', 'active')
                 
+                # Extract ticker first
+                ticker = self._extract_ticker_from_query(query)
+                ticker_hint = f"The ticker symbol is: {ticker}" if ticker else "Extract the ticker from the query"
+                
                 # Market Analysis Task
                 self._update_node_status('market_analysis', 'running')
                 market_analysis_task = cf.Task(
-                    objective=f"Analyze market data for the stock mentioned in: {query}. You MUST use get_market_data and get_company_overview tools.",
+                    objective=f"""Analyze market data for: '{query}'
+    
+                    {ticker_hint}
+                    
+                    You MUST:
+                    1. Call get_market_data(ticker="{ticker or '[TICKER]'}")
+                    2. Call get_company_overview(ticker="{ticker or '[TICKER]'}")
+                    3. Use ONLY the data from these tool calls
+                    
+                    Remember: Use exact syntax like get_market_data(ticker="GOOG")""",
                     agents=[market_agent], 
                     result_type=str
                 )
@@ -112,7 +153,15 @@ class DependencyDrivenWorkflow(BaseWorkflow):
                 # Economic Analysis Task
                 self._update_node_status('economic_analysis', 'running')
                 economic_analysis_task = cf.Task(
-                    objective=f"Provide economic context for the investment query: {query}. You MUST use get_economic_data_from_fred tool to get GDP, UNRATE, and FEDFUNDS data.",
+                    objective=f"""Provide economic context for: '{query}'
+    
+                    REQUIRED STEPS:
+                    1. Call get_economic_data_from_fred(series_id="GDP") for GDP data
+                    2. Call get_economic_data_from_fred(series_id="UNRATE") for unemployment data
+                    3. Call get_economic_data_from_fred(series_id="FEDFUNDS") for interest rate data
+                    4. Analyze the economic indicators in context of the investment query
+                    
+                    Query: {query}""",
                     agents=[economic_agent], 
                     result_type=str
                 )
