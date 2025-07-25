@@ -99,20 +99,17 @@ def get_agents():
     for agent_name in agent_registry.get_available_agents():
         agents[agent_name] = agent_registry.get_agent_info(agent_name)
     return jsonify(agents)
-
+    
 @app.route('/api/tools', methods=['GET'])
 def get_tools():
-    """Get available tools with descriptions"""
-    tools = tool_registry.get_available_tools()
-    descriptions = tool_registry.get_tool_descriptions()
-    
-    tool_list = []
-    for name in tools.keys():
-        tool_list.append({
-            "name": name,
-            "description": descriptions.get(name, 'No description available')
-        })
-    return jsonify(tool_list)
+    """Return a list of available tools and their schemas"""
+    try:
+        tool_schemas = get_tool_schemas()
+        # FIX: Ensure the output is a list of schemas, not a dict
+        return jsonify(tool_schemas)
+    except Exception as e:
+        logger.error(f"Failed to get tool schemas: {e}", exc_info=True)
+        return jsonify({"error": "Failed to load tool schemas"}), 500
 
 @app.route('/api/workflows', methods=['GET'])
 def get_workflows():
@@ -266,23 +263,6 @@ def run_workflow():
     except Exception as e:
         logger.error(f"Workflow startup failed: {e}", exc_info=True)
         return jsonify({"error": str(e), "success": False}), 500
-
-@app.route('/api/agent-templates', methods=['GET'])
-def get_agent_templates():
-    """Get available agent templates"""
-    from backend.agents.templates import AgentTemplateRegistry
-    registry = AgentTemplateRegistry()
-    
-    templates = {}
-    for name, template in registry.templates.items():
-        templates[name] = {
-            "name": template.name,
-            "parameters": template.parameters,
-            "required_tools": template.required_tools,
-            "optional_tools": template.optional_tools
-        }
-    
-    return jsonify(templates)
 
 @app.route('/api/create-agent', methods=['POST'])
 def create_agent():

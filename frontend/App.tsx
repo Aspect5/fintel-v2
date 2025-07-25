@@ -1,15 +1,15 @@
 // App.tsx - Updated handleNodeDoubleClick
 import React, { useState, useEffect } from 'react';
 import { useNodesState, useEdgesState } from 'reactflow';
-import { AgentNodeData, ChatMessage, CustomNode, WorkflowStatus } from './types';
-import { useStore } from './store';
-import SidePanel from './components/SidePanel';
-import WorkflowCanvas from './components/WorkflowCanvas';
-import { ApiKeyModal } from './components/ApiKeyModal';
-import AgentTraceModal from './components/AgentTraceModal';
-import Notification from './components/Notification';
-import { useWorkflowStatus } from './hooks/useWorkflowStatus';
-import WorkflowHistory from './components/WorkflowHistory';
+import { AgentNodeData, ChatMessage, CustomNode, WorkflowStatus } from './src/types';
+import { useStore } from '../store';
+import SidePanel from '../components/SidePanel';
+import WorkflowCanvas from '../components/WorkflowCanvas';
+import { ApiKeyModal } from '../components/ApiKeyModal';
+import AgentTraceModal from '../components/AgentTraceModal';
+import Notification from '../components/Notification';
+import { useWorkflowStatus } from './src/hooks/useWorkflowStatus';
+import WorkflowHistory from '../components/WorkflowHistory';
 
 // Type guard to check if a node is an AgentNode
 const isAgentNode = (node: CustomNode): node is CustomNode & { data: AgentNodeData } => {

@@ -1,12 +1,12 @@
 // components/SidePanel.tsx
 import React, { useState } from 'react';
-import { ChatMessage, WorkflowStatus } from '../types';
+import { ChatMessage, WorkflowStatus } from '../frontend/src/types';
 import ChatPanel from './ChatPanel';
 import CodeBracketIcon from './icons/CodeBracketIcon';
 import DocumentTextIcon from './icons/DocumentTextIcon';
 import ToolkitPanel from './ToolkitPanel';
 import { useStore } from '../store';
-import { useKeyStatus } from '../hooks/useKeyStatus';
+import { useKeyStatus } from '../frontend/src/hooks/useKeyStatus';
 
 const SidePanel: React.FC<{
     chatMessages: ChatMessage[];

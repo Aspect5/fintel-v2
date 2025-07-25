@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Notification } from './types';
+import { Notification } from './frontend/src/types';
 
 export type ControlFlowProvider = 'openai' | 'google' | 'local';
 

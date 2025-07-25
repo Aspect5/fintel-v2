@@ -1,5 +1,5 @@
 import React from 'react';
-import { AgentFinding, AgentFailure } from '../../types';
+import { AgentFinding, AgentFailure } from '../../frontend/src/types';
 
 // Import components from the same directory
 import AgentFindingCard from './AgentFindingCard';

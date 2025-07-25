@@ -1,4 +1,4 @@
-import { ControlFlowProvider } from '../store';
+import { ControlFlowProvider } from '../../store';
 
 // Define the payload interface to include optional base_url
 interface WorkflowPayload {

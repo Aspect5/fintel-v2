@@ -1,9 +1,9 @@
 // components/ChatPanel.tsx
 import React, { useState, useEffect, useRef } from 'react';
-import { ChatMessage, WorkflowStatus } from '../types';
+import { ChatMessage, WorkflowStatus } from '../frontend/src/types';
 import MarkdownRenderer from './MarkdownRenderer';
 import SpinnerIcon from './icons/SpinnerIcon';
-import { useWorkflowStatus } from '../hooks/useWorkflowStatus';
+import { useWorkflowStatus } from '../frontend/src/hooks/useWorkflowStatus';
 import { useStore } from '../store';
 
 interface ChatPanelProps {

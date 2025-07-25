@@ -1,5 +1,5 @@
-import { Report } from '../types';
-import { ControlFlowProvider } from '../store';
+import { Report } from '../src/types';
+import { ControlFlowProvider } from '../../store';
 
 const API_URL = 'http://127.0.0.1:5001/api/run-workflow';
 

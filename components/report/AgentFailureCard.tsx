@@ -1,5 +1,5 @@
 import React from 'react';
-import { AgentFailure } from '../../types';
+import { AgentFailure } from '../../frontend/src/types';
 import XCircleIcon from '../icons/XCircleIcon';
 
 const AgentFailureCard: React.FC<{ failure: AgentFailure }> = ({ failure }) => (

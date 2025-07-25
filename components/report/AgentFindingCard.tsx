@@ -1,5 +1,5 @@
 import React from 'react';
-import { AgentFinding } from '../../types';
+import { AgentFinding } from '../../frontend/src/types';
 
 const AgentFindingCard: React.FC<{ finding: AgentFinding }> = ({ finding }) => (
     <div className="bg-brand-surface p-6 rounded-lg border border-brand-border transform transition-transform duration-300 hover:scale-[1.02] hover:border-brand-primary">

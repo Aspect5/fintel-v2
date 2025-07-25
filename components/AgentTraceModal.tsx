@@ -1,6 +1,6 @@
 // components/AgentTraceModal.tsx - Updated to handle missing data
 import React from 'react';
-import { AgentNodeData, CustomNode, ToolCallResult } from '../types';
+import { AgentNodeData, CustomNode, ToolCallResult } from '../frontend/src/types';
 import XCircleIcon from './icons/XCircleIcon';
 import CodeBracketIcon from './icons/CodeBracketIcon';
 
