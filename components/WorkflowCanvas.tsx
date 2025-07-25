@@ -22,7 +22,7 @@ import CheckCircleIcon from './icons/CheckCircleIcon';
 import XCircleIcon from './icons-solid/XCircleIcon';
 
 // Custom node component with proper typing
-const CustomNode: React.FC<NodeProps> = ({ data }) => {
+const CustomNode: React.FC<NodeProps> = ({ data, id }) => {
   const { label, details, status, error } = data;
   
   const getStatusIcon = () => {
@@ -48,8 +48,13 @@ const CustomNode: React.FC<NodeProps> = ({ data }) => {
   };
 
   return (
-    <div className={`p-4 bg-brand-surface border-2 rounded-lg shadow-lg min-w-[200px] ${getBorderColor()} transition-all duration-300 cursor-pointer hover:shadow-xl`}>
-      <Handle type="target" position={Position.Left} className="!bg-brand-secondary" />
+    <div className={`relative p-4 bg-brand-surface border-2 rounded-lg shadow-lg min-w-[200px] ${getBorderColor()} transition-all duration-300 cursor-pointer hover:shadow-xl`}>
+      <Handle 
+        type="target" 
+        position={Position.Left} 
+        className="!bg-brand-secondary !w-3 !h-3 !border-2 !border-brand-bg" 
+        style={{ left: '-8px' }}
+      />
       
       <div className="flex items-center justify-between mb-2">
         <div className="font-bold text-lg text-white">{label}</div>
@@ -66,7 +71,12 @@ const CustomNode: React.FC<NodeProps> = ({ data }) => {
         </div>
       )}
       
-      <Handle type="source" position={Position.Right} className="!bg-brand-secondary" />
+      <Handle 
+        type="source" 
+        position={Position.Right} 
+        className="!bg-brand-secondary !w-3 !h-3 !border-2 !border-brand-bg" 
+        style={{ right: '-8px' }}
+      />
     </div>
   );
 };
@@ -118,6 +128,7 @@ const WorkflowCanvasContent: React.FC<WorkflowCanvasProps> = ({
       connectionMode={ConnectionMode.Loose}
       fitView
       className="bg-brand-bg"
+      proOptions={{ hideAttribution: true }}
     >
       <Background gap={24} color="#30363D" />
       <Controls className="react-flow__controls-brand" />
@@ -138,21 +149,63 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = (props) => {
         <WorkflowCanvasContent {...props} />
       </ReactFlowProvider>
       <style>{`
-        /* Override React Flow default styles to remove white boxes */
+        /* Reset React Flow node wrapper styles */
         .react-flow__node {
-          background: transparent !important;
+          padding: 0 !important;
           border: none !important;
+          background: transparent !important;
+          border-radius: 0 !important;
           box-shadow: none !important;
+          font-size: inherit !important;
         }
         
-        .react-flow__node.selected {
+        .react-flow__node-default,
+        .react-flow__node-input,
+        .react-flow__node-output {
+          padding: 0 !important;
+          border: none !important;
+          background: transparent !important;
+        }
+        
+        /* Ensure handles are properly positioned */
+        .react-flow__handle {
+          background: #58A6FF;
+          border: 2px solid #0D1117;
+          width: 12px;
+          height: 12px;
+          border-radius: 50%;
+        }
+        
+        .react-flow__handle-left {
+          left: -6px;
+        }
+        
+        .react-flow__handle-right {
+          right: -6px;
+        }
+        
+        /* Selection styles */
+        .react-flow__node.selected > div > div:first-child {
           box-shadow: 0 0 0 2px #58A6FF !important;
+        }
+        
+        /* Controls styling */
+        .react-flow__controls-brand {
+          box-shadow: 0 0 0 1px #30363D;
+          border-radius: 4px;
+          overflow: hidden;
         }
         
         .react-flow__controls-brand button {
           background-color: #161B22;
           border-bottom: 1px solid #30363D;
           fill: #C9D1D9;
+          width: 32px;
+          height: 32px;
+        }
+        
+        .react-flow__controls-brand button:last-child {
+          border-bottom: none;
         }
         
         .react-flow__controls-brand button:hover {
@@ -168,15 +221,27 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = (props) => {
           fill: rgba(13, 17, 23, 0.6);
         }
         
-        .react-flow__handle {
-          background: #58A6FF;
-          width: 8px;
-          height: 12px;
-          border-radius: 2px;
+        /* Edge styling */
+        .react-flow__edge-path {
+          stroke: #30363D;
+          stroke-width: 2;
         }
         
-        .react-flow__edge-path {
-          stroke-width: 2;
+        .react-flow__edge.animated .react-flow__edge-path {
+          stroke: #58A6FF;
+          stroke-dasharray: 5;
+          animation: dashdraw 0.5s linear infinite;
+        }
+        
+        @keyframes dashdraw {
+          to {
+            stroke-dashoffset: -10;
+          }
+        }
+        
+        /* Ensure proper cursor for nodes */
+        .react-flow__node {
+          cursor: pointer;
         }
       `}</style>
     </div>

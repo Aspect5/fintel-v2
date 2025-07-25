@@ -166,13 +166,17 @@ class DependencyDrivenWorkflow(BaseWorkflow):
         })
         self._update_status({'initialized': True})
     
-    def _update_node_status(self, node_id: str, status: str, result: str = None):
+    def _update_node_status(self, node_id: str, status: str, result: str = None, error: str = None, tool_calls: list = None):
         """Update a specific node's status and optionally its result."""
         for node in self.workflow_status.get('nodes', []):
             if node['id'] == node_id:
                 node['data']['status'] = status
                 if result:
                     node['data']['result'] = result
+                if error:
+                    node['data']['error'] = error
+                if tool_calls:
+                    node['data']['toolCalls'] = tool_calls
                 break
         self._update_status({'nodes': self.workflow_status['nodes']})
         logger.debug(f"Node {node_id} status updated to {status}")
