@@ -9,6 +9,7 @@ import { ApiKeyModal } from './components/ApiKeyModal';
 import AgentTraceModal from './components/AgentTraceModal';
 import Notification from './components/Notification';
 import { useWorkflowStatus } from './hooks/useWorkflowStatus';
+import WorkflowHistory from './components/WorkflowHistory';
 
 // Type guard to check if a node is an AgentNode
 const isAgentNode = (node: CustomNode): node is CustomNode & { data: AgentNodeData } => {
@@ -63,6 +64,27 @@ const App: React.FC = () => {
         setCurrentWorkflowId(workflowId);
         setIsLoading(true);
         setError(null);
+        
+        // Clear the previous workflow visualization
+        setNodes([]);
+        setEdges([]);
+        
+        // Optionally, set a loading state node
+        setNodes([{
+            id: 'loading',
+            type: 'default',
+            position: { x: 400, y: 200 },
+            data: { 
+                label: 'Initializing Workflow...', 
+                status: 'running',
+                details: 'Preparing analysis...'
+            }
+        }]);
+    };
+
+    const handleSelectHistoricalWorkflow = (workflowId: string) => {
+        setCurrentWorkflowId(workflowId);
+        // The useEffect watching workflowStatus will handle updating the visualization
     };
 
     const handleNodeDoubleClick = (_event: React.MouseEvent, node: CustomNode) => {
@@ -114,6 +136,12 @@ const App: React.FC = () => {
                         onNodesChange={onNodesChange}
                         onEdgesChange={onEdgesChange}
                         onNodeDoubleClick={handleNodeDoubleClick}
+                    />
+                    
+                    {/* Add the workflow history dropdown */}
+                    <WorkflowHistory 
+                        currentWorkflowId={currentWorkflowId}
+                        onSelectWorkflow={handleSelectHistoricalWorkflow}
                     />
                     
                     {/* Workflow info overlay */}

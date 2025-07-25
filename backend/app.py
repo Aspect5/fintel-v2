@@ -235,7 +235,7 @@ def run_workflow():
         return jsonify({"error": str(e), "success": False}), 500
 
 def cleanup_old_workflows():
-    """Clean up workflows older than 1 hour"""
+    """Clean up workflows older than 24 hours (increased from 1 hour)"""
     while True:
         try:
             current_time = datetime.now()
@@ -247,7 +247,7 @@ def cleanup_old_workflows():
                         start_time_str = workflow_data.get('start_time')
                         if start_time_str:
                             start_time = datetime.fromisoformat(start_time_str)
-                            if current_time - start_time > timedelta(hours=1):
+                            if current_time - start_time > timedelta(hours=24):  # Changed from 1 to 24
                                 workflows_to_remove.append(workflow_id)
             
             for workflow_id in workflows_to_remove:
@@ -256,10 +256,10 @@ def cleanup_old_workflows():
                         del active_workflows[workflow_id]
                         logger.info(f"Cleaned up old workflow: {workflow_id}")
             
-            time.sleep(300)
+            time.sleep(3600)  # Check every hour instead of every 5 minutes
         except Exception as e:
             logger.error(f"Error in workflow cleanup: {e}")
-            time.sleep(300)
+            time.sleep(3600)
 
 if __name__ == '__main__':
     cleanup_thread = threading.Thread(target=cleanup_old_workflows)
