@@ -1,6 +1,6 @@
  import { create } from 'zustand';
 import {
-  Node, Edge, OnNodesChange, OnEdgesChange, applyNodeChanges, applyEdgeChanges
+  Edge, OnNodesChange, OnEdgesChange, applyNodeChanges, applyEdgeChanges
 } from 'reactflow';
 import { WorkflowStatus, CustomNode } from '../types';
 

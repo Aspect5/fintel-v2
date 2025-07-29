@@ -24,7 +24,7 @@ const SidePanel: React.FC<{
         setCustomBaseUrl,
     } = useStore();
 
-    const { backendKeys, isLoading: areKeysLoading } = useKeyStatus();
+    const { backendKeys, isLoading: areKeysLoading, error, isBackendAvailable, refetch } = useKeyStatus();
 
     const handleProviderChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         setControlFlowProvider(e.target.value as 'openai' | 'google' | 'local');
@@ -87,7 +87,18 @@ const SidePanel: React.FC<{
                         </div>
                     )}
                 </div>
-                {!areKeysLoading && isKeyMissing && (
+                {!areKeysLoading && !isBackendAvailable && error && (
+                    <div className="mt-2 text-xs text-red-300 bg-red-900/50 p-2 rounded-md animate-fade-in">
+                        <strong>Backend Unavailable:</strong> {error}
+                        <button 
+                            onClick={refetch}
+                            className="ml-2 text-blue-300 hover:text-blue-200 underline"
+                        >
+                            Retry
+                        </button>
+                    </div>
+                )}
+                {!areKeysLoading && isBackendAvailable && isKeyMissing && (
                      <div className="mt-2 text-xs text-yellow-300 bg-yellow-900/50 p-2 rounded-md animate-fade-in">
                         <strong>Warning:</strong> The required API key is not set on the backend.
                     </div>

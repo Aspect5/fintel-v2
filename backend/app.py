@@ -104,9 +104,21 @@ def get_agents():
 def get_tools():
     """Return a list of available tools and their schemas"""
     try:
-        tool_schemas = get_tool_schemas()
-        # FIX: Ensure the output is a list of schemas, not a dict
-        return jsonify(tool_schemas)
+        # Get available tools from the registry
+        available_tools = tool_registry.get_available_tools()
+        tool_descriptions = tool_registry.get_tool_descriptions()
+        
+        # Convert to a list format for the frontend
+        tools_list = []
+        for tool_name, tool_func in available_tools.items():
+            tool_info = {
+                "name": tool_name,
+                "description": tool_descriptions.get(tool_name, "No description available"),
+                "type": "function"
+            }
+            tools_list.append(tool_info)
+        
+        return jsonify(tools_list)
     except Exception as e:
         logger.error(f"Failed to get tool schemas: {e}", exc_info=True)
         return jsonify({"error": "Failed to load tool schemas"}), 500

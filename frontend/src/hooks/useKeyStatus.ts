@@ -17,31 +17,69 @@ export const useKeyStatus = () => {
 
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [isBackendAvailable, setIsBackendAvailable] = useState<boolean>(false);
 
-  useEffect(() => {
-    const fetchKeyStatus = async () => {
-      try {
-        // Use the correct endpoint that exists in the backend
-        const response = await fetch('/api/status/keys');
+  const fetchKeyStatus = async (retryCount = 0) => {
+    const maxRetries = 5;
+    const retryDelay = 1000; // 1 second
 
-        if (!response.ok) {
-          throw new Error(`Failed to fetch: ${response.status} ${response.statusText}`);
-        }
-        
-        const data: BackendKeyStatus = await response.json();
-        setBackendKeys(data);
+    try {
+      const response = await fetch('/api/status/keys', {
+        // Add timeout to prevent hanging requests
+        signal: AbortSignal.timeout(5000)
+      });
 
-      } catch (err: any) {
-        console.error("Error fetching API key status:", err);
-        setError(err.message || 'An unknown error occurred.');
+      if (!response.ok) {
+        throw new Error(`Backend responded with status ${response.status}`);
+      }
+      
+      const data: BackendKeyStatus = await response.json();
+      setBackendKeys(data);
+      setIsBackendAvailable(true);
+      setError(null);
 
-      } finally {
+    } catch (err: any) {
+      console.warn(`Attempt ${retryCount + 1}/${maxRetries + 1}: Failed to fetch key status:`, err.message);
+      
+      if (retryCount < maxRetries) {
+        // Retry with exponential backoff
+        const delay = retryDelay * Math.pow(2, retryCount);
+        setTimeout(() => fetchKeyStatus(retryCount + 1), delay);
+        return;
+      }
+
+      // After all retries failed, set error state
+      setError('Backend is not available. Please check if the server is running.');
+      setIsBackendAvailable(false);
+      
+      // Set all keys to false to show warnings
+      setBackendKeys({
+        openai: false,
+        google: false,
+        alpha_vantage: false,
+        fred: false,
+      });
+
+    } finally {
+      if (retryCount === 0) {
         setIsLoading(false);
       }
-    };
+    }
+  };
 
+  useEffect(() => {
     fetchKeyStatus();
   }, []);
 
-  return { backendKeys, isLoading, error };
+  return { 
+    backendKeys, 
+    isLoading, 
+    error, 
+    isBackendAvailable,
+    refetch: () => {
+      setIsLoading(true);
+      setError(null);
+      fetchKeyStatus();
+    }
+  };
 };

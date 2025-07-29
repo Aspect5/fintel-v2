@@ -36,9 +36,14 @@ These steps only need to be performed once to prepare the project.
     pip install -r backend/requirements.txt
     ```
 4.  **Configure API Keys:** All secrets are managed in a single file.
-    *   Navigate to the `backend` directory.
-    *   Create a `.env` file by copying the example: `cp .env.example .env`.
-    *   Open `backend/.env` and add your API keys. At least one provider (OpenAI or Google) is required.
+    *   Create a `.env` file in the **project root** (same level as `backend/` and `frontend/` directories).
+    *   Add your API keys to the `.env` file. At least one provider (OpenAI or Google) is required:
+    ```env
+    OPENAI_API_KEY=sk-your-openai-key-here
+    GOOGLE_API_KEY=your-google-key-here
+    ALPHA_VANTAGE_API_KEY=your-alpha-vantage-key-here
+    FRED_API_KEY=your-fred-key-here
+    ```
 
 **B. Configure the Frontend:**
 
@@ -55,11 +60,37 @@ After the one-time setup, you can start the entire application with a single com
 npm run dev
 ```
 
-This command uses `concurrently` to:
-*   Start the Vite frontend development server (on `http://localhost:5173`).
-*   Start the Python Flask backend server (on `http://localhost:5001`) using the correct virtual environment.
+This command uses `concurrently` with intelligent startup sequencing:
+*   Starts the Python Flask backend server (on `http://localhost:5001`) using the correct virtual environment.
+*   Waits for the backend to be healthy before starting the frontend.
+*   Starts the Vite frontend development server (on `http://localhost:9002`).
 
-You can now open your browser to `http://localhost:5173`.
+You can now open your browser to `http://localhost:9002`.
+
+### 4. Alternative Startup Options
+
+**Start Both Services Together (Recommended):**
+```bash
+npm run dev
+```
+
+**Start Services Individually (for debugging):**
+```bash
+# Backend only
+npm run dev:backend
+
+# Frontend only (after backend is running)
+npm run dev:frontend
+```
+
+### 5. Health Checks and Error Handling
+
+The application includes robust health checking and error handling:
+
+*   **Backend Health Check**: The frontend waits for the backend to be ready before starting.
+*   **Automatic Retries**: If the backend is temporarily unavailable, the frontend will retry with exponential backoff.
+*   **Graceful Degradation**: If the backend is completely unavailable, the frontend shows helpful error messages.
+*   **Manual Retry**: Users can manually retry connecting to the backend from the UI.
 
 ### How to Use
 
