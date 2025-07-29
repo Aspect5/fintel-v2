@@ -1,20 +1,96 @@
 import React, { useEffect, useState } from 'react';
 import CodeBracketIcon from './icons/CodeBracketIcon';
 
-interface Tool {
-  name: string;
-  description: string;
+interface ToolDetails {
+  args: Record<string, any>;
+  returns: string;
+  examples: string[];
 }
 
-const ToolCard: React.FC<{ tool: Tool }> = ({ tool }) => (
-    <div className="bg-brand-bg p-4 rounded-lg border border-brand-border mb-4 transition-shadow hover:shadow-lg hover:border-brand-primary/50">
-        <div className="flex items-center mb-2">
-            <CodeBracketIcon className="w-5 h-5 text-brand-primary mr-3 flex-shrink-0" />
-            <h4 className="font-bold text-brand-text-primary">{tool.name}</h4>
+interface Tool {
+  name: string;
+  summary: string;
+  details: ToolDetails;
+  type: string;
+}
+
+const ToolCard: React.FC<{ tool: Tool }> = ({ tool }) => {
+    const [isExpanded, setIsExpanded] = useState(false);
+    
+    return (
+        <div className="bg-brand-bg p-4 rounded-lg border border-brand-border mb-4 transition-shadow hover:shadow-lg hover:border-brand-primary/50">
+            <div className="flex items-center mb-2">
+                <CodeBracketIcon className="w-5 h-5 text-brand-primary mr-3 flex-shrink-0" />
+                <h4 className="font-bold text-brand-text-primary flex-grow">{tool.name}</h4>
+                <button
+                    onClick={() => setIsExpanded(!isExpanded)}
+                    className="text-brand-text-secondary hover:text-brand-primary text-sm px-2 py-1 rounded transition-colors"
+                    title={isExpanded ? "Collapse details" : "Expand details"}
+                >
+                    {isExpanded ? '▼' : '▶'}
+                </button>
+            </div>
+            <p className="text-sm text-brand-text-secondary mb-3 pl-8 leading-relaxed">{tool.summary}</p>
+            
+            {isExpanded && (
+                <div className="pl-8 space-y-4 border-l-2 border-brand-border ml-2">
+                    {Object.keys(tool.details.args).length > 0 && (
+                        <div>
+                            <h5 className="font-semibold text-brand-text-primary text-sm mb-2 flex items-center">
+                                <span className="w-2 h-2 bg-brand-primary rounded-full mr-2"></span>
+                                Arguments
+                            </h5>
+                            <div className="space-y-2">
+                                {Object.entries(tool.details.args).map(([argName, argData]) => (
+                                    <div key={argName} className="text-xs text-brand-text-secondary bg-brand-bg-secondary p-2 rounded">
+                                        <div className="flex items-center mb-1">
+                                            <code className="bg-brand-bg px-1 rounded font-mono text-brand-primary">{argName}</code>
+                                            {typeof argData === 'object' && argData.type && (
+                                                <span className="ml-2 text-brand-text-tertiary">({argData.type})</span>
+                                            )}
+                                            {typeof argData === 'object' && argData.required === False && (
+                                                <span className="ml-2 text-xs bg-yellow-600 text-white px-1 rounded">optional</span>
+                                            )}
+                                        </div>
+                                        {typeof argData === 'object' && argData.description && (
+                                            <p className="text-brand-text-secondary">{argData.description}</p>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    
+                    {tool.details.returns && tool.details.returns !== "Unknown" && (
+                        <div>
+                            <h5 className="font-semibold text-brand-text-primary text-sm mb-2 flex items-center">
+                                <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                                Returns
+                            </h5>
+                            <p className="text-xs text-brand-text-secondary bg-brand-bg-secondary p-2 rounded">{tool.details.returns}</p>
+                        </div>
+                    )}
+                    
+                    {tool.details.examples.length > 0 && (
+                        <div>
+                            <h5 className="font-semibold text-brand-text-primary text-sm mb-2 flex items-center">
+                                <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+                                Examples
+                            </h5>
+                            <div className="space-y-2">
+                                {tool.details.examples.map((example, index) => (
+                                    <code key={index} className="block text-xs bg-brand-bg-secondary p-2 rounded font-mono text-brand-text-secondary border border-brand-border">
+                                        {example}
+                                    </code>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
-        <p className="text-sm text-brand-text-secondary mb-3 pl-8">{tool.description}</p>
-    </div>
-);
+    );
+};
 
 const ToolkitPanel: React.FC = () => {
     const [tools, setTools] = useState<Tool[]>([]);
