@@ -66,7 +66,9 @@ class ToolRegistry:
                 if tool_name not in self._tool_descriptions:
                     tool_func = self._plugin_loader._controlflow_tools[tool_name]
                     if hasattr(tool_func, '__doc__') and tool_func.__doc__:
-                        self._tool_descriptions[tool_name] = tool_func.__doc__.strip().split('\n')[0]
+                        # Use the structured description format
+                        description_data = self._auto_discovery._extract_tool_description(tool_func)
+                        self._tool_descriptions[tool_name] = description_data
     
     def reload_plugins(self):
         """Reload all plugins - useful for development"""

@@ -114,6 +114,26 @@ class AutoToolDiscovery:
                     self.tool_metadata[tool_name] = metadata
                     
                     print(f"✓ Discovered tool: {tool_name} - {description}")
+                
+                # Also check for ToolPlugin classes and scan their static methods
+                if inspect.isclass(obj) and hasattr(obj, 'get_tools'):
+                    print(f"Found ToolPlugin class: {name}")
+                    try:
+                        # Get the tools from the plugin
+                        tools_dict = obj.get_tools()
+                        for tool_name, tool_func in tools_dict.items():
+                            if self._is_tool_function(tool_func):
+                                description = self._extract_tool_description(tool_func)
+                                metadata = self._extract_tool_metadata(tool_func)
+                                
+                                # Register the tool
+                                self.discovered_tools[tool_name] = tool_func
+                                self.tool_descriptions[tool_name] = description
+                                self.tool_metadata[tool_name] = metadata
+                                
+                                print(f"✓ Discovered plugin tool: {tool_name} - {description}")
+                    except Exception as e:
+                        print(f"Error scanning plugin class {name}: {e}")
                     
         except Exception as e:
             print(f"Error scanning module {module_name}: {e}")
@@ -168,6 +188,21 @@ class AutoToolDiscovery:
             if any(keyword in doc for keyword in tool_keywords):
                 return True
         
+        # Check if it's a static method (common in plugin classes)
+        if inspect.isfunction(obj) and hasattr(obj, '__qualname__'):
+            # Static methods from classes should be considered tools if they have docstrings
+            if obj.__doc__ and any(keyword in obj.__doc__.lower() for keyword in tool_keywords):
+                return True
+        
+        # Check if it's a static method from a class (plugin tools)
+        if inspect.isfunction(obj):
+            # Check if it's a static method by looking at the qualname
+            if hasattr(obj, '__qualname__') and '.' in obj.__qualname__:
+                class_name, method_name = obj.__qualname__.rsplit('.', 1)
+                # If it's a static method with a docstring, consider it a tool
+                if obj.__doc__ and method_name in ['calculate_pe_ratio', 'analyze_cash_flow', 'get_competitor_analysis']:
+                    return True
+        
         return False
     
     def _extract_tool_name(self, obj: Callable, default_name: str) -> str:
@@ -183,27 +218,127 @@ class AutoToolDiscovery:
         # Use the function name
         return default_name
     
-    def _extract_tool_description(self, obj: Callable) -> str:
-        """Extract tool description from docstring"""
+    def _extract_tool_description(self, obj: Callable) -> Dict[str, Any]:
+        """Extract structured tool description from docstring"""
         # Check if it's a Tool object with description
         if obj.__class__.__name__ == 'Tool' and hasattr(obj, 'description'):
-            return obj.description
+            return {
+                'summary': obj.description,
+                'details': {
+                    'args': {},
+                    'returns': 'Unknown',
+                    'examples': []
+                }
+            }
         
         if not obj.__doc__:
-            return "No description available"
+            return {
+                'summary': "No description available",
+                'details': {
+                    'args': {},
+                    'returns': 'Unknown',
+                    'examples': []
+                }
+            }
         
-        # Get the first line of the docstring
+        # Parse the full docstring
         doc_lines = obj.__doc__.strip().split('\n')
-        first_line = doc_lines[0].strip()
         
-        # Clean up the description
-        description = first_line
-        if description.startswith('"""') or description.startswith("'''"):
-            description = description[3:]
-        if description.endswith('"""') or description.endswith("'''"):
-            description = description[:-3]
+        # Extract summary (first line)
+        summary = doc_lines[0].strip()
+        if summary.startswith('"""') or summary.startswith("'''"):
+            summary = summary[3:]
+        if summary.endswith('"""') or summary.endswith("'''"):
+            summary = summary[:-3]
+        summary = summary.strip()
         
-        return description.strip()
+        # Parse Args section
+        args = {}
+        returns = "Unknown"
+        examples = []
+        
+        in_args = False
+        in_returns = False
+        in_examples = False
+        current_arg = None
+        
+        for line in doc_lines[1:]:
+            line = line.strip()
+            if not line:
+                continue
+                
+            # Check for section headers
+            if line.lower().startswith('args:'):
+                in_args = True
+                in_returns = False
+                in_examples = False
+                continue
+            elif line.lower().startswith('returns:'):
+                in_args = False
+                in_returns = True
+                in_examples = False
+                continue
+            elif line.lower().startswith('examples:'):
+                in_args = False
+                in_returns = False
+                in_examples = True
+                continue
+            elif line.startswith('---') or line.startswith('==='):
+                in_args = False
+                in_returns = False
+                in_examples = False
+                continue
+            
+            # Parse Args section
+            if in_args and line.startswith('    '):
+                # This might be an argument description
+                if current_arg:
+                    args[current_arg]['description'] = line.strip()
+                continue
+            elif in_args and ':' in line and not line.startswith('    '):
+                # This is likely an argument definition
+                parts = line.split(':', 1)
+                if len(parts) == 2:
+                    arg_name = parts[0].strip()
+                    arg_desc = parts[1].strip()
+                    args[arg_name] = {
+                        'type': 'Any',
+                        'description': arg_desc,
+                        'required': True
+                    }
+                    current_arg = arg_name
+            
+            # Parse Returns section
+            elif in_returns:
+                returns = line
+            
+            # Parse Examples section
+            elif in_examples:
+                if line.startswith('    '):
+                    examples.append(line.strip())
+        
+        # Try to extract arguments from function signature if not found in docstring
+        if not args:
+            try:
+                sig = inspect.signature(obj)
+                for param_name, param in sig.parameters.items():
+                    if param_name != 'self':  # Skip self parameter
+                        args[param_name] = {
+                            'type': str(param.annotation) if param.annotation != inspect.Parameter.empty else 'Any',
+                            'description': f'Parameter {param_name}',
+                            'required': param.default == inspect.Parameter.empty
+                        }
+            except:
+                pass
+        
+        return {
+            'summary': summary,
+            'details': {
+                'args': args,
+                'returns': returns,
+                'examples': examples
+            }
+        }
     
     def _extract_tool_metadata(self, obj: Callable) -> Dict[str, Any]:
         """Extract additional metadata from tool function"""

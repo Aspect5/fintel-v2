@@ -111,11 +111,32 @@ def get_tools():
         # Convert to a list format for the frontend
         tools_list = []
         for tool_name, tool_func in available_tools.items():
-            tool_info = {
-                "name": tool_name,
-                "description": tool_descriptions.get(tool_name, "No description available"),
-                "type": "function"
-            }
+            description_data = tool_descriptions.get(tool_name, {})
+            
+            # Handle both old string format and new structured format
+            if isinstance(description_data, str):
+                tool_info = {
+                    "name": tool_name,
+                    "summary": description_data,
+                    "details": {
+                        "args": {},
+                        "returns": "Unknown",
+                        "examples": []
+                    },
+                    "type": "function"
+                }
+            else:
+                tool_info = {
+                    "name": tool_name,
+                    "summary": description_data.get('summary', "No description available"),
+                    "details": description_data.get('details', {
+                        "args": {},
+                        "returns": "Unknown",
+                        "examples": []
+                    }),
+                    "type": "function"
+                }
+            
             tools_list.append(tool_info)
         
         return jsonify(tools_list)

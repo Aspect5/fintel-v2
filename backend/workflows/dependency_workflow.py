@@ -78,14 +78,28 @@ class DependencyDrivenWorkflow(BaseWorkflow):
         # Conditionally add agents based on query content
         query_lower = query.lower()
         
-        if any(word in query_lower for word in ['market', 'stock', 'price', 'trading']):
+        # Enhanced keyword matching for market analysis
+        market_keywords = ['market', 'stock', 'price', 'trading', 'invest', 'investment', 'buy', 'sell', 'hold', 'portfolio', 'ticker', 'company', 'earnings', 'revenue', 'profit', 'loss', 'dividend', 'share', 'shares']
+        if any(word in query_lower for word in market_keywords):
             agents['market'] = agent_registry.get_agent("MarketAnalyst", provider)
         
-        if any(word in query_lower for word in ['economy', 'gdp', 'inflation', 'rates']):
+        # Enhanced keyword matching for economic analysis
+        economic_keywords = ['economy', 'gdp', 'inflation', 'rates', 'interest', 'federal', 'fed', 'economic', 'recession', 'growth', 'employment', 'unemployment', 'monetary', 'fiscal', 'policy']
+        if any(word in query_lower for word in economic_keywords):
             agents['economic'] = agent_registry.get_agent("EconomicAnalyst", provider)
         
-        if any(word in query_lower for word in ['risk', 'volatility', 'beta']):
+        # Enhanced keyword matching for risk assessment
+        risk_keywords = ['risk', 'volatility', 'beta', 'danger', 'safe', 'safety', 'uncertainty', 'exposure', 'variance', 'standard deviation', 'downside', 'upside', 'potential']
+        if any(word in query_lower for word in risk_keywords):
             agents['risk'] = agent_registry.get_agent("RiskAssessment", provider)
+        
+        # For investment queries, always include market analysis if not already selected
+        if any(word in query_lower for word in ['invest', 'investment', 'buy', 'sell', 'should i', 'worth', 'value', 'valuation']) and 'market' not in agents:
+            agents['market'] = agent_registry.get_agent("MarketAnalyst", provider)
+        
+        # For any financial analysis, include at least market analysis
+        if 'market' not in agents and any(word in query_lower for word in ['analyze', 'analysis', 'financial', 'finance', 'money']):
+            agents['market'] = agent_registry.get_agent("MarketAnalyst", provider)
         
         # Check for custom agents that might be relevant
         for agent_name in agent_registry.get_available_agents():
@@ -103,40 +117,67 @@ class DependencyDrivenWorkflow(BaseWorkflow):
                   'data': {'label': 'User Query', 'details': query, 'status': 'running'}}]
         edges = []
         
-        agent_positions = {
-            'market': {'x': 350, 'y': 100},
-            'economic': {'x': 350, 'y': 300},
-            'risk': {'x': 650, 'y': 200}
-        }
+        # Calculate positions based on number of agents
+        agent_keys = [key for key in agents.keys() if key != 'coordinator']
+        num_agents = len(agent_keys)
+        
+        # Position agents in a grid layout
+        agent_positions = {}
+        if num_agents == 1:
+            agent_positions[agent_keys[0]] = {'x': 350, 'y': 200}
+        elif num_agents == 2:
+            agent_positions[agent_keys[0]] = {'x': 350, 'y': 100}
+            agent_positions[agent_keys[1]] = {'x': 350, 'y': 300}
+        elif num_agents >= 3:
+            agent_positions[agent_keys[0]] = {'x': 350, 'y': 100}
+            agent_positions[agent_keys[1]] = {'x': 350, 'y': 200}
+            agent_positions[agent_keys[2]] = {'x': 350, 'y': 300}
         
         # Add nodes for each agent
-        for agent_key, position in agent_positions.items():
-            if agent_key in agents:
+        for agent_key in agent_keys:
+            if agent_key in agent_positions:
+                position = agent_positions[agent_key]
+                node_id = f'{agent_key}_analysis'
                 nodes.append({
-                    'id': f'{agent_key}_analysis', 'type': 'default', 'position': position,
+                    'id': node_id, 'type': 'default', 'position': position,
                     'data': {'label': f'{agent_key.title()} Analyst', 'status': 'pending', 'toolCalls': []}
                 })
-                edges.append({'id': f'e_{agent_key}', 'source': 'query_input', 'target': f'{agent_key}_analysis', 'animated': False})
+                edges.append({'id': f'e_{agent_key}', 'source': 'query_input', 'target': node_id, 'animated': False})
 
-        # Add risk node connections from market and economic if they exist
+        # Add risk node connections if risk assessment is present
         if 'risk' in agents:
-            if 'market' in agents:
-                edges.append({'id': 'e_market_risk', 'source': 'market_analysis', 'target': 'risk_assessment', 'animated': False})
-            if 'economic' in agents:
-                edges.append({'id': 'e_economic_risk', 'source': 'economic_analysis', 'target': 'risk_assessment', 'animated': False})
+            risk_node_id = 'risk_analysis'
+            for agent_key in agent_keys:
+                if agent_key != 'risk':
+                    source_node_id = f'{agent_key}_analysis'
+                    edges.append({'id': f'e_{agent_key}_risk', 'source': source_node_id, 'target': risk_node_id, 'animated': False})
         
         # Add final synthesis node
-        nodes.append({'id': 'final_synthesis', 'type': 'output', 'position': {'x': 950, 'y': 200}, 
+        final_x = 650 if num_agents <= 2 else 650
+        final_y = 200 if num_agents == 1 else 200
+        nodes.append({'id': 'final_synthesis', 'type': 'output', 'position': {'x': final_x, 'y': final_y}, 
                       'data': {'label': 'Final Report', 'status': 'pending'}})
 
         # Connect final synthesis to its dependencies
-        synthesis_dependencies = [f'{agent_key}_analysis' for agent_key in agents if agent_key != 'coordinator']
+        synthesis_dependencies = [f'{agent_key}_analysis' for agent_key in agent_keys]
         for dep in synthesis_dependencies:
             edges.append({'id': f'e_{dep}_final', 'source': dep, 'target': 'final_synthesis', 'animated': False})
             
+        # Update workflow status with nodes and edges
         self.workflow_status.update({
-            'nodes': nodes, 'edges': edges, 'start_time': datetime.now().isoformat(), 'query': query
+            'nodes': nodes, 
+            'edges': edges, 
+            'start_time': datetime.now().isoformat(), 
+            'query': query,
+            'status': 'initializing'
         })
+        
+        # Log the initialization for debugging
+        logger.info(f"Initialized workflow nodes: {len(nodes)} nodes, {len(edges)} edges")
+        logger.info(f"Agent keys: {agent_keys}")
+        logger.info(f"Node IDs: {[node['id'] for node in nodes]}")
+        
+        # Update status to notify callbacks
         self._update_status({'initialized': True})
         
     def _extract_ticker_from_query(self, query: str) -> str:
@@ -230,6 +271,13 @@ class DependencyDrivenWorkflow(BaseWorkflow):
                         agents=[agents['economic']], result_type=str
                     )
 
+                if 'risk' in agents:
+                    self._update_node_status('risk_analysis', 'running')
+                    tasks['risk'] = cf.Task(
+                        objective="Assess investment risks based on market and economic analysis",
+                        agents=[agents['risk']], result_type=str
+                    )
+
                 # Run parallel tasks first
                 parallel_tasks = [task for key, task in tasks.items() if key in ['market', 'economic']]
                 if parallel_tasks:
@@ -246,7 +294,6 @@ class DependencyDrivenWorkflow(BaseWorkflow):
                     self._update_node_status('economic_analysis', 'completed', result=economic_result, tool_calls=economic_tool_calls)
 
                 if 'risk' in agents:
-                    self._update_node_status('risk_assessment', 'running')
                     risk_dependencies = [tasks[key] for key in ['market', 'economic'] if key in tasks]
                     tasks['risk'] = cf.Task(
                         objective="Assess investment risks based on market and economic analysis",
@@ -254,7 +301,8 @@ class DependencyDrivenWorkflow(BaseWorkflow):
                         agents=[agents['risk']], result_type=str
                     )
                     risk_result = tasks['risk'].run(handlers=[event_handler])
-                    self._update_node_status('risk_assessment', 'completed', result=risk_result)
+                    risk_tool_calls = self._extract_tool_calls(event_handler.events, 'RiskAssessment')
+                    self._update_node_status('risk_analysis', 'completed', result=risk_result, tool_calls=risk_tool_calls)
 
                 self._update_node_status('final_synthesis', 'running')
                 final_dependencies = list(tasks.values())
