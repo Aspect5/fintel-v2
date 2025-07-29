@@ -23,14 +23,21 @@ class ToolRegistry:
         """Initialize all available tools using automatic discovery"""
         settings = get_settings()
         
-        # Instantiate and register built-in tool instances
-        self._tool_instances['market_data'] = MarketDataTool()
-        self._tool_instances['company_overview'] = CompanyOverviewTool()
-        self._tool_instances['economic_data'] = EconomicDataTool()
+        # Instantiate and register built-in tool instances with API keys
+        self._tool_instances['market_data'] = MarketDataTool(api_key=settings.alpha_vantage_api_key)
+        self._tool_instances['company_overview'] = CompanyOverviewTool(api_key=settings.alpha_vantage_api_key)
+        self._tool_instances['economic_data'] = EconomicDataTool(api_key=settings.fred_api_key)
 
         # Set tool instances for builtin_tools module
         from .builtin_tools import set_tool_instances
         set_tool_instances(self._tool_instances)
+        
+        # Verify tool instances were set
+        from .builtin_tools import _tool_instances
+        if not _tool_instances:
+            print("WARNING: Tool instances not set in builtin_tools module")
+            # Force set them again
+            set_tool_instances(self._tool_instances)
 
         # Use automatic discovery to find all tools
         discovered_tools = self._auto_discovery.discover_all_tools()
@@ -46,8 +53,12 @@ class ToolRegistry:
                                'calculate_pe_ratio', 'analyze_cash_flow', 'get_competitor_analysis',
                                'process_strict_json']:
                     try:
-                        cf_tool = cf.tool(tool_func)
-                        self._tools[tool_name] = cf_tool
+                        # Check if it's already a ControlFlow Tool object
+                        if tool_func.__class__.__name__ == 'Tool':
+                            self._tools[tool_name] = tool_func
+                        else:
+                            cf_tool = cf.tool(tool_func)
+                            self._tools[tool_name] = cf_tool
                     except Exception as e:
                         print(f"Warning: Failed to wrap tool {tool_name}: {e}")
                         # Keep the original function as fallback

@@ -23,7 +23,7 @@ import XCircleIcon from './icons-solid/XCircleIcon';
 
 // Custom node component with proper typing
 const CustomNode: React.FC<NodeProps> = ({ data }) => {
-  const { label, details, status, error } = data;
+  const { label, details, status, error, result } = data;
   
   const getStatusIcon = () => {
     switch (status) {
@@ -47,8 +47,42 @@ const CustomNode: React.FC<NodeProps> = ({ data }) => {
     return 'border-brand-border';
   };
 
+  const getStatusText = () => {
+    switch (status) {
+      case 'running':
+        return 'Running...';
+      case 'completed':
+      case 'success':
+        return 'Completed';
+      case 'failed':
+      case 'failure':
+        return 'Failed';
+      case 'pending':
+        return 'Pending';
+      default:
+        return 'Ready';
+    }
+  };
+
+  // Check if this is the User Query node
+  const isUserQuery = label === 'User Query';
+  
+  // Get provider info from localStorage or default
+  const getProviderInfo = () => {
+    try {
+      const stored = localStorage.getItem('fintel-app-storage');
+      if (stored) {
+        const data = JSON.parse(stored);
+        return data.state?.controlFlowProvider || 'OpenAI';
+      }
+    } catch (e) {
+      // Ignore errors
+    }
+    return 'OpenAI';
+  };
+
   return (
-    <div className={`relative p-4 bg-brand-surface border-2 rounded-lg shadow-lg min-w-[200px] ${getBorderColor()} transition-all duration-300 cursor-pointer hover:shadow-xl`}>
+    <div className={`relative p-4 bg-brand-surface border-2 rounded-lg shadow-lg min-w-[200px] max-w-[280px] ${getBorderColor()} transition-all duration-300 cursor-pointer hover:shadow-xl hover:scale-105 group`}>
       <Handle 
         type="target" 
         position={Position.Left} 
@@ -56,18 +90,54 @@ const CustomNode: React.FC<NodeProps> = ({ data }) => {
         style={{ left: '-8px' }}
       />
       
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-3">
         <div className="font-bold text-lg text-white">{label}</div>
         {getStatusIcon()}
       </div>
       
+      {/* Status indicator - only show for non-User Query nodes */}
+      {!isUserQuery && (
+        <div className="flex items-center justify-between mb-2">
+          <span className={`text-xs px-2 py-1 rounded-full ${
+            status === 'completed' || status === 'success' ? 'bg-green-500/20 text-green-400' :
+            status === 'failed' || status === 'failure' ? 'bg-red-500/20 text-red-400' :
+            status === 'running' ? 'bg-blue-500/20 text-blue-400' :
+            'bg-gray-500/20 text-gray-400'
+          }`}>
+            {getStatusText()}
+          </span>
+          <span className="text-xs text-brand-text-secondary opacity-0 group-hover:opacity-100 transition-opacity">
+            Double-click for details
+          </span>
+        </div>
+      )}
+      
+      {/* Provider info for User Query node */}
+      {isUserQuery && (
+        <div className="mb-2">
+          <span className="text-xs text-brand-text-secondary bg-brand-primary/20 px-2 py-1 rounded">
+            Provider: {getProviderInfo()}
+          </span>
+        </div>
+      )}
+      
+      {/* Details/Summary */}
       {details && (
-        <div className="text-sm text-brand-text-secondary">{details}</div>
+        <div className="text-sm text-brand-text-secondary mb-2 line-clamp-2">
+          {details.length > 80 ? `${details.substring(0, 80)}...` : details}
+        </div>
+      )}
+      
+      {/* Result preview - only for completed nodes that are not User Query */}
+      {result && (status === 'completed' || status === 'success') && !isUserQuery && (
+        <div className="text-xs text-green-400 bg-green-500/10 p-2 rounded border border-green-500/20">
+          ✓ Complete
+        </div>
       )}
       
       {error && (
-        <div className="text-xs text-red-400 mt-2 p-2 bg-red-900/40 rounded">
-          Error: {error}
+        <div className="text-xs text-red-400 bg-red-500/10 p-2 rounded border border-red-500/20">
+          ✗ {error.length > 50 ? `${error.substring(0, 50)}...` : error}
         </div>
       )}
       
@@ -197,51 +267,21 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = (props) => {
         }
         
         .react-flow__controls-brand button {
-          background-color: #161B22;
-          border-bottom: 1px solid #30363D;
-          fill: #C9D1D9;
-          width: 32px;
-          height: 32px;
-        }
-        
-        .react-flow__controls-brand button:last-child {
-          border-bottom: none;
+          background: #21262D;
+          border: 1px solid #30363D;
+          color: #C9D1D9;
         }
         
         .react-flow__controls-brand button:hover {
-          background-color: #0D1117;
+          background: #30363D;
         }
         
-        .react-flow__minimap-brand {
-          background-color: #161B22;
-          border: 1px solid #30363D;
-        }
-        
-        .react-flow__minimap-mask {
-          fill: rgba(13, 17, 23, 0.6);
-        }
-        
-        /* Edge styling */
-        .react-flow__edge-path {
-          stroke: #30363D;
-          stroke-width: 2;
-        }
-        
-        .react-flow__edge.animated .react-flow__edge-path {
-          stroke: #58A6FF;
-          stroke-dasharray: 5;
-          animation: dashdraw 0.5s linear infinite;
-        }
-        
-        @keyframes dashdraw {
-          to {
-            stroke-dashoffset: -10;
-          }
-        }
-        
-        /* Ensure proper cursor for nodes */
-        .react-flow__node {
-          cursor: pointer;
+        /* Line clamp utility */
+        .line-clamp-2 {
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
         }
       `}</style>
     </div>

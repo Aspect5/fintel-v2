@@ -1,0 +1,172 @@
+import React, { useEffect, useState } from 'react';
+import CodeBracketIcon from './icons/CodeBracketIcon';
+
+interface ToolDetails {
+  args: Record<string, any>;
+  returns: string;
+  examples: string[];
+}
+
+interface Tool {
+  name: string;
+  summary: string;
+  details: ToolDetails;
+  type: string;
+}
+
+const ToolCard: React.FC<{ tool: Tool }> = ({ tool }) => {
+    const [isExpanded, setIsExpanded] = useState(false);
+    
+    return (
+        <div className="bg-brand-bg p-4 rounded-lg border border-brand-border mb-4 transition-shadow hover:shadow-lg hover:border-brand-primary/50">
+            <div className="flex items-center mb-2">
+                <CodeBracketIcon className="w-5 h-5 text-brand-primary mr-3 flex-shrink-0" />
+                <h4 className="font-bold text-brand-text-primary flex-grow">{tool.name}</h4>
+                <button
+                    onClick={() => setIsExpanded(!isExpanded)}
+                    className="text-brand-text-secondary hover:text-brand-primary text-sm px-2 py-1 rounded transition-colors"
+                    title={isExpanded ? "Collapse details" : "Expand details"}
+                >
+                    {isExpanded ? '▼' : '▶'}
+                </button>
+            </div>
+            <p className="text-sm text-brand-text-secondary mb-3 pl-8 leading-relaxed">{tool.summary}</p>
+            
+            {isExpanded && (
+                <div className="pl-8 space-y-4 border-l-2 border-brand-border ml-2">
+                    {Object.keys(tool.details.args).length > 0 && (
+                        <div>
+                            <h5 className="font-semibold text-brand-text-primary text-sm mb-2 flex items-center">
+                                <span className="w-2 h-2 bg-brand-primary rounded-full mr-2"></span>
+                                Arguments
+                            </h5>
+                            <div className="space-y-2">
+                                {Object.entries(tool.details.args).map(([argName, argData]) => (
+                                    <div key={argName} className="text-xs text-brand-text-secondary bg-brand-bg-secondary p-2 rounded">
+                                        <div className="flex items-center mb-1">
+                                            <code className="bg-brand-bg px-1 rounded font-mono text-brand-primary">{argName}</code>
+                                            {typeof argData === 'object' && argData.type && (
+                                                <span className="ml-2 text-brand-text-tertiary">({argData.type})</span>
+                                            )}
+                                            {typeof argData === 'object' && argData.required === false && (
+                                                <span className="ml-2 text-xs bg-yellow-600 text-white px-1 rounded">optional</span>
+                                            )}
+                                        </div>
+                                        {typeof argData === 'object' && argData.description && (
+                                            <p className="text-brand-text-secondary">{argData.description}</p>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    
+                    {tool.details.returns && tool.details.returns !== "Unknown" && (
+                        <div>
+                            <h5 className="font-semibold text-brand-text-primary text-sm mb-2 flex items-center">
+                                <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                                Returns
+                            </h5>
+                            <p className="text-xs text-brand-text-secondary bg-brand-bg-secondary p-2 rounded">{tool.details.returns}</p>
+                        </div>
+                    )}
+                    
+                    {tool.details.examples.length > 0 && (
+                        <div>
+                            <h5 className="font-semibold text-brand-text-primary text-sm mb-2 flex items-center">
+                                <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+                                Examples
+                            </h5>
+                            <div className="space-y-2">
+                                {tool.details.examples.map((example, index) => (
+                                    <code key={index} className="block text-xs bg-brand-bg-secondary p-2 rounded font-mono text-brand-text-secondary border border-brand-border">
+                                        {example}
+                                    </code>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
+
+const ToolkitPanel: React.FC = () => {
+    const [tools, setTools] = useState<Tool[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        const fetchTools = async () => {
+            try {
+                const response = await fetch('/api/tools');
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                const data = await response.json();
+                
+                if (Array.isArray(data)) {
+                    setTools(data);
+                } else {
+                    console.error("Expected array but got:", data);
+                    setError("Invalid data format received from server");
+                }
+            } catch (error) {
+                console.error("Failed to fetch tools:", error);
+                setError(error instanceof Error ? error.message : "Unknown error occurred");
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchTools();
+    }, []);
+
+    if (error) {
+        return (
+            <div className="p-4 text-red-400">
+                <h3 className="text-lg font-semibold mb-2">Error Loading Tools</h3>
+                <p className="text-sm">{error}</p>
+                <button 
+                    onClick={() => window.location.reload()} 
+                    className="mt-2 px-3 py-1 bg-red-600 text-white rounded text-sm"
+                >
+                    Retry
+                </button>
+            </div>
+        );
+    }
+
+    return (
+        <div className="p-4 h-full overflow-y-auto">
+             <style>{`
+                .animate-slide-in {
+                    animation: slide-in 0.5s ease-out forwards;
+                }
+                @keyframes slide-in {
+                    from {
+                        opacity: 0;
+                        transform: translateX(-10px);
+                    }
+                    to {
+                        opacity: 1;
+                        transform: translateX(0);
+                    }
+                }
+             `}</style>
+            <div className="animate-slide-in">
+                <h3 className="text-lg font-semibold text-brand-text-primary mb-4 px-2">Available Tools</h3>
+                {loading ? (
+                    <p className="text-brand-text-secondary">Loading tools...</p>
+                ) : (
+                    tools.map(tool => (
+                        <ToolCard key={tool.name} tool={tool} />
+                    ))
+                )}
+            </div>
+        </div>
+    );
+};
+
+export default ToolkitPanel;

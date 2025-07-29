@@ -12,8 +12,42 @@ interface Tool {
   summary: string;
   details: ToolDetails;
   type: string;
+  capable_agents?: string[];  // Optional for backward compatibility
 }
 
+const AgentCapabilities: React.FC<{ agents: string[] }> = ({ agents }) => {
+  if (!agents || agents.length === 0) {
+    return (
+      <div className="pl-8 mb-3">
+        <h5 className="font-semibold text-brand-text-secondary text-sm mb-2 flex items-center">
+          <span className="w-2 h-2 bg-gray-400 rounded-full mr-2"></span>
+          Capable Agents
+        </h5>
+        <p className="text-xs text-brand-text-tertiary italic">No agents can use this tool</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="pl-8 mb-3">
+      <h5 className="font-semibold text-brand-text-primary text-sm mb-2 flex items-center">
+        <span className="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>
+        Capable Agents
+      </h5>
+      <div className="flex flex-wrap gap-2">
+        {agents.map((agentName) => (
+          <span 
+            key={agentName}
+            className="inline-block px-2 py-1 text-xs bg-purple-600 text-white rounded-full font-medium hover:bg-purple-700 transition-colors"
+            title={`${agentName} can use this tool`}
+          >
+            {agentName}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+};
 const ToolCard: React.FC<{ tool: Tool }> = ({ tool }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     
@@ -32,6 +66,9 @@ const ToolCard: React.FC<{ tool: Tool }> = ({ tool }) => {
             </div>
             <p className="text-sm text-brand-text-secondary mb-3 pl-8 leading-relaxed">{tool.summary}</p>
             
+            {/* Agent Capabilities - Always Visible */}
+            <AgentCapabilities agents={tool.capable_agents || []} />
+                        
             {isExpanded && (
                 <div className="pl-8 space-y-4 border-l-2 border-brand-border ml-2">
                     {Object.keys(tool.details.args).length > 0 && (
@@ -48,7 +85,7 @@ const ToolCard: React.FC<{ tool: Tool }> = ({ tool }) => {
                                             {typeof argData === 'object' && argData.type && (
                                                 <span className="ml-2 text-brand-text-tertiary">({argData.type})</span>
                                             )}
-                                            {typeof argData === 'object' && argData.required === False && (
+                                            {typeof argData === 'object' && argData.required === false && (
                                                 <span className="ml-2 text-xs bg-yellow-600 text-white px-1 rounded">optional</span>
                                             )}
                                         </div>

@@ -21,6 +21,7 @@ os.environ["PREFECT_API_URL"] = ""
 os.environ["CONTROLFLOW_ENABLE_EXPERIMENTAL_TUI"] = "false"
 os.environ["CONTROLFLOW_ENABLE_PRINT_HANDLER"] = "false"
 os.environ["PREFECT_LOGGING_LEVEL"] = "CRITICAL"
+os.environ["PREFECT_EVENTS_ENABLED"] = "false"
 
 # Global workflow status storage
 active_workflows = {}
@@ -105,6 +106,9 @@ def get_tools():
     """Return a list of available tools and their schemas"""
     try:
         # Get available tools from the registry
+        # Get agent capabilities mapping
+        agent_registry = get_agent_registry()
+        tool_to_agents = agent_registry.get_tool_to_agents_mapping()
         available_tools = tool_registry.get_available_tools()
         tool_descriptions = tool_registry.get_tool_descriptions()
         
@@ -123,7 +127,8 @@ def get_tools():
                         "returns": "Unknown",
                         "examples": []
                     },
-                    "type": "function"
+                    "type": "function",
+                    "capable_agents": tool_to_agents.get(tool_name, [])
                 }
             else:
                 tool_info = {
@@ -134,7 +139,8 @@ def get_tools():
                         "returns": "Unknown",
                         "examples": []
                     }),
-                    "type": "function"
+                    "type": "function",
+                    "capable_agents": tool_to_agents.get(tool_name, [])
                 }
             
             tools_list.append(tool_info)

@@ -109,26 +109,6 @@ class AgentRegistry:
             if capability in config.tools:
                 agents_with_capability.append(agent_name)
         return agents_with_capability
-    def get_tool_to_agents_mapping(self) -> Dict[str, List[str]]:
-        """Get mapping of tools to agents that can use them"""
-        tool_to_agents = {}
-        for agent_name in self.get_available_agents():
-            try:
-                agent_info = self.get_agent_info(agent_name)
-                if agent_info and "tools" in agent_info:
-                    for tool_name in agent_info["tools"]:
-                        if tool_name not in tool_to_agents:
-                            tool_to_agents[tool_name] = []
-                        tool_to_agents[tool_name].append(agent_name)
-            except Exception as e:
-                print(f"Warning: Error processing agent {agent_name}: {e}")
-                continue
-        return tool_to_agents
-
-    def get_agents_by_tool(self, tool_name: str) -> List[str]:
-        """Get all agents that can use a specific tool"""
-        mapping = self.get_tool_to_agents_mapping()
-        return mapping.get(tool_name, [])
 
 # Global registry instance
 _registry = None

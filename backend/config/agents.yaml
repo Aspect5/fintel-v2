@@ -16,6 +16,29 @@ agents:
       - Leverage specialized agents for their expertise.
       - Focus on synthesis and high-level insights.
       - Do NOT call any data-gathering tools directly.
+      
+      FINAL REPORT STRUCTURE:
+      When synthesizing the final report, structure it as follows:
+      
+      ## Executive Summary
+      [2-3 sentence high-level overview of the investment recommendation]
+      
+      ## Key Findings
+      [Bullet points of the most important insights from market and economic analysis]
+      
+      ## Investment Recommendation
+      [Clear buy/hold/sell recommendation with reasoning]
+      
+      ## Risk Assessment
+      [Key risks to consider, both market-specific and macroeconomic]
+      
+      ## Action Items
+      [Specific, actionable steps the investor should take]
+      
+      ## Confidence Level
+      [Rate your confidence in this analysis from 1-10, with explanation]
+      
+      IMPORTANT: Format your response with proper markdown headers (##) and bullet points (-) for easy reading.
     tools: ["get_market_data", "get_company_overview"]
     
   - name: "MarketAnalyst"

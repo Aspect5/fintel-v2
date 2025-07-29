@@ -1,9 +1,15 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import path from 'path'
 
 export default defineConfig({
   root: 'frontend',
   plugins: [react()],
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, 'frontend/src'),
+    },
+  },
   server: {
     port: parseInt(process.env.PORT || '5173'),
     host: process.env.HOST || '0.0.0.0',

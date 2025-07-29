@@ -10,6 +10,9 @@ def setup_logging():
     logging.getLogger("prefect").setLevel(logging.CRITICAL)
     logging.getLogger("prefect.events").setLevel(logging.CRITICAL)
     logging.getLogger("prefect.task_engine").setLevel(logging.CRITICAL)
+    logging.getLogger("prefect._internal.concurrency").setLevel(logging.CRITICAL)
+    logging.getLogger("prefect._internal.services").setLevel(logging.CRITICAL)
+    logging.getLogger("prefect.events.worker").setLevel(logging.CRITICAL)
     logging.getLogger("langchain_google_genai").setLevel(logging.CRITICAL)
     logging.getLogger("tzlocal").setLevel(logging.CRITICAL)
     

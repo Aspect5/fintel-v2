@@ -1,6 +1,6 @@
 // components/AgentTraceModal.tsx - Updated to handle missing data
 import React from 'react';
-import { AgentNodeData, CustomNode, ToolCallResult } from '../frontend/src/types';
+import { AgentNodeData, CustomNode, ToolCallResult } from '../types';
 import XCircleIcon from './icons/XCircleIcon';
 import CodeBracketIcon from './icons/CodeBracketIcon';
 
@@ -80,17 +80,18 @@ const AgentTraceModal: React.FC<AgentTraceModalProps> = ({ node, onClose }) => {
 
     // For debugging
     console.log('AgentTraceModal rendering with node:', node);
+    console.log('Node data:', node.data);
 
     return (
         <div 
-            className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center animate-fade-in" 
+            className="fixed inset-0 bg-black/80 z-[9999] flex items-center justify-center animate-fade-in" 
             onClick={onClose}
         >
             <div 
-                className="w-full max-w-3xl h-[90vh] bg-brand-surface rounded-lg shadow-2xl overflow-y-auto flex flex-col" 
+                className="w-full max-w-4xl h-[90vh] bg-brand-surface rounded-lg shadow-2xl overflow-y-auto flex flex-col m-4" 
                 onClick={e => e.stopPropagation()}
             >
-                <header className="flex items-center justify-between p-4 border-b border-brand-border sticky top-0 bg-brand-surface">
+                <header className="flex items-center justify-between p-4 border-b border-brand-border sticky top-0 bg-brand-surface z-10">
                     <h3 className="text-xl font-bold text-white">Agent Details: {label}</h3>
                     <button onClick={onClose} className="text-brand-text-secondary hover:text-white">
                         <XCircleIcon className="w-7 h-7" />

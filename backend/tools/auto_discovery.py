@@ -220,18 +220,10 @@ class AutoToolDiscovery:
     
     def _extract_tool_description(self, obj: Callable) -> Dict[str, Any]:
         """Extract structured tool description from docstring"""
-        # Check if it's a Tool object with description
-        if obj.__class__.__name__ == 'Tool' and hasattr(obj, 'description'):
-            return {
-                'summary': obj.description,
-                'details': {
-                    'args': {},
-                    'returns': 'Unknown',
-                    'examples': []
-                }
-            }
         
-        if not obj.__doc__:
+        target_obj = obj.fn if hasattr(obj, 'fn') else obj
+
+        if not hasattr(target_obj, '__doc__') or not target_obj.__doc__:
             return {
                 'summary': "No description available",
                 'details': {
@@ -241,10 +233,8 @@ class AutoToolDiscovery:
                 }
             }
         
-        # Parse the full docstring
-        doc_lines = obj.__doc__.strip().split('\n')
+        doc_lines = target_obj.__doc__.strip().split('\n')
         
-        # Extract summary (first line)
         summary = doc_lines[0].strip()
         if summary.startswith('"""') or summary.startswith("'''"):
             summary = summary[3:]
@@ -252,7 +242,6 @@ class AutoToolDiscovery:
             summary = summary[:-3]
         summary = summary.strip()
         
-        # Parse Args section
         args = {}
         returns = "Unknown"
         examples = []
@@ -267,7 +256,6 @@ class AutoToolDiscovery:
             if not line:
                 continue
                 
-            # Check for section headers
             if line.lower().startswith('args:'):
                 in_args = True
                 in_returns = False
@@ -289,14 +277,11 @@ class AutoToolDiscovery:
                 in_examples = False
                 continue
             
-            # Parse Args section
             if in_args and line.startswith('    '):
-                # This might be an argument description
                 if current_arg:
                     args[current_arg]['description'] = line.strip()
                 continue
             elif in_args and ':' in line and not line.startswith('    '):
-                # This is likely an argument definition
                 parts = line.split(':', 1)
                 if len(parts) == 2:
                     arg_name = parts[0].strip()
@@ -308,21 +293,18 @@ class AutoToolDiscovery:
                     }
                     current_arg = arg_name
             
-            # Parse Returns section
             elif in_returns:
                 returns = line
             
-            # Parse Examples section
             elif in_examples:
                 if line.startswith('    '):
                     examples.append(line.strip())
         
-        # Try to extract arguments from function signature if not found in docstring
         if not args:
             try:
-                sig = inspect.signature(obj)
+                sig = inspect.signature(target_obj)
                 for param_name, param in sig.parameters.items():
-                    if param_name != 'self':  # Skip self parameter
+                    if param_name != 'self':
                         args[param_name] = {
                             'type': str(param.annotation) if param.annotation != inspect.Parameter.empty else 'Any',
                             'description': f'Parameter {param_name}',

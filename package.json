@@ -6,13 +6,13 @@
   "scripts": {
     "dev": "npm run clean && npm run start",
     "start": "concurrently --kill-others --names \"backend,frontend\" --prefix-colors \"blue,green\" \"npm run start:backend\" \"npm run wait-for-backend && npm run start:frontend\"",
-    "start:backend": "cd backend && source venv/bin/activate && export PYTHONPATH=$PYTHONPATH:$(dirname $(pwd)) && BACKEND_PORT=5001 python app.py",
+    "start:backend": "cd backend && source venv/bin/activate && export PYTHONPATH=$PYTHONPATH:$(dirname $(pwd)) && BACKEND_PORT=5001 python3 app.py",
     "start:frontend": "vite --host 0.0.0.0 --port 9002",
     "wait-for-backend": "node scripts/wait-for-backend.js",
     "build": "vite build",
     "preview": "vite preview --host ${HOST:-0.0.0.0} --port ${PORT:-4173}",
     "clean": "pkill -f 'python.*app|vite' || true",
-    "dev:backend": "cd backend && source venv/bin/activate && export PYTHONPATH=$PYTHONPATH:$(dirname $(pwd)) && BACKEND_PORT=5001 python app.py",
+    "dev:backend": "cd backend && source venv/bin/activate && export PYTHONPATH=$PYTHONPATH:$(dirname $(pwd)) && BACKEND_PORT=5001 python3 app.py",
     "dev:frontend": "vite --host 0.0.0.0 --port 9002"
   },
   "dependencies": {

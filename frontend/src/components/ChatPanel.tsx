@@ -1,10 +1,10 @@
 // components/ChatPanel.tsx
 import React, { useState, useEffect, useRef } from 'react';
-import { ChatMessage, WorkflowStatus } from '../frontend/src/types';
+import { ChatMessage, WorkflowStatus } from '../types';
 import MarkdownRenderer from './MarkdownRenderer';
 import SpinnerIcon from './icons/SpinnerIcon';
-import { useWorkflowStatus } from '../frontend/src/hooks/useWorkflowStatus';
-import { useStore } from '../store';
+import { useWorkflowStatus } from '../hooks/useWorkflowStatus';
+import { useStore } from '../../../store';
 
 interface ChatPanelProps {
   chatMessages: ChatMessage[];
@@ -26,7 +26,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
   const hasAddedResult = useRef(false);
   
   const { workflowStatus } = useWorkflowStatus(workflowId, initialStateSet);
-  const { controlFlowProvider } = useStore();
+  const { controlFlowProvider, clearChatMessages } = useStore();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,6 +78,13 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
     setQuery('');
   };
 
+  const handleClearChat = () => {
+    clearChatMessages();
+    setWorkflowId(null);
+    setInitialStateSet(false);
+    hasAddedResult.current = false;
+  };
+
   // Update result when workflow completes
   useEffect(() => {
     if (!workflowStatus || !workflowId || hasAddedResult.current) return;
@@ -89,10 +96,10 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
       hasAddedResult.current = true;
       setIsLoading(false);
       
-      // Add assistant message with result
+      // Add assistant message with a simple summary instead of the full report
       const assistantMessage: ChatMessage = {
         role: 'assistant',
-        content: workflowStatus.result,
+        content: `✅ Analysis completed! Click on the "Final Report" node in the workflow to view the detailed analysis.`,
         trace: workflowStatus.trace
       };
       onAddMessage(assistantMessage);
@@ -117,23 +124,38 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
 
   return (
     <div className="flex flex-col h-full bg-brand-bg">
+      {/* Header with clear button */}
+      {chatMessages.length > 0 && (
+        <div className="p-3 border-b border-brand-border bg-brand-surface flex justify-between items-center">
+          <h3 className="text-sm font-medium text-brand-text-primary">Chat History</h3>
+          <button
+            onClick={handleClearChat}
+            className="text-xs text-brand-text-secondary hover:text-brand-text-primary px-2 py-1 rounded hover:bg-brand-bg transition-colors"
+          >
+            Clear Chat
+          </button>
+        </div>
+      )}
+
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto p-4">
         <div className="space-y-4">
           {chatMessages.map((msg, index) => (
             <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-xl p-3 rounded-lg ${
+              <div className={`max-w-full p-3 rounded-lg ${
                 msg.role === 'user' 
                   ? 'bg-brand-primary text-white' 
                   : 'bg-brand-surface text-brand-text-primary'
               }`}>
-                <MarkdownRenderer content={msg.content} />
+                <div className="break-words">
+                  <MarkdownRenderer content={msg.content} />
+                </div>
                 {msg.trace && (
                   <details className="mt-2 text-xs text-brand-text-secondary">
                     <summary className="cursor-pointer hover:text-brand-text-primary">
                       View execution details
                     </summary>
-                    <pre className="mt-2 p-2 bg-brand-bg rounded overflow-x-auto">
+                    <pre className="mt-2 p-2 bg-brand-bg rounded overflow-x-auto text-xs">
                       {JSON.stringify(msg.trace, null, 2)}
                     </pre>
                   </details>
@@ -177,7 +199,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
                 workflowStatus.status === 'completed' ? 'text-green-400' :
                 workflowStatus.status === 'failed' ? 'text-red-400' :
                 workflowStatus.status === 'running' ? 'text-yellow-400' :
-                'text-blue -400'
+                'text-blue-400'
               }`}>
                 {workflowStatus.status}
               </span>

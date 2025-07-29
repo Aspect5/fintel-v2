@@ -17,6 +17,24 @@ def set_tool_instances(instances: Dict[str, Any]):
     """Set the tool instances for use by the tool functions"""
     global _tool_instances
     _tool_instances = instances
+    print(f"Tool instances set: {list(instances.keys())}")
+
+def get_tool_instances() -> Dict[str, Any]:
+    """Get tool instances with fallback to registry"""
+    global _tool_instances
+    
+    # If we have instances, return them
+    if _tool_instances:
+        return _tool_instances
+    
+    # Fallback: try to get from registry directly
+    try:
+        from backend.tools.registry import get_tool_registry
+        registry = get_tool_registry()
+        return registry._tool_instances
+    except Exception as e:
+        print(f"Warning: Could not get tool instances from registry: {e}")
+        return {}
 
 @cf.tool
 def get_market_data(ticker: str) -> dict:
@@ -43,8 +61,16 @@ def get_market_data(ticker: str) -> dict:
         }
     
     ticker = ticker.upper().strip()
-    if 'market_data' in _tool_instances:
-        return _tool_instances['market_data'].execute(ticker=ticker)
+    
+    # Get tool instances with fallback
+    instances = get_tool_instances()
+    
+    if 'market_data' in instances:
+        try:
+            return instances['market_data'].execute(ticker=ticker)
+        except Exception as e:
+            return {"error": f"Market data tool execution failed: {e}", "ticker": ticker}
+    
     return {"error": "Market data tool not available", "ticker": ticker}
 
 @cf.tool
@@ -72,8 +98,17 @@ def get_company_overview(ticker: str) -> dict:
             "example_usage": "get_company_overview(ticker='GOOG')"
         }
     
-    if 'company_overview' in _tool_instances:
-        return _tool_instances['company_overview'].execute(ticker=ticker.upper())
+    ticker = ticker.upper().strip()
+    
+    # Get tool instances with fallback
+    instances = get_tool_instances()
+    
+    if 'company_overview' in instances:
+        try:
+            return instances['company_overview'].execute(ticker=ticker)
+        except Exception as e:
+            return {"error": f"Company overview tool execution failed: {e}", "ticker": ticker}
+    
     return {"error": "Company overview tool not available", "ticker": ticker}
 
 @cf.tool
@@ -102,8 +137,15 @@ def get_economic_data_from_fred(series_id: str, limit: int = 10) -> dict:
             "example_usage": "get_economic_data_from_fred(series_id='GDP')"
         }
     
-    if 'economic_data' in _tool_instances:
-        return _tool_instances['economic_data'].execute(series_id=series_id.upper(), limit=limit)
+    # Get tool instances with fallback
+    instances = get_tool_instances()
+    
+    if 'economic_data' in instances:
+        try:
+            return instances['economic_data'].execute(series_id=series_id.upper(), limit=limit)
+        except Exception as e:
+            return {"error": f"Economic data tool execution failed: {e}", "series_id": series_id}
+    
     return {"error": "Economic data tool not available", "series_id": series_id}
 
 @cf.tool

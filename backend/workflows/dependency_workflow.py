@@ -239,6 +239,9 @@ class DependencyDrivenWorkflow(BaseWorkflow):
             
             event_handler = FintelEventHandler()
             
+            # Store agent results for final report
+            agent_results = {}
+            
             with cf.Flow(name="financial_analysis_flow") as flow:
                 self._update_node_status('query_input', 'completed')
                 
@@ -255,7 +258,13 @@ class DependencyDrivenWorkflow(BaseWorkflow):
                                     You MUST:
                                     1. Call get_market_data(ticker="{ticker or '[TICKER]'}")
                                     2. Call get_company_overview(ticker="{ticker or '[TICKER]'}")
-                                    3. Use ONLY the data from these tool calls""",
+                                    3. Use ONLY the data from these tool calls
+                                    
+                                    Provide a concise analysis focusing on:
+                                    - Current market position
+                                    - Key financial metrics
+                                    - Recent performance trends
+                                    - Market sentiment indicators""",
                         agents=[agents['market']], result_type=str
                     )
 
@@ -267,7 +276,13 @@ class DependencyDrivenWorkflow(BaseWorkflow):
                                     1. Call get_economic_data_from_fred(series_id="GDP") for GDP data
                                     2. Call get_economic_data_from_fred(series_id="UNRATE") for unemployment data
                                     3. Call get_economic_data_from_fred(series_id="FEDFUNDS") for interest rate data
-                                    4. Analyze the economic indicators in context of the investment query""",
+                                    4. Analyze the economic indicators in context of the investment query
+                                    
+                                    Provide a concise analysis focusing on:
+                                    - GDP growth trends
+                                    - Employment market conditions
+                                    - Interest rate environment
+                                    - Economic impact on the investment""",
                         agents=[agents['economic']], result_type=str
                     )
 
@@ -287,11 +302,23 @@ class DependencyDrivenWorkflow(BaseWorkflow):
                     market_result = tasks['market'].result
                     market_tool_calls = self._extract_tool_calls(event_handler.events, 'MarketAnalyst')
                     self._update_node_status('market_analysis', 'completed', result=market_result, tool_calls=market_tool_calls)
+                    agent_results['market'] = {
+                        'name': 'Market Analyst',
+                        'specialization': 'Market Data Analysis',
+                        'result': market_result,
+                        'tool_calls': market_tool_calls
+                    }
 
                 if 'economic' in tasks:
                     economic_result = tasks['economic'].result
                     economic_tool_calls = self._extract_tool_calls(event_handler.events, 'EconomicAnalyst')
                     self._update_node_status('economic_analysis', 'completed', result=economic_result, tool_calls=economic_tool_calls)
+                    agent_results['economic'] = {
+                        'name': 'Economic Analyst',
+                        'specialization': 'Economic Indicators',
+                        'result': economic_result,
+                        'tool_calls': economic_tool_calls
+                    }
 
                 if 'risk' in agents:
                     risk_dependencies = [tasks[key] for key in ['market', 'economic'] if key in tasks]
@@ -303,11 +330,42 @@ class DependencyDrivenWorkflow(BaseWorkflow):
                     risk_result = tasks['risk'].run(handlers=[event_handler])
                     risk_tool_calls = self._extract_tool_calls(event_handler.events, 'RiskAssessment')
                     self._update_node_status('risk_analysis', 'completed', result=risk_result, tool_calls=risk_tool_calls)
+                    agent_results['risk'] = {
+                        'name': 'Risk Assessment',
+                        'specialization': 'Risk Analysis',
+                        'result': risk_result,
+                        'tool_calls': risk_tool_calls
+                    }
 
                 self._update_node_status('final_synthesis', 'running')
                 final_dependencies = list(tasks.values())
                 final_synthesis_task = cf.Task(
-                    objective=f"Provide comprehensive investment recommendation for: {query}",
+                    objective=f"""Provide comprehensive investment recommendation for: {query}
+                    
+                    STRUCTURE YOUR RESPONSE AS FOLLOWS:
+                    
+                    ## Executive Summary
+                    [2-3 sentence high-level overview of the investment recommendation]
+                    
+                    ## Investment Recommendation
+                    [Clear buy/hold/sell recommendation with reasoning]
+                    
+                    ## Key Findings
+                    - [Key finding 1]
+                    - [Key finding 2]
+                    - [Key finding 3]
+                    
+                    ## Risk Assessment
+                    [Key risks to consider, both market-specific and macroeconomic]
+                    
+                    ## Action Items
+                    - [Specific action 1]
+                    - [Specific action 2]
+                    
+                    ## Confidence Level
+                    [Rate your confidence from 1-10, with explanation]
+                    
+                    IMPORTANT: Use proper markdown formatting with ## headers and bullet points (-) for easy reading.""",
                     depends_on=final_dependencies,
                     agents=[agents['coordinator']], result_type=str
                 )
@@ -316,20 +374,30 @@ class DependencyDrivenWorkflow(BaseWorkflow):
                 self._update_node_status('final_synthesis', 'completed', result=final_result)
 
             execution_time = time.time() - start_time
-            self._update_status({'status': 'completed', 'execution_time': execution_time})
+            
+            # Create comprehensive report with agent findings
+            comprehensive_result = self._create_comprehensive_report(query, final_result, agent_results, execution_time)
+            
+            # Only update status to completed if not already completed
+            if self.workflow_status.get('status') != 'completed':
+                self._update_status({'status': 'completed', 'execution_time': execution_time})
             
             logger.info(f"Workflow completed in {execution_time:.2f} seconds")
             
             return WorkflowResult(
-                success=True, result=str(final_result),
-                trace={"events": event_handler.events},
+                success=True, result=str(comprehensive_result),
+                trace={"events": event_handler.events, "agent_results": agent_results},
                 agent_invocations=[], execution_time=execution_time, workflow_name=self.name,
                 workflow_status=self.workflow_status
             )
             
         except Exception as e:
             execution_time = time.time() - start_time
-            self._update_status({'status': 'failed', 'error': str(e)})
+            
+            # Only update status to failed if not already failed
+            if self.workflow_status.get('status') != 'failed':
+                self._update_status({'status': 'failed', 'error': str(e)})
+            
             logger.error(f"Workflow failed: {e}", exc_info=True)
             return WorkflowResult(
                 success=False, result=f"Analysis failed: {str(e)}",
@@ -408,15 +476,25 @@ class DependencyDrivenWorkflow(BaseWorkflow):
         """Update a specific node's status and optionally its result."""
         for node in self.workflow_status.get('nodes', []):
             if node['id'] == node_id:
+                # Check if status is already set to the same value to prevent duplicate updates
+                if node['data'].get('status') == status:
+                    # Only update if we have new data (result, error, or tool_calls)
+                    if result is None and error is None and tool_calls is None:
+                        logger.debug(f"Node {node_id} already has status {status}, skipping duplicate update")
+                        return
+                
+                # Update the node data
                 node['data']['status'] = status
-                if result:
+                if result is not None:
                     node['data']['result'] = result
-                if error:
+                if error is not None:
                     node['data']['error'] = error
                 if tool_calls is not None:
                     # Ensure we're setting toolCalls with the correct structure
                     node['data']['toolCalls'] = tool_calls
                 break
+        
+        # Only trigger status update if we actually made changes
         self._update_status({'nodes': self.workflow_status['nodes']})
         logger.debug(f"Node {node_id} status updated to {status} with {len(tool_calls or [])} tool calls")
 
@@ -433,3 +511,138 @@ class DependencyDrivenWorkflow(BaseWorkflow):
                 break
         self._update_status({'edges': self.workflow_status['edges']})
         logger.debug(f"Edge {edge_id} status updated to {status}")
+
+    def _create_comprehensive_report(self, query: str, final_result: str, agent_results: dict, execution_time: float) -> str:
+        """Create a comprehensive report with agent-by-agent breakdowns"""
+        
+        report_parts = []
+        
+        # Executive Summary from final result
+        report_parts.append("## 📊 Investment Analysis Report")
+        report_parts.append(f"**Query:** {query}")
+        report_parts.append(f"**Analysis Time:** {execution_time:.1f} seconds")
+        report_parts.append("")
+        
+        # Extract sections from final result
+        sections = self._extract_sections_from_result(final_result)
+        
+        # Executive Summary
+        if 'executive_summary' in sections:
+            report_parts.append("### 🎯 Executive Summary")
+            report_parts.append(sections['executive_summary'])
+            report_parts.append("")
+        
+        # Investment Recommendation
+        if 'investment_recommendation' in sections:
+            report_parts.append("### 💡 Investment Recommendation")
+            report_parts.append(sections['investment_recommendation'])
+            report_parts.append("")
+        
+        # Agent-by-Agent Breakdown
+        if agent_results:
+            report_parts.append("### 🔍 Agent Analysis Breakdown")
+            report_parts.append("")
+            
+            for agent_key, agent_data in agent_results.items():
+                agent_name = agent_data['name']
+                specialization = agent_data['specialization']
+                result = agent_data['result']
+                tool_calls = agent_data.get('tool_calls', [])
+                
+                # Get agent icon
+                icon_map = {
+                    'Market Analyst': '📈',
+                    'Economic Analyst': '🏛️',
+                    'Risk Assessment': '⚠️'
+                }
+                icon = icon_map.get(agent_name, '🤖')
+                
+                report_parts.append(f"#### {icon} {agent_name}")
+                report_parts.append(f"**Specialization:** {specialization}")
+                report_parts.append("")
+                
+                # Add tool calls summary
+                if tool_calls:
+                    report_parts.append("**Tools Used:**")
+                    for tool_call in tool_calls:
+                        tool_name = tool_call.get('toolName', 'Unknown')
+                        summary = tool_call.get('toolOutputSummary', 'Executed successfully')
+                        report_parts.append(f"- **{tool_name}:** {summary}")
+                    report_parts.append("")
+                
+                # Add agent's analysis (truncated if too long)
+                analysis = result.strip()
+                if len(analysis) > 500:
+                    analysis = analysis[:500] + "..."
+                
+                report_parts.append("**Analysis:**")
+                report_parts.append(analysis)
+                report_parts.append("")
+        
+        # Key Findings
+        if 'key_findings' in sections:
+            report_parts.append("### 🔑 Key Findings")
+            report_parts.append(sections['key_findings'])
+            report_parts.append("")
+        
+        # Risk Assessment
+        if 'risk_assessment' in sections:
+            report_parts.append("### ⚠️ Risk Assessment")
+            report_parts.append(sections['risk_assessment'])
+            report_parts.append("")
+        
+        # Action Items
+        if 'action_items' in sections:
+            report_parts.append("### 📋 Action Items")
+            report_parts.append(sections['action_items'])
+            report_parts.append("")
+        
+        # Confidence Level
+        if 'confidence_level' in sections:
+            report_parts.append("### 🎯 Confidence Level")
+            report_parts.append(sections['confidence_level'])
+            report_parts.append("")
+        
+        return "\n".join(report_parts)
+    
+    def _extract_sections_from_result(self, result: str) -> dict:
+        """Extract sections from the final result using markdown headers"""
+        sections = {}
+        
+        # Split by markdown headers
+        lines = result.split('\n')
+        current_section = None
+        current_content = []
+        
+        for line in lines:
+            line = line.strip()
+            
+            # Check for headers
+            if line.startswith('## '):
+                # Save previous section
+                if current_section and current_content:
+                    sections[current_section] = '\n'.join(current_content).strip()
+                
+                # Start new section
+                header_text = line[3:].strip().lower()
+                current_section = header_text.replace(' ', '_')
+                current_content = []
+                
+            elif line.startswith('### '):
+                # Save previous section
+                if current_section and current_content:
+                    sections[current_section] = '\n'.join(current_content).strip()
+                
+                # Start new section
+                header_text = line[4:].strip().lower()
+                current_section = header_text.replace(' ', '_')
+                current_content = []
+                
+            elif current_section is not None:
+                current_content.append(line)
+        
+        # Save last section
+        if current_section and current_content:
+            sections[current_section] = '\n'.join(current_content).strip()
+        
+        return sections
