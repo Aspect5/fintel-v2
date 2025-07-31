@@ -3,8 +3,8 @@ from .base import BaseProvider
 from .openai_provider import OpenAIProvider
 from .gemini_provider import GeminiProvider
 from .local_provider import LocalProvider
-from config.settings import get_settings
-from config.providers import ProviderConfig
+from backend.config.settings import get_settings
+from backend.config.providers import ProviderConfig
 
 class ProviderFactory:
     """Factory for creating LLM providers"""

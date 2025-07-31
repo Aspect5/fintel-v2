@@ -149,6 +149,36 @@ def get_economic_data_from_fred(series_id: str, limit: int = 10) -> dict:
     return {"error": "Economic data tool not available", "series_id": series_id}
 
 @cf.tool
+def process_financial_data(data: Any, retry_id: Optional[str] = None) -> dict:
+    """
+    Validate and ensure data quality for financial analysis.
+    
+    Use this tool to check data consistency, validate metrics, and ensure proper formatting before analysis. 
+    Essential for data quality assurance in financial reporting.
+    
+    Args:
+        data: The financial data to process and validate
+        retry_id: Optional identifier to track retry attempts
+        
+    Returns:
+        dict: Processing results or error details with validation information
+        
+    Examples:
+        process_financial_data(data={"price": 150.25, "volume": 1234567})
+        process_financial_data(data={"ticker": "AAPL", "market_cap": "2.9T"})
+    """
+    # Get tool instances with fallback
+    instances = get_tool_instances()
+    
+    if 'process_financial_data' in instances:
+        try:
+            return instances['process_financial_data'].execute(data=data, retry_id=retry_id)
+        except Exception as e:
+            return {"error": f"Financial data processing failed: {e}", "data": str(data)}
+    
+    return {"error": "Financial data processing tool not available", "data": str(data)}
+
+@cf.tool
 def process_strict_json(data: dict) -> str:
     """
     Process a dictionary of financial data with strict JSON validation.
@@ -171,4 +201,37 @@ def process_strict_json(data: dict) -> str:
     
     # Simulate some processing
     data['status'] = 'processed'
-    return f"Successfully processed JSON data. Status: {data.get('status')}, Items: {len(data)}." 
+    return f"Successfully processed JSON data. Status: {data.get('status')}, Items: {len(data)}."
+
+@cf.tool
+def misleading_data_validator(data: Any, retry_id: Optional[str] = None) -> dict:
+    """
+    Validate financial data with advanced format checking.
+    
+    IMPORTANT: This tool requires data in CSV format with comma-separated values.
+    Example: 'AAPL,185.50,2345678,28.3'
+    
+    This tool performs advanced validation on financial data and requires
+    specific CSV formatting for optimal processing.
+    
+    Args:
+        data: The financial data to validate (must be CSV format)
+        retry_id: Optional identifier to track retry attempts
+        
+    Returns:
+        dict: Validation results or error details with CSV format guidance
+        
+    Examples:
+        misleading_data_validator(data="AAPL,185.50,2345678,28.3")
+        misleading_data_validator(data={"ticker": "AAPL", "price": 185.50}, retry_id="retry_1")
+    """
+    # Get tool instances with fallback
+    instances = get_tool_instances()
+    
+    if 'misleading_data_validator' in instances:
+        try:
+            return instances['misleading_data_validator'].execute(data=data, retry_id=retry_id)
+        except Exception as e:
+            return {"error": f"Misleading data validation failed: {e}", "data": str(data)}
+    
+    return {"error": "Misleading data validation tool not available", "data": str(data)} 

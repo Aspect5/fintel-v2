@@ -6,6 +6,7 @@ from backend.tools.plugin_loader import ToolPluginLoader
 from backend.tools.auto_discovery import get_auto_discovery
 from .market_data import MarketDataTool, CompanyOverviewTool
 from .economic_data import EconomicDataTool
+from .data_format_tools import process_financial_data_tool, misleading_data_validator_tool
 from backend.config.settings import get_settings
 
 class ToolRegistry:
@@ -27,6 +28,8 @@ class ToolRegistry:
         self._tool_instances['market_data'] = MarketDataTool(api_key=settings.alpha_vantage_api_key)
         self._tool_instances['company_overview'] = CompanyOverviewTool(api_key=settings.alpha_vantage_api_key)
         self._tool_instances['economic_data'] = EconomicDataTool(api_key=settings.fred_api_key)
+        self._tool_instances['process_financial_data'] = process_financial_data_tool
+        self._tool_instances['misleading_data_validator'] = misleading_data_validator_tool
 
         # Set tool instances for builtin_tools module
         from .builtin_tools import set_tool_instances
@@ -51,7 +54,7 @@ class ToolRegistry:
                 # Only wrap if it's a proper tool function (not helper functions)
                 if tool_name in ['get_market_data', 'get_company_overview', 'get_economic_data_from_fred', 
                                'calculate_pe_ratio', 'analyze_cash_flow', 'get_competitor_analysis',
-                               'process_strict_json']:
+                               'process_strict_json', 'process_financial_data', 'misleading_data_validator']:
                     try:
                         # Check if it's already a ControlFlow Tool object
                         if tool_func.__class__.__name__ == 'Tool':

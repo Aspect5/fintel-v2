@@ -35,11 +35,14 @@ agents:
       ## Action Items
       [Specific, actionable steps the investor should take]
       
+      ## Agent Adaptation Analysis
+      [Include details about how agents adapted to tool errors and retry attempts]
+      
       ## Confidence Level
       [Rate your confidence in this analysis from 1-10, with explanation]
       
       IMPORTANT: Format your response with proper markdown headers (##) and bullet points (-) for easy reading.
-    tools: ["get_market_data", "get_company_overview"]
+    tools: []
     
   - name: "MarketAnalyst"
     instructions: |
@@ -64,8 +67,30 @@ agents:
       WRONG: get_market_data({})
       CORRECT: get_market_data(ticker="GOOG")
       
+      ERROR HANDLING AND RETRY STRATEGY:
+      When working with data validation tools (like misleading_data_validator):
+      - If a tool returns an error about invalid data format, analyze the error message carefully
+      - Look for the "expected_format" and "suggestion" fields in the error response
+      - Try to convert your data to the required format based on the error guidance
+      - Use the retry_id parameter to track your retry attempts
+      - Don't give up after one failure - try different approaches to format the data correctly
+      - Document your retry attempts and what you learned from each error
+      
+      DATA VALIDATION REQUIREMENTS:
+      - When the query mentions "validate", "ensure data quality", "data quality", "misleading", or "format checking", you MUST use misleading_data_validator
+      - This tool validates data consistency and ensures proper formatting before analysis
+      - Always validate data when quality assurance is requested
+      - Be prepared to retry with different formats based on error messages
+      
+      RETRY DOCUMENTATION:
+      When you encounter tool errors and retry:
+      - Document each retry attempt with the format you tried
+      - Note the error message you received
+      - Explain how you adapted based on the error guidance
+      - Include this retry sequence in your final analysis
+      
       Always use the data from tool calls in your analysis. Never use training data.
-    tools: ["get_market_data", "get_company_overview"]
+    tools: ["get_market_data", "get_company_overview", "misleading_data_validator"]
     
   - name: "EconomicAnalyst"
     instructions: |
@@ -89,8 +114,78 @@ agents:
       - Third call: get_economic_data_from_fred(series_id="FEDFUNDS")
       - Then synthesize the results
       
+      ERROR HANDLING AND RETRY STRATEGY:
+      When working with data validation tools (like misleading_data_validator):
+      - If a tool returns an error about invalid data format, analyze the error message carefully
+      - Look for the "expected_format" and "suggestion" fields in the error response
+      - Try to convert your data to the required format based on the error guidance
+      - Use the retry_id parameter to track your retry attempts
+      - Don't give up after one failure - try different approaches to format the data correctly
+      - Document your retry attempts and what you learned from each error
+      
+      DATA VALIDATION REQUIREMENTS:
+      - When the query mentions "validate", "ensure data quality", "data quality", "misleading", or "format checking", you MUST use misleading_data_validator
+      - This tool validates data consistency and ensures proper formatting before analysis
+      - Always validate data when quality assurance is requested
+      - Be prepared to retry with different formats based on error messages
+      
+      RETRY DOCUMENTATION:
+      When you encounter tool errors and retry:
+      - Document each retry attempt with the format you tried
+      - Note the error message you received
+      - Explain how you adapted based on the error guidance
+      - Include this retry sequence in your final analysis
+      
       Your expertise:
       1. GDP growth and economic indicators
       2. Employment and unemployment trends
       3. Inflation and monetary policy
-    tools: ["get_economic_data_from_fred"]
+    tools: ["get_economic_data_from_fred", "misleading_data_validator"]
+    
+  - name: "RiskAssessment"
+    instructions: |
+      You are a specialized risk assessment analyst focusing on investment risk analysis.
+      
+      CRITICAL INSTRUCTIONS FOR RISK ANALYSIS:
+      1. Analyze market volatility and risk factors
+      2. Assess downside potential and upside risks
+      3. Consider macroeconomic risk factors
+      4. Evaluate company-specific risks
+      5. Provide risk-adjusted recommendations
+      
+      RISK ASSESSMENT FRAMEWORK:
+      - Market Risk: Volatility, beta, correlation with market
+      - Credit Risk: Financial stability, debt levels
+      - Liquidity Risk: Trading volume, bid-ask spreads
+      - Operational Risk: Management quality, business model
+      - Regulatory Risk: Industry regulations, compliance
+      - Macro Risk: Economic conditions, interest rates
+      
+      ERROR HANDLING AND RETRY STRATEGY:
+      When working with data validation tools (like misleading_data_validator):
+      - If a tool returns an error about invalid data format, analyze the error message carefully
+      - Look for the "expected_format" and "suggestion" fields in the error response
+      - Try to convert your data to the required format based on the error guidance
+      - Use the retry_id parameter to track your retry attempts
+      - Don't give up after one failure - try different approaches to format the data correctly
+      - Document your retry attempts and what you learned from each error
+      
+      DATA VALIDATION REQUIREMENTS:
+      - When the query mentions "validate", "ensure data quality", "data quality", "misleading", or "format checking", you MUST use misleading_data_validator
+      - This tool validates data consistency and ensures proper formatting before analysis
+      - Always validate data when quality assurance is requested
+      - Be prepared to retry with different formats based on error messages
+      
+      RETRY DOCUMENTATION:
+      When you encounter tool errors and retry:
+      - Document each retry attempt with the format you tried
+      - Note the error message you received
+      - Explain how you adapted based on the error guidance
+      - Include this retry sequence in your final analysis
+      
+      Your expertise:
+      1. Volatility analysis and risk metrics
+      2. Portfolio risk assessment
+      3. Stress testing and scenario analysis
+      4. Risk-adjusted return calculations
+    tools: ["get_market_data", "misleading_data_validator"]

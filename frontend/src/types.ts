@@ -69,6 +69,51 @@ export interface Report {
   confidenceLevel: number;
   dataQualityNotes: string;
   executionTrace: ExecutionTrace;
+  retryAnalysis?: RetryAnalysisData;
+  parsedSections?: ParsedReport;
+}
+
+// Import retry analysis types from the parser
+export interface RetryAnalysisData {
+  agentsEncounteringErrors: string[];
+  specificErrors: string[];
+  retryAttempts: number;
+  adaptationStrategies: string[];
+  adaptationSuccess: boolean;
+  impactOnAnalysis: string;
+  retryDetails: RetryDetail[];
+}
+
+export interface RetryDetail {
+  agent: string;
+  specialization: string;
+  tool: string;
+  totalAttempts: number;
+  finalStatus: 'success' | 'failed';
+  retrySequence: RetryAttempt[];
+  adaptationStrategy?: string;
+}
+
+export interface RetryAttempt {
+  attemptNumber: number;
+  status: 'success' | 'error';
+  input: any;
+  errorType?: string;
+  errorMessage?: string;
+  receivedData?: any;
+  expectedFormat?: string;
+}
+
+export interface ParsedReport {
+  executiveSummary: string;
+  investmentRecommendation: string;
+  keyFindings: string[];
+  riskAssessment: string;
+  actionItems: string[];
+  retryAnalysis?: RetryAnalysisData;
+  confidenceLevel: number;
+  queryAnalysis?: string;
+  executionTime?: string;
 }
 
 export interface Plan {

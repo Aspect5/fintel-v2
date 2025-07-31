@@ -138,9 +138,29 @@ class DependencyDrivenWorkflow(BaseWorkflow):
             if agent_key in agent_positions:
                 position = agent_positions[agent_key]
                 node_id = f'{agent_key}_analysis'
+                
+                # Set appropriate task description based on agent type
+                task_description = ""
+                if agent_key == 'market':
+                    task_description = "Analyze market data, financial metrics, and trading patterns"
+                elif agent_key == 'economic':
+                    task_description = "Evaluate economic indicators and macroeconomic factors"
+                elif agent_key == 'risk':
+                    task_description = "Assess investment risks and volatility factors"
+                else:
+                    task_description = f"Perform {agent_key} analysis"
+                
+                # Debug logging for task description
+                logger.info(f"Initializing node {node_id} with task description: {task_description}")
+                
                 nodes.append({
                     'id': node_id, 'type': 'default', 'position': position,
-                    'data': {'label': f'{agent_key.title()} Analyst', 'status': 'pending', 'toolCalls': []}
+                    'data': {
+                        'label': f'{agent_key.title()} Analyst', 
+                        'details': task_description,
+                        'status': 'pending', 
+                        'toolCalls': []
+                    }
                 })
                 edges.append({'id': f'e_{agent_key}', 'source': 'query_input', 'target': node_id, 'animated': False})
 
@@ -156,7 +176,7 @@ class DependencyDrivenWorkflow(BaseWorkflow):
         final_x = 650 if num_agents <= 2 else 650
         final_y = 200 if num_agents == 1 else 200
         nodes.append({'id': 'final_synthesis', 'type': 'output', 'position': {'x': final_x, 'y': final_y}, 
-                      'data': {'label': 'Final Report', 'status': 'pending'}})
+                      'data': {'label': 'Final Report', 'details': 'Synthesize comprehensive investment analysis and recommendations', 'status': 'pending'}})
 
         # Connect final synthesis to its dependencies
         synthesis_dependencies = [f'{agent_key}_analysis' for agent_key in agent_keys]
@@ -213,6 +233,9 @@ class DependencyDrivenWorkflow(BaseWorkflow):
         
         # Get agents for the query
         agents = self._get_agents_for_query(query, provider)
+        logger.info(f"Selected agents: {list(agents.keys())}")
+        for agent_key, agent in agents.items():
+            logger.info(f"Agent {agent_key}: {agent}")
         
         # CRITICAL FIX: Initialize nodes BEFORE starting any async operations
         self._initialize_workflow_nodes(query, agents)
@@ -252,21 +275,57 @@ class DependencyDrivenWorkflow(BaseWorkflow):
                 
                 if 'market' in agents:
                     self._update_node_status('market_analysis', 'running')
-                    tasks['market'] = cf.Task(
-                        objective=f"""Analyze market data for: '{query}'
-                                    {ticker_hint}
-                                    You MUST:
-                                    1. Call get_market_data(ticker="{ticker or '[TICKER]'}")
-                                    2. Call get_company_overview(ticker="{ticker or '[TICKER]'}")
-                                    3. Use ONLY the data from these tool calls
-                                    
-                                    Provide a concise analysis focusing on:
-                                    - Current market position
-                                    - Key financial metrics
-                                    - Recent performance trends
-                                    - Market sentiment indicators""",
-                        agents=[agents['market']], result_type=str
-                    )
+                    market_agent = agents['market']
+                    logger.info(f"Creating market task with agent: {market_agent}")
+                    if market_agent is not None:
+                        # Check if query mentions validation
+                        query_lower = query.lower()
+                        validation_required = any(word in query_lower for word in ['validate', 'validation', 'misleading', 'format', 'check', 'data quality'])
+                        
+                        if validation_required:
+                            # Include validation in the task objective
+                            tasks['market'] = cf.Task(
+                                objective=f"""Analyze market data for: '{query}'
+                                            {ticker_hint}
+                                            
+                                            IMPORTANT: This query requires data validation. You MUST:
+                                            1. FIRST: Use misleading_data_validator to validate the data format
+                                            2. THEN: Call get_market_data(ticker="{ticker or '[TICKER]'}")
+                                            3. THEN: Call get_company_overview(ticker="{ticker or '[TICKER]'}")
+                                            4. Use ONLY the data from these tool calls
+                                            
+                                            VALIDATION REQUIREMENTS:
+                                            - The misleading_data_validator tool may give you error messages
+                                            - You MUST retry with different formats based on the error guidance
+                                            - Document your retry attempts and what you learned
+                                            
+                                            Provide a concise analysis focusing on:
+                                            - Current market position
+                                            - Key financial metrics
+                                            - Recent performance trends
+                                            - Market sentiment indicators
+                                            - Data validation process and retry attempts""",
+                                agents=[market_agent], result_type=str
+                            )
+                        else:
+                            # Standard market analysis without validation
+                            tasks['market'] = cf.Task(
+                                objective=f"""Analyze market data for: '{query}'
+                                            {ticker_hint}
+                                            You MUST:
+                                            1. Call get_market_data(ticker="{ticker or '[TICKER]'}")
+                                            2. Call get_company_overview(ticker="{ticker or '[TICKER]'}")
+                                            3. Use ONLY the data from these tool calls
+                                            
+                                            Provide a concise analysis focusing on:
+                                            - Current market position
+                                            - Key financial metrics
+                                            - Recent performance trends
+                                            - Market sentiment indicators""",
+                                agents=[market_agent], result_type=str
+                            )
+                    else:
+                        logger.error("Market agent is None, skipping market task")
 
                 if 'economic' in agents:
                     self._update_node_status('economic_analysis', 'running')
@@ -286,12 +345,7 @@ class DependencyDrivenWorkflow(BaseWorkflow):
                         agents=[agents['economic']], result_type=str
                     )
 
-                if 'risk' in agents:
-                    self._update_node_status('risk_analysis', 'running')
-                    tasks['risk'] = cf.Task(
-                        objective="Assess investment risks based on market and economic analysis",
-                        agents=[agents['risk']], result_type=str
-                    )
+                # Risk task will be created later with proper dependencies
 
                 # Run parallel tasks first
                 parallel_tasks = [task for key, task in tasks.items() if key in ['market', 'economic']]
@@ -321,60 +375,127 @@ class DependencyDrivenWorkflow(BaseWorkflow):
                     }
 
                 if 'risk' in agents:
+                    self._update_node_status('risk_analysis', 'running')
                     risk_dependencies = [tasks[key] for key in ['market', 'economic'] if key in tasks]
-                    tasks['risk'] = cf.Task(
-                        objective="Assess investment risks based on market and economic analysis",
-                        depends_on=risk_dependencies,
-                        agents=[agents['risk']], result_type=str
-                    )
-                    risk_result = tasks['risk'].run(handlers=[event_handler])
-                    risk_tool_calls = self._extract_tool_calls(event_handler.events, 'RiskAssessment')
-                    self._update_node_status('risk_analysis', 'completed', result=risk_result, tool_calls=risk_tool_calls)
-                    agent_results['risk'] = {
-                        'name': 'Risk Assessment',
-                        'specialization': 'Risk Analysis',
-                        'result': risk_result,
-                        'tool_calls': risk_tool_calls
-                    }
+                    risk_agent = agents['risk']
+                    logger.info(f"Creating risk task with agent: {risk_agent}")
+                    if risk_agent is not None:
+                        tasks['risk'] = cf.Task(
+                            objective="Assess investment risks based on market and economic analysis",
+                            depends_on=risk_dependencies,
+                            agents=[risk_agent], result_type=str
+                        )
+                        
+                        risk_result = tasks['risk'].run(handlers=[event_handler])
+                        risk_tool_calls = self._extract_tool_calls(event_handler.events, 'RiskAssessment')
+                        self._update_node_status('risk_analysis', 'completed', result=risk_result, tool_calls=risk_tool_calls)
+                        agent_results['risk'] = {
+                            'name': 'Risk Assessment',
+                            'specialization': 'Risk Analysis',
+                            'result': risk_result,
+                            'tool_calls': risk_tool_calls
+                        }
+                    else:
+                        logger.error("Risk agent is None, skipping risk task")
 
                 self._update_node_status('final_synthesis', 'running')
                 final_dependencies = list(tasks.values())
-                final_synthesis_task = cf.Task(
-                    objective=f"""Provide comprehensive investment recommendation for: {query}
-                    
-                    STRUCTURE YOUR RESPONSE AS FOLLOWS:
-                    
-                    ## 📊 Investment Analysis Report
-                    **Query:** {query}
-                    
-                    ### 🎯 Executive Summary
-                    [2-3 sentence high-level overview of the investment recommendation]
-                    
-                    ### 💡 Investment Recommendation
-                    [Clear buy/hold/sell recommendation with reasoning]
-                    
-                    ### 🔑 Key Findings
-                    - [Key finding 1]
-                    - [Key finding 2]
-                    - [Key finding 3]
-                    
-                    ### ⚠️ Risk Assessment
-                    [Key risks to consider, both market-specific and macroeconomic]
-                    
-                    ### 📋 Action Items
-                    - [Specific action 1]
-                    - [Specific action 2]
-                    
-                    ### 🎯 Confidence Level
-                    [Rate your confidence from 1-10, with explanation]
-                    
-                    IMPORTANT: Use proper markdown formatting with ## and ### headers and bullet points (-) for easy reading.""",
-                    depends_on=final_dependencies,
-                    agents=[agents['coordinator']], result_type=str
-                )
+                # Check if validation was required for this query
+                query_lower = query.lower()
+                validation_required = any(word in query_lower for word in ['validate', 'validation', 'misleading', 'format', 'check', 'data quality'])
+                
+                if validation_required:
+                    final_synthesis_task = cf.Task(
+                        objective=f"""Provide comprehensive investment recommendation for: {query}
+                        
+                        STRUCTURE YOUR RESPONSE AS FOLLOWS:
+                        
+                        ## 📊 Investment Analysis Report
+                        **Query:** {query}
+                        
+                        ### 🎯 Executive Summary
+                        [2-3 sentence high-level overview of the investment recommendation]
+                        
+                        ### 💡 Investment Recommendation
+                        [Clear buy/hold/sell recommendation with reasoning]
+                        
+                        ### 🔑 Key Findings
+                        - [Key finding 1]
+                        - [Key finding 2]
+                        - [Key finding 3]
+                        
+                        ### ⚠️ Risk Assessment
+                        [Key risks to consider, both market-specific and macroeconomic]
+                        
+                        ### 📋 Action Items
+                        - [Specific action 1]
+                        - [Specific action 2]
+                        
+                        ### 🔄 Agent Adaptation Analysis
+                        [DETAILED ANALYSIS REQUIRED: Include specific details about:
+                        - Which agents encountered tool errors
+                        - What specific errors occurred (format mismatches, validation failures, etc.)
+                        - How many retry attempts were made
+                        - What adaptation strategies were used (format changes, error learning, etc.)
+                        - Whether the agents successfully adapted or had to pivot to alternative approaches
+                        - The impact of retry attempts on the final analysis quality]
+                        
+                        ### 🎯 Confidence Level
+                        [Rate your confidence from 1-10, with explanation considering retry attempts and adaptation success]
+                        
+                        IMPORTANT: Use proper markdown formatting with ## and ### headers and bullet points (-) for easy reading.
+                        CRITICAL: The Agent Adaptation Analysis section must be detailed and specific about retry attempts and adaptation strategies.""",
+                        depends_on=final_dependencies,
+                        agents=[agents['coordinator']], result_type=str
+                    )
+                else:
+                    final_synthesis_task = cf.Task(
+                        objective=f"""Provide comprehensive investment recommendation for: {query}
+                        
+                        STRUCTURE YOUR RESPONSE AS FOLLOWS:
+                        
+                        ## 📊 Investment Analysis Report
+                        **Query:** {query}
+                        
+                        ### 🎯 Executive Summary
+                        [2-3 sentence high-level overview of the investment recommendation]
+                        
+                        ### 💡 Investment Recommendation
+                        [Clear buy/hold/sell recommendation with reasoning]
+                        
+                        ### 🔑 Key Findings
+                        - [Key finding 1]
+                        - [Key finding 2]
+                        - [Key finding 3]
+                        
+                        ### ⚠️ Risk Assessment
+                        [Key risks to consider, both market-specific and macroeconomic]
+                        
+                        ### 📋 Action Items
+                        - [Specific action 1]
+                        - [Specific action 2]
+                        
+                        ### 🎯 Confidence Level
+                        [Rate your confidence from 1-10, with explanation]
+                        
+                        IMPORTANT: Use proper markdown formatting with ## and ### headers and bullet points (-) for easy reading.""",
+                        depends_on=final_dependencies,
+                        agents=[agents['coordinator']], result_type=str
+                    )
                 
                 final_result = final_synthesis_task.run(handlers=[event_handler])
-                self._update_node_status('final_synthesis', 'completed', result=final_result)
+                
+                # Extract tool calls from the coordinator agent
+                coordinator_tool_calls = self._extract_tool_calls(event_handler.events, 'FinancialAnalyst')
+                self._update_node_status('final_synthesis', 'completed', result=final_result, tool_calls=coordinator_tool_calls)
+                
+                # Add coordinator results to agent_results
+                agent_results['coordinator'] = {
+                    'name': 'Financial Analyst',
+                    'specialization': 'Investment Analysis',
+                    'result': final_result,
+                    'tool_calls': coordinator_tool_calls
+                }
 
             execution_time = time.time() - start_time
             
@@ -410,52 +531,93 @@ class DependencyDrivenWorkflow(BaseWorkflow):
             )
     
     def _extract_tool_calls(self, events: List[Dict], agent_name: str) -> List[Dict]:
-        """Extract tool calls from events for a specific agent"""
+        """Extract tool calls from events for a specific agent with retry tracking"""
         tool_calls = []
         
         # Track tool calls and their results
         pending_calls = {}
+        retry_attempts = {}
         
         for event in events:
             if event.get('event_type') == 'agent_tool_call' and event.get('agent_name') == agent_name:
                 tool_name = event.get('tool_name', 'unknown')
+                tool_input = event.get('tool_input', {})
+                
+                # Generate a unique key for this tool call
+                call_key = f"{tool_name}_{len(pending_calls)}"
+                
                 # Store the tool call info
-                pending_calls[tool_name] = {
+                pending_calls[call_key] = {
                     'name': tool_name,
-                    'parameters': event.get('tool_input', {}),
-                    'result': None
+                    'parameters': tool_input,
+                    'result': None,
+                    'retry_info': None,
+                    'attempt_number': 1
                 }
                 
             elif event.get('event_type') == 'tool_result':
                 tool_name = event.get('tool_name', 'unknown')
-                if tool_name in pending_calls:
-                    # Update with the result
+                
+                # Find the most recent call for this tool
+                matching_calls = [key for key in pending_calls.keys() if pending_calls[key]['name'] == tool_name]
+                if matching_calls:
+                    call_key = matching_calls[-1]  # Most recent call
                     result_str = event.get('result', 'No result')
                     try:
                         # Try to parse if it's JSON string
                         result_obj = json.loads(result_str) if isinstance(result_str, str) and result_str.startswith('{') else result_str
-                    except:
+                    except (json.JSONDecodeError, TypeError):
                         result_obj = result_str
-                        
-                    pending_calls[tool_name]['result'] = result_obj
+                    
+                    pending_calls[call_key]['result'] = result_obj
+                    
+                    # Extract retry information from the tool result itself
+                    if isinstance(result_obj, dict):
+                        retry_info = result_obj.get('retry_info')
+                        if retry_info:
+                            pending_calls[call_key]['retry_info'] = retry_info
+                            pending_calls[call_key]['attempt_number'] = retry_info.get('attempt_number', 1)
+                        elif result_obj.get('status') == 'error':
+                            # For error cases, track this as a failed attempt
+                            if pending_calls[call_key]['retry_info'] is None:
+                                pending_calls[call_key]['retry_info'] = {
+                                    'attempt_number': 1,
+                                    'previous_failures': [result_obj.get('data_type', 'unknown')],
+                                    'previous_errors': [result_obj.get('error_message', 'Unknown error')]
+                                }
         
         # Convert to frontend format
-        for tool_name, call_data in pending_calls.items():
+        for call_key, call_data in pending_calls.items():
             # Skip internal ControlFlow tools
-            if tool_name.startswith('mark_task_'):
+            if call_data['name'].startswith('mark_task_'):
                 continue
                 
-            tool_calls.append({
-                'toolName': tool_name,  # Changed from 'name' to 'toolName'
+            # Ensure toolOutput is always a dictionary
+            tool_output = call_data['result'] or {}
+            if isinstance(tool_output, str):
+                try:
+                    tool_output = json.loads(tool_output)
+                except (json.JSONDecodeError, TypeError):
+                    tool_output = {}
+            
+            tool_call = {
+                'toolName': call_data['name'],
                 'toolInput': json.dumps(call_data['parameters']) if isinstance(call_data['parameters'], dict) else str(call_data['parameters']),
-                'toolOutput': call_data['result'] or {},
-                'toolOutputSummary': self._generate_tool_summary(tool_name, call_data['result'])
-            })
+                'toolOutput': tool_output,
+                'toolOutputSummary': self._generate_tool_summary(call_data['name'], call_data['result']),
+                'attemptNumber': call_data['attempt_number']
+            }
+            
+            # Add retry information if available
+            if call_data['retry_info']:
+                tool_call['retryInfo'] = call_data['retry_info']
+            
+            tool_calls.append(tool_call)
         
         return tool_calls
 
     def _generate_tool_summary(self, tool_name: str, result: Any) -> str:
-        """Generate a summary for tool output"""
+        """Generate a summary for tool output with retry information"""
         if not result:
             return "No result available"
             
@@ -471,7 +633,19 @@ class DependencyDrivenWorkflow(BaseWorkflow):
                     return f"[LIVE] Retrieved company overview for {result.get('symbol', 'N/A')}"
                 elif tool_name == 'get_economic_data_from_fred':
                     return f"[LIVE] Retrieved economic data: {result.get('series_id', 'N/A')}"
-            return f"[INFO] Tool executed successfully"
+                elif tool_name == 'process_financial_data':
+                    retry_info = result.get('retry_info')
+                    if retry_info:
+                        attempts = retry_info.get('attempt_number', 1)
+                        return f"[SUCCESS] JSON processed successfully (attempt {attempts})"
+                    else:
+                        return f"[SUCCESS] JSON processed successfully"
+                return f"[INFO] Tool executed successfully"
+            elif result.get('status') == 'error':
+                if tool_name == 'get_json_only_data':
+                    error_type = result.get('error_type', 'unknown')
+                    return f"[ERROR] {error_type}: {result.get('error_message', 'Unknown error')}"
+                return f"[ERROR] {result.get('error', 'Unknown error')}"
         
         return "[INFO] Tool result received"
         
@@ -486,15 +660,24 @@ class DependencyDrivenWorkflow(BaseWorkflow):
                         logger.debug(f"Node {node_id} already has status {status}, skipping duplicate update")
                         return
                 
+                # Debug logging to track details field before update
+                logger.info(f"Node {node_id}: Details field BEFORE update: {node['data'].get('details', 'NOT SET')}")
+                
                 # Update the node data
                 node['data']['status'] = status
                 if result is not None:
                     node['data']['result'] = result
+                    # Debug logging to track what's being stored
+                    logger.info(f"Node {node_id}: Storing result (length: {len(result) if result else 0})")
+                    logger.info(f"Node {node_id}: Current details field AFTER result update: {node['data'].get('details', 'NOT SET')}")
                 if error is not None:
                     node['data']['error'] = error
                 if tool_calls is not None:
                     # Ensure we're setting toolCalls with the correct structure
                     node['data']['toolCalls'] = tool_calls
+                
+                # Debug logging to track details field after all updates
+                logger.info(f"Node {node_id}: Details field AFTER all updates: {node['data'].get('details', 'NOT SET')}")
                 break
         
         # Only trigger status update if we actually made changes
@@ -516,7 +699,7 @@ class DependencyDrivenWorkflow(BaseWorkflow):
         logger.debug(f"Edge {edge_id} status updated to {status}")
 
     def _create_comprehensive_report(self, query: str, final_result: str, agent_results: dict, execution_time: float) -> str:
-        """Create a streamlined report focusing on key decision-making information"""
+        """Create a streamlined report focusing on key decision-making information with retry analysis"""
         
         # Extract sections from final result
         sections = self._extract_sections_from_result(final_result)
@@ -556,7 +739,240 @@ class DependencyDrivenWorkflow(BaseWorkflow):
                     break
             cleaned_content = '\n'.join(lines)
         
+        # Add retry analysis section if there were any retries
+        try:
+            retry_analysis = self._generate_retry_analysis(agent_results)
+            print(f"DEBUG: Retry analysis generated: {len(retry_analysis)} characters")
+            if retry_analysis:
+                # Insert retry analysis before the final sections
+                lines = cleaned_content.split('\n')
+                insert_index = len(lines)
+                
+                # Find a good place to insert (before Confidence Level or at the end)
+                for i, line in enumerate(lines):
+                    if 'Confidence Level' in line or 'Action Items' in line:
+                        insert_index = i
+                        break
+                
+                print(f"DEBUG: Inserting retry analysis at line {insert_index}")
+                lines.insert(insert_index, retry_analysis)
+                cleaned_content = '\n'.join(lines)
+            else:
+                print("DEBUG: No retry analysis generated")
+        except Exception as e:
+            print(f"DEBUG: Error generating retry analysis: {e}")
+            import traceback
+            traceback.print_exc()
+        
         return cleaned_content
+    
+    def _generate_retry_analysis(self, agent_results: dict) -> str:
+        """Generate comprehensive retry analysis section for the report"""
+        retry_data = []
+        
+        for agent_key, agent_data in agent_results.items():
+            tool_calls = agent_data.get('tool_calls', [])
+            agent_retries = []
+            
+            # Group tool calls by tool name to track retry sequences
+            tool_retry_sequences = {}
+            
+            for tool_call in tool_calls:
+                tool_name = tool_call.get('toolName')
+                # Track both process_financial_data and misleading_data_validator
+                if tool_name in ['process_financial_data', 'misleading_data_validator']:
+                    if tool_name not in tool_retry_sequences:
+                        tool_retry_sequences[tool_name] = []
+                    tool_retry_sequences[tool_name].append(tool_call)
+            
+            # Analyze retry sequences
+            for tool_name, calls in tool_retry_sequences.items():
+                if len(calls) > 1:  # Multiple calls to same tool indicates retries
+                    attempts = len(calls)
+                    retry_sequence = []
+                    
+                    # Analyze each attempt in sequence
+                    for i, call in enumerate(calls, 1):
+                        tool_output = call.get('toolOutput', {})
+                        
+                        # Handle case where toolOutput might be a string (JSON)
+                        if isinstance(tool_output, str):
+                            try:
+                                tool_output = json.loads(tool_output)
+                            except (json.JSONDecodeError, TypeError):
+                                tool_output = {}
+                        
+                        # Handle toolInput parsing
+                        tool_input = call.get('toolInput', {})
+                        if isinstance(tool_input, str):
+                            try:
+                                tool_input = json.loads(tool_input)
+                            except (json.JSONDecodeError, TypeError):
+                                tool_input = {}
+                        
+                        attempt_data = {
+                            'attempt_number': i,
+                            'input': tool_input,
+                            'output': tool_output,
+                            'status': 'success' if tool_output.get('status') == 'success' else 'error'
+                        }
+                        
+                        # Extract error details if failed
+                        if attempt_data['status'] == 'error':
+                            attempt_data['error_type'] = tool_output.get('error_type', 'unknown')
+                            attempt_data['error_message'] = tool_output.get('error_message', 'Unknown error')
+                            attempt_data['received_data'] = tool_output.get('received_data', 'N/A')
+                            attempt_data['expected_format'] = tool_output.get('expected_format', 'N/A')
+                        
+                        retry_sequence.append(attempt_data)
+                    
+                    agent_retries.append({
+                        'tool': tool_name,
+                        'total_attempts': attempts,
+                        'retry_sequence': retry_sequence,
+                        'final_status': retry_sequence[-1]['status'],
+                        'adaptation_strategy': self._analyze_adaptation_strategy(retry_sequence)
+                    })
+                elif len(calls) == 1:  # Single call but check if it was a retry attempt
+                    call = calls[0]
+                    tool_input = call.get('toolInput', {})
+                    
+                    # Handle case where toolInput might be a string (JSON)
+                    if isinstance(tool_input, str):
+                        try:
+                            tool_input = json.loads(tool_input)
+                        except (json.JSONDecodeError, TypeError):
+                            tool_input = {}
+                    
+                    retry_id = tool_input.get('retry_id')
+                    if retry_id:  # This was a retry attempt
+                        tool_output = call.get('toolOutput', {})
+                        
+                        # Handle case where toolOutput might be a string (JSON)
+                        if isinstance(tool_output, str):
+                            try:
+                                tool_output = json.loads(tool_output)
+                            except (json.JSONDecodeError, TypeError):
+                                tool_output = {}
+                        
+                        attempt_data = {
+                            'attempt_number': 1,
+                            'input': tool_input,
+                            'output': tool_output,
+                            'status': 'success' if tool_output.get('status') == 'success' else 'error'
+                        }
+                        
+                        # Extract error details if failed
+                        if attempt_data['status'] == 'error':
+                            attempt_data['error_type'] = tool_output.get('error_type', 'unknown')
+                            attempt_data['error_message'] = tool_output.get('error_message', 'Unknown error')
+                            attempt_data['received_data'] = tool_output.get('received_data', 'N/A')
+                            attempt_data['expected_format'] = tool_output.get('expected_format', 'N/A')
+                        
+                        agent_retries.append({
+                            'tool': tool_name,
+                            'total_attempts': 1,
+                            'retry_sequence': [attempt_data],
+                            'final_status': attempt_data['status'],
+                            'adaptation_strategy': 'Single retry attempt'
+                        })
+            
+            if agent_retries:
+                retry_data.append({
+                    'agent': agent_data.get('name', agent_key),
+                    'specialization': agent_data.get('specialization', 'Unknown'),
+                    'retries': agent_retries
+                })
+        
+        if not retry_data:
+            return "\n## 🔄 Retry Analysis\n\nNo retry attempts were made during this analysis.\n"
+        
+        # Generate comprehensive retry analysis section
+        retry_section = "\n## 🔄 Agent Adaptation & Retry Analysis\n\n"
+        retry_section += "This section details how agents adapted to tool errors and retry attempts:\n\n"
+        
+        for agent_retry in retry_data:
+            retry_section += f"### {agent_retry['agent']} ({agent_retry['specialization']})\n\n"
+            
+            for retry in agent_retry['retries']:
+                retry_section += f"**Tool:** `{retry['tool']}`\n"
+                retry_section += f"**Total Attempts:** {retry['total_attempts']}\n"
+                retry_section += f"**Final Status:** {'✅ Success' if retry['final_status'] == 'success' else '❌ Failed'}\n\n"
+                
+                # Detailed retry sequence
+                retry_section += "**Retry Sequence:**\n\n"
+                for attempt in retry['retry_sequence']:
+                    status_icon = "✅" if attempt['status'] == 'success' else "❌"
+                    retry_section += f"**Attempt {attempt['attempt_number']}** {status_icon}\n"
+                    
+                    # Show input data
+                    input_data = attempt['input']
+                    if isinstance(input_data, dict):
+                        data_value = input_data.get('data', 'N/A')
+                        retry_id = input_data.get('retry_id', 'N/A')
+                        retry_section += f"- **Input:** `{data_value}` (retry_id: {retry_id})\n"
+                    else:
+                        retry_section += f"- **Input:** `{input_data}`\n"
+                    
+                    # Show error details if failed
+                    if attempt['status'] == 'error':
+                        retry_section += f"- **Error Type:** {attempt.get('error_type', 'Unknown')}\n"
+                        retry_section += f"- **Error Message:** {attempt.get('error_message', 'Unknown error')}\n"
+                        retry_section += f"- **Received Data:** `{attempt.get('received_data', 'N/A')}`\n"
+                        retry_section += f"- **Expected Format:** {attempt.get('expected_format', 'N/A')}\n"
+                    
+                    retry_section += "\n"
+                
+                # Adaptation strategy analysis
+                if retry['adaptation_strategy']:
+                    retry_section += f"**Adaptation Strategy:** {retry['adaptation_strategy']}\n\n"
+                
+                retry_section += "---\n\n"
+        
+        return retry_section
+    
+    def _analyze_adaptation_strategy(self, retry_sequence: list) -> str:
+        """Analyze the adaptation strategy used in retry attempts"""
+        if len(retry_sequence) < 2:
+            return "No adaptation needed - single attempt"
+        
+        strategies = []
+        
+        # Analyze format changes
+        formats_tried = []
+        for attempt in retry_sequence:
+            input_data = attempt['input']
+            if isinstance(input_data, dict):
+                data_value = input_data.get('data', '')
+                if data_value.startswith('{'):
+                    formats_tried.append('JSON')
+                elif ',' in data_value:
+                    formats_tried.append('CSV')
+                else:
+                    formats_tried.append('Other')
+            else:
+                # Handle case where input_data might be a string
+                formats_tried.append('Unknown')
+        
+        if len(set(formats_tried)) > 1:
+            strategies.append(f"Format adaptation: {', '.join(formats_tried)}")
+        
+        # Analyze error learning
+        error_types = []
+        for attempt in retry_sequence:
+            if attempt['status'] == 'error':
+                error_types.append(attempt.get('error_type', 'unknown'))
+        
+        if len(set(error_types)) > 1:
+            strategies.append(f"Error learning: adapted to {len(set(error_types))} different error types")
+        
+        # Analyze persistence
+        if len(retry_sequence) >= 3:
+            strategies.append("High persistence: continued despite multiple failures")
+        elif len(retry_sequence) == 2:
+            strategies.append("Moderate persistence: retried once after failure")
+        
+        return "; ".join(strategies) if strategies else "Basic retry without clear adaptation pattern"
     
     def _extract_sections_from_result(self, result: str) -> dict:
         """Extract sections from the final result using markdown headers"""

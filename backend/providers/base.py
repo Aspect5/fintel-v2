@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional
 import controlflow as cf
-from config.providers import ProviderConfig
+from backend.config.providers import ProviderConfig
 
 class BaseProvider(ABC):
     """Abstract base class for LLM providers"""

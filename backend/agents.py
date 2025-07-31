@@ -7,19 +7,19 @@ def get_agents_from_config(provider='openai', base_url=None):
     """
     Creates and returns a dictionary of agents based on the provided configuration.
     """
-    # Import tools directly - they are Tool objects, not functions
-    try:
-        from tools import get_market_data, get_company_overview, get_economic_data_from_fred
-        print("✓ Successfully imported all tools")
-        
-        # These are already Tool objects, not functions
-        available_tools = [get_market_data, get_company_overview, get_economic_data_from_fred]
-        
-        print(f"✓ Available tools: {[tool.name if hasattr(tool, 'name') else str(tool) for tool in available_tools]}")
-        
-    except ImportError as e:
-        print(f"✗ Error importing tools: {e}")
-        available_tools = []
+            # Import tools directly - they are Tool objects, not functions
+        try:
+            from tools import get_market_data, get_company_overview, get_economic_data_from_fred, process_financial_data
+            print("✓ Successfully imported all tools")
+            
+            # These are already Tool objects, not functions
+            available_tools = [get_market_data, get_company_overview, get_economic_data_from_fred, process_financial_data]
+            
+            print(f"✓ Available tools: {[tool.name if hasattr(tool, 'name') else str(tool) for tool in available_tools]}")
+            
+        except ImportError as e:
+            print(f"✗ Error importing tools: {e}")
+            available_tools = []
 
     # --- Model Configuration ---
     if provider == 'openai':
@@ -32,7 +32,7 @@ def get_agents_from_config(provider='openai', base_url=None):
     # --- Agent Definitions ---
     
     # Market Analyst Agent - gets market and company tools
-    market_tools = [get_market_data, get_company_overview] if available_tools else []
+    market_tools = [get_market_data, get_company_overview, process_financial_data] if available_tools else []
     
     market_analyst = cf.Agent(
         name="MarketAnalyst",
@@ -48,7 +48,7 @@ def get_agents_from_config(provider='openai', base_url=None):
     )
 
     # Economic Forecaster Agent - gets economic data tool
-    economic_tools = [get_economic_data_from_fred] if available_tools else []
+    economic_tools = [get_economic_data_from_fred, process_financial_data] if available_tools else []
     
     economic_forecaster = cf.Agent(
         name="EconomicForecaster",

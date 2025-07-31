@@ -78,9 +78,17 @@ const AgentTraceModal: React.FC<AgentTraceModalProps> = ({ node, onClose }) => {
 
     const { label, details, error, result, toolCalls = [] } = node.data as AgentNodeData;
 
-    // For debugging
-    console.log('AgentTraceModal rendering with node:', node);
-    console.log('Node data:', node.data);
+    // Enhanced debugging to identify the duplication issue
+    console.log('=== AgentTraceModal Debug Info ===');
+    console.log('Node ID:', node.id);
+    console.log('Label:', label);
+    console.log('Details (should be task description):', details);
+    console.log('Result (should be analysis output):', result);
+    console.log('Details length:', details?.length || 0);
+    console.log('Result length:', result?.length || 0);
+    console.log('Are details and result the same?', details === result);
+    console.log('Full node data:', node.data);
+    console.log('===================================');
 
     return (
         <div 

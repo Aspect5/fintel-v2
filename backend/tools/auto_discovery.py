@@ -369,8 +369,8 @@ class AutoToolDiscovery:
         
         return metadata
     
-    def get_tool_descriptions(self) -> Dict[str, str]:
-        """Get all tool descriptions"""
+    def get_tool_descriptions(self) -> Dict[str, Any]:
+        """Get all tool descriptions (now returns structured format)"""
         return self.tool_descriptions.copy()
     
     def get_tool_metadata(self) -> Dict[str, Dict[str, Any]]:
@@ -388,7 +388,13 @@ class AutoToolDiscovery:
         }
         
         for tool_name, description in self.tool_descriptions.items():
-            description_lower = description.lower()
+            # Handle both string and dictionary descriptions
+            if isinstance(description, dict):
+                description_text = description.get('summary', '')
+            else:
+                description_text = str(description)
+            
+            description_lower = description_text.lower()
             tool_name_lower = tool_name.lower()
             
             if any(keyword in tool_name_lower or keyword in description_lower 

@@ -90,10 +90,11 @@ class FintelEventHandler(Handler):
         self.events.append(log_data)
 
     def on_tool_result(self, event: ToolResult):
-        """Log tool execution results with robust attribute checking"""
+        """Log tool execution results with robust attribute checking and retry tracking"""
         tool_name = "unknown_tool"
         result_str = "No result"
         is_error = False
+        retry_info = None
 
         if hasattr(event, 'tool_result'):
             tool_result_obj = event.tool_result
@@ -109,12 +110,22 @@ class FintelEventHandler(Handler):
                     tool_name = tool_call_obj.get('name', 'unknown_tool')
                 else:
                     tool_name = getattr(tool_call_obj, 'name', 'unknown_tool')
+            
+            # Extract retry information for financial data processing tool
+            if tool_name == "process_financial_data":
+                try:
+                    result_obj = json.loads(result_str) if isinstance(result_str, str) else result_str
+                    if isinstance(result_obj, dict) and "retry_info" in result_obj:
+                        retry_info = result_obj["retry_info"]
+                except:
+                    pass
         
         log_data = {
             "event_type": "tool_result", 
             "tool_name": tool_name,
             "result": result_str[:250] + "..." if len(result_str) > 250 else result_str,
             "is_error": is_error,
+            "retry_info": retry_info,
             "timestamp": datetime.now().isoformat(),
         }
         logger.info(f"TOOL RESULT: {json.dumps(log_data, indent=2)}")
