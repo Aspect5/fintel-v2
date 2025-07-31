@@ -7,9 +7,10 @@ interface ReportModalProps {
   report: Report | null;
   onClose: () => void;
   isVisible: boolean;
+  query?: string;
 }
 
-const ReportModal: React.FC<ReportModalProps> = ({ report, onClose, isVisible }) => {
+const ReportModal: React.FC<ReportModalProps> = ({ report, onClose, isVisible, query = '' }) => {
   if (!isVisible || !report) return null;
 
   return (
@@ -44,7 +45,7 @@ const ReportModal: React.FC<ReportModalProps> = ({ report, onClose, isVisible })
         </header>
         
         <div className="flex-1 overflow-y-auto p-6">
-          <ReportDisplay report={report} />
+          <ReportDisplay report={report} query={query} />
         </div>
       </div>
       

@@ -373,6 +373,40 @@ def get_available_tools():
     
     return jsonify(categorized_tools)
 
+@app.route('/api/save-report', methods=['POST'])
+def save_report():
+    """Save a report to the reports/ directory"""
+    try:
+        data = request.get_json()
+        filename = data.get('filename')
+        content = data.get('content')
+        query = data.get('query')
+        timestamp = data.get('timestamp')
+        
+        if not all([filename, content]):
+            return jsonify({"error": "Missing required fields"}), 400
+        
+        # Create reports directory if it doesn't exist
+        reports_dir = Path(project_root) / 'reports'
+        reports_dir.mkdir(exist_ok=True)
+        
+        # Save the report
+        report_path = reports_dir / filename
+        with open(report_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        
+        logger.info(f"Report saved: {report_path}")
+        
+        return jsonify({
+            "success": True,
+            "message": f"Report saved as {filename}",
+            "path": str(report_path)
+        })
+        
+    except Exception as e:
+        logger.error(f"Failed to save report: {e}")
+        return jsonify({"error": str(e)}), 500
+
 def cleanup_old_workflows():
     """Clean up workflows older than 24 hours (increased from 1 hour)"""
     while True:

@@ -95,11 +95,10 @@ const CustomNode: React.FC<NodeProps> = ({ data }) => {
         {getStatusIcon()}
       </div>
       
-      {/* Status indicator - only show for non-User Query nodes */}
-      {!isUserQuery && (
+      {/* Status indicator - only show for non-User Query nodes and non-completed nodes */}
+      {!isUserQuery && (status !== 'completed' && status !== 'success') && (
         <div className="flex items-center justify-between mb-2">
           <span className={`text-xs px-2 py-1 rounded-full ${
-            status === 'completed' || status === 'success' ? 'bg-green-500/20 text-green-400' :
             status === 'failed' || status === 'failure' ? 'bg-red-500/20 text-red-400' :
             status === 'running' ? 'bg-blue-500/20 text-blue-400' :
             'bg-gray-500/20 text-gray-400'

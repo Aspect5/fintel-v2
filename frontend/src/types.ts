@@ -28,6 +28,7 @@ export interface AgentFinding {
   specialization: string;
   summary: string;
   details: string[];
+  toolCalls?: ToolCallResult[];
 }
 
 export interface ToolCallRequest {

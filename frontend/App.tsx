@@ -12,6 +12,107 @@ import Notification from './src/components/Notification';
 import { useWorkflowStatus } from './src/hooks/useWorkflowStatus';
 import WorkflowHistory from './src/components/WorkflowHistory';
 
+// Helper functions for report generation
+const generateCrossAgentInsights = (agentFindings: any[], provider: string): string => {
+    if (agentFindings.length === 0) {
+        return `Analysis completed successfully using ${provider}.`;
+    }
+    
+    const insights = [];
+    const agentNames = agentFindings.map(f => f.agentName);
+    
+    if (agentFindings.length > 1) {
+        insights.push(`Analysis completed using ${agentNames.join(' and ')} with ${provider}.`);
+        
+        // Check for consensus
+        const hasConsensus = agentFindings.every(f => 
+            f.summary.toLowerCase().includes('positive') || 
+            f.summary.toLowerCase().includes('favorable') ||
+            f.summary.toLowerCase().includes('good')
+        );
+        
+        if (hasConsensus) {
+            insights.push("All agents identified positive trends, indicating strong consensus.");
+        } else {
+            insights.push("Agents provided mixed perspectives, suggesting balanced analysis.");
+        }
+    }
+    
+    return insights.join(' ');
+};
+
+const extractActionableRecommendations = (content: string): string[] => {
+    const recommendations = [];
+    const lines = content.split('\n');
+    
+    for (const line of lines) {
+        if (line.includes('Action Items') || line.includes('Next Steps')) {
+            // Extract bullet points after this section
+            const startIndex = lines.indexOf(line);
+            for (let i = startIndex + 1; i < lines.length; i++) {
+                const currentLine = lines[i].trim();
+                if (currentLine.startsWith('-') || currentLine.startsWith('•')) {
+                    recommendations.push(currentLine.substring(1).trim());
+                } else if (currentLine.startsWith('#')) {
+                    break; // New section
+                }
+            }
+            break;
+        }
+    }
+    
+    return recommendations.length > 0 ? recommendations : ['Review analysis details'];
+};
+
+const extractRiskAssessment = (content: string): string => {
+    const lines = content.split('\n');
+    for (const line of lines) {
+        if (line.includes('Risk Assessment') || line.includes('⚠️')) {
+            const startIndex = lines.indexOf(line);
+            const riskLines = [];
+            for (let i = startIndex + 1; i < lines.length; i++) {
+                const currentLine = lines[i].trim();
+                if (currentLine.startsWith('#')) {
+                    break; // New section
+                }
+                if (currentLine) {
+                    riskLines.push(currentLine);
+                }
+            }
+            return riskLines.join(' ').substring(0, 200) + (riskLines.join(' ').length > 200 ? '...' : '');
+        }
+    }
+    return "Standard market risks apply";
+};
+
+const extractConfidenceLevel = (content: string): number => {
+    const confidenceMatch = content.match(/confidence.*?(\d+)/i);
+    if (confidenceMatch) {
+        const level = parseInt(confidenceMatch[1]);
+        return Math.min(Math.max(level / 10, 0), 1); // Convert to 0-1 scale
+    }
+    return 0.85; // Default confidence
+};
+
+const generateDataQualityNotes = (agentFindings: any[]): string => {
+    const toolCount = agentFindings.reduce((count, finding) => 
+        count + (finding.toolCalls?.length || 0), 0
+    );
+    
+    const dataSources = agentFindings.reduce((sources, finding) => {
+        if (finding.toolCalls) {
+            finding.toolCalls.forEach((tc: any) => {
+                if (tc.toolName) {
+                    sources.add(tc.toolName);
+                }
+            });
+        }
+        return sources;
+    }, new Set<string>());
+    
+    return `Analysis based on ${toolCount} data points from ${dataSources.size} sources (${Array.from(dataSources).join(', ')}).`;
+};
+
 // Type guard to check if a node is an AgentNode
 const isAgentNode = (node: CustomNode): node is CustomNode & { data: AgentNodeData } => {
   return 'result' in node.data || 'error' in node.data;
@@ -72,6 +173,8 @@ const App: React.FC = () => {
             
             // Extract agent findings from the trace if available
             const agentFindings: AgentFinding[] = [];
+            const agentInvocations: any[] = [];
+            
             if (workflowStatus.trace?.agent_results) {
                 for (const [agentKey, agentData] of Object.entries(workflowStatus.trace.agent_results)) {
                     const data = agentData as any;
@@ -81,23 +184,36 @@ const App: React.FC = () => {
                         summary: data.result || 'Analysis completed',
                         details: data.tool_calls ? data.tool_calls.map((tc: any) => 
                             `${tc.toolName}: ${tc.toolOutputSummary || 'Executed successfully'}`
-                        ) : []
+                        ) : [],
+                        toolCalls: data.tool_calls || []
+                    });
+                    
+                    // Create agent invocation for step counting
+                    agentInvocations.push({
+                        agentName: data.name || agentKey,
+                        naturalLanguageTask: `Analysis for ${agentKey}`,
+                        toolCalls: data.tool_calls || [],
+                        synthesizedResponse: data.result || 'Analysis completed',
+                        status: 'success'
                     });
                 }
             }
+            
+            // Generate dynamic cross-agent insights
+            const crossAgentInsights = generateCrossAgentInsights(agentFindings, workflowStatus.provider || 'unknown');
             
             const report: Report = {
                 executiveSummary: reportContent,
                 agentFindings: agentFindings,
                 failedAgents: [],
-                crossAgentInsights: "Analysis completed successfully using the selected LLM provider.",
-                actionableRecommendations: [],
-                riskAssessment: "Risk assessment included in the analysis above.",
-                confidenceLevel: 0.85,
-                dataQualityNotes: "Analysis based on available market and economic data.",
+                crossAgentInsights: crossAgentInsights,
+                actionableRecommendations: extractActionableRecommendations(reportContent),
+                riskAssessment: extractRiskAssessment(reportContent),
+                confidenceLevel: extractConfidenceLevel(reportContent),
+                dataQualityNotes: generateDataQualityNotes(agentFindings),
                 executionTrace: {
                     fintelQueryAnalysis: workflowStatus.query || "",
-                    agentInvocations: []
+                    agentInvocations: agentInvocations
                 }
             };
             
@@ -250,6 +366,7 @@ const App: React.FC = () => {
                 report={currentReport}
                 isVisible={isReportModalVisible}
                 onClose={handleCloseReportModal}
+                query={workflowStatus?.query || ''}
             />
             {error && <Notification type="error" message={error} onClose={() => setError(null)} />}
         </div>

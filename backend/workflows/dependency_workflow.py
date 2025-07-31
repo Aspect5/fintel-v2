@@ -344,28 +344,31 @@ class DependencyDrivenWorkflow(BaseWorkflow):
                     
                     STRUCTURE YOUR RESPONSE AS FOLLOWS:
                     
-                    ## Executive Summary
+                    ## 📊 Investment Analysis Report
+                    **Query:** {query}
+                    
+                    ### 🎯 Executive Summary
                     [2-3 sentence high-level overview of the investment recommendation]
                     
-                    ## Investment Recommendation
+                    ### 💡 Investment Recommendation
                     [Clear buy/hold/sell recommendation with reasoning]
                     
-                    ## Key Findings
+                    ### 🔑 Key Findings
                     - [Key finding 1]
                     - [Key finding 2]
                     - [Key finding 3]
                     
-                    ## Risk Assessment
+                    ### ⚠️ Risk Assessment
                     [Key risks to consider, both market-specific and macroeconomic]
                     
-                    ## Action Items
+                    ### 📋 Action Items
                     - [Specific action 1]
                     - [Specific action 2]
                     
-                    ## Confidence Level
+                    ### 🎯 Confidence Level
                     [Rate your confidence from 1-10, with explanation]
                     
-                    IMPORTANT: Use proper markdown formatting with ## headers and bullet points (-) for easy reading.""",
+                    IMPORTANT: Use proper markdown formatting with ## and ### headers and bullet points (-) for easy reading.""",
                     depends_on=final_dependencies,
                     agents=[agents['coordinator']], result_type=str
                 )
@@ -513,97 +516,44 @@ class DependencyDrivenWorkflow(BaseWorkflow):
         logger.debug(f"Edge {edge_id} status updated to {status}")
 
     def _create_comprehensive_report(self, query: str, final_result: str, agent_results: dict, execution_time: float) -> str:
-        """Create a comprehensive report with agent-by-agent breakdowns"""
-        
-        report_parts = []
-        
-        # Executive Summary from final result
-        report_parts.append("## 📊 Investment Analysis Report")
-        report_parts.append(f"**Query:** {query}")
-        report_parts.append(f"**Analysis Time:** {execution_time:.1f} seconds")
-        report_parts.append("")
+        """Create a streamlined report focusing on key decision-making information"""
         
         # Extract sections from final result
         sections = self._extract_sections_from_result(final_result)
         
-        # Executive Summary
-        if 'executive_summary' in sections:
-            report_parts.append("### 🎯 Executive Summary")
-            report_parts.append(sections['executive_summary'])
-            report_parts.append("")
+        # Start with the final result as the base, but clean it up
+        report_content = final_result.strip()
         
-        # Investment Recommendation
-        if 'investment_recommendation' in sections:
-            report_parts.append("### 💡 Investment Recommendation")
-            report_parts.append(sections['investment_recommendation'])
-            report_parts.append("")
+        # Remove any duplicate headers that might be in the LLM response
+        lines = report_content.split('\n')
+        cleaned_lines = []
+        skip_next = False
         
-        # Agent-by-Agent Breakdown
-        if agent_results:
-            report_parts.append("### 🔍 Agent Analysis Breakdown")
-            report_parts.append("")
-            
-            for agent_key, agent_data in agent_results.items():
-                agent_name = agent_data['name']
-                specialization = agent_data['specialization']
-                result = agent_data['result']
-                tool_calls = agent_data.get('tool_calls', [])
-                
-                # Get agent icon
-                icon_map = {
-                    'Market Analyst': '📈',
-                    'Economic Analyst': '🏛️',
-                    'Risk Assessment': '⚠️'
-                }
-                icon = icon_map.get(agent_name, '🤖')
-                
-                report_parts.append(f"#### {icon} {agent_name}")
-                report_parts.append(f"**Specialization:** {specialization}")
-                report_parts.append("")
-                
-                # Add tool calls summary
-                if tool_calls:
-                    report_parts.append("**Tools Used:**")
-                    for tool_call in tool_calls:
-                        tool_name = tool_call.get('toolName', 'Unknown')
-                        summary = tool_call.get('toolOutputSummary', 'Executed successfully')
-                        report_parts.append(f"- **{tool_name}:** {summary}")
-                    report_parts.append("")
-                
-                # Add agent's analysis (truncated if too long)
-                analysis = result.strip()
-                if len(analysis) > 500:
-                    analysis = analysis[:500] + "..."
-                
-                report_parts.append("**Analysis:**")
-                report_parts.append(analysis)
-                report_parts.append("")
+        for i, line in enumerate(lines):
+            # Skip duplicate "Investment Analysis Report" headers
+            if '📊 Investment Analysis Report' in line and i > 0:
+                continue
+            # Skip empty lines after headers
+            if skip_next and line.strip() == '':
+                skip_next = False
+                continue
+            cleaned_lines.append(line)
+            skip_next = False
         
-        # Key Findings
-        if 'key_findings' in sections:
-            report_parts.append("### 🔑 Key Findings")
-            report_parts.append(sections['key_findings'])
-            report_parts.append("")
+        # Add execution time to the header
+        cleaned_content = '\n'.join(cleaned_lines)
+        if '📊 Investment Analysis Report' in cleaned_content:
+            # Find the header line and add execution time
+            lines = cleaned_content.split('\n')
+            for i, line in enumerate(lines):
+                if '📊 Investment Analysis Report' in line:
+                    # Add execution time after the query line
+                    if i + 1 < len(lines) and '**Query:**' in lines[i + 1]:
+                        lines.insert(i + 2, f"**Analysis Time:** {execution_time:.1f} seconds")
+                    break
+            cleaned_content = '\n'.join(lines)
         
-        # Risk Assessment
-        if 'risk_assessment' in sections:
-            report_parts.append("### ⚠️ Risk Assessment")
-            report_parts.append(sections['risk_assessment'])
-            report_parts.append("")
-        
-        # Action Items
-        if 'action_items' in sections:
-            report_parts.append("### 📋 Action Items")
-            report_parts.append(sections['action_items'])
-            report_parts.append("")
-        
-        # Confidence Level
-        if 'confidence_level' in sections:
-            report_parts.append("### 🎯 Confidence Level")
-            report_parts.append(sections['confidence_level'])
-            report_parts.append("")
-        
-        return "\n".join(report_parts)
+        return cleaned_content
     
     def _extract_sections_from_result(self, result: str) -> dict:
         """Extract sections from the final result using markdown headers"""
