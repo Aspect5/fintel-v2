@@ -46,14 +46,19 @@ const extractActionableRecommendations = (content: string): string[] => {
     const lines = content.split('\n');
     
     for (const line of lines) {
-        if (line.includes('Action Items') || line.includes('Next Steps')) {
+        if (line.includes('Action Items') || line.includes('📋 Action Items')) {
             // Extract bullet points after this section
             const startIndex = lines.indexOf(line);
             for (let i = startIndex + 1; i < lines.length; i++) {
                 const currentLine = lines[i].trim();
                 if (currentLine.startsWith('-') || currentLine.startsWith('•')) {
-                    recommendations.push(currentLine.substring(1).trim());
-                } else if (currentLine.startsWith('#')) {
+                    // Clean up the recommendation text
+                    let rec = currentLine.substring(1).trim();
+                    // Remove any markdown formatting
+                    rec = rec.replace(/\*\*(.*?)\*\*/g, '$1'); // Remove bold
+                    rec = rec.replace(/\*(.*?)\*/g, '$1'); // Remove italic
+                    recommendations.push(rec);
+                } else if (currentLine.startsWith('###') || currentLine.startsWith('##')) {
                     break; // New section
                 }
             }

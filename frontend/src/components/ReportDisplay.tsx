@@ -13,6 +13,31 @@ interface ReportDisplayProps {
 }
 
 const ReportDisplay: React.FC<ReportDisplayProps> = ({ report, isLoading = false, query = '' }) => {
+  // Helper function to extract executive summary from full report
+  const extractExecutiveSummary = (fullReport: string): string => {
+    const lines = fullReport.split('\n');
+    let inExecutiveSummary = false;
+    let executiveSummaryLines: string[] = [];
+    
+    for (const line of lines) {
+      if (line.includes('🎯 Executive Summary') || line.includes('### 🎯 Executive Summary')) {
+        inExecutiveSummary = true;
+        continue;
+      }
+      
+      if (inExecutiveSummary) {
+        if (line.startsWith('### ') || line.startsWith('## ')) {
+          break; // Next section
+        }
+        if (line.trim()) {
+          executiveSummaryLines.push(line);
+        }
+      }
+    }
+    
+    return executiveSummaryLines.join('\n').trim();
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -55,7 +80,7 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({ report, isLoading = false
           <div className="mb-4">
             <h2 className="text-lg font-semibold text-brand-text-primary mb-2">🎯 Executive Summary</h2>
             <div className="text-brand-text-secondary">
-              <MarkdownRenderer content={report.executiveSummary} />
+              <MarkdownRenderer content={extractExecutiveSummary(report.executiveSummary)} />
             </div>
           </div>
         )}

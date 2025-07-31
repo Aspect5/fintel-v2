@@ -1,5 +1,6 @@
 import React from 'react';
 import ExpandableText from './ExpandableText';
+import MarkdownRenderer from './MarkdownRenderer';
 
 interface ToolCall {
   toolName: string;
@@ -53,13 +54,9 @@ const AgentAnalysisCard: React.FC<AgentAnalysisCardProps> = ({
       {/* Analysis */}
       <div>
         <p className="text-xs font-medium text-brand-text-secondary mb-2">Analysis:</p>
-        <ExpandableText
-          content={analysis}
-          maxLength={150}
-          className="text-sm text-brand-text-secondary"
-          collapsedClassName="line-clamp-3"
-          expandedClassName=""
-        />
+        <div className="text-sm text-brand-text-secondary">
+          <MarkdownRenderer content={analysis} />
+        </div>
       </div>
     </div>
   );

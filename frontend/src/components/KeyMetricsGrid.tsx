@@ -1,4 +1,5 @@
 import React from 'react';
+import MarkdownRenderer from './MarkdownRenderer';
 
 interface KeyMetricsGridProps {
   confidenceLevel?: number;
@@ -74,12 +75,9 @@ const KeyMetricsGrid: React.FC<KeyMetricsGridProps> = ({
         <div className="text-brand-text-secondary text-sm">
           {actionableRecommendations.length > 0 ? (
             <div className="space-y-1">
-              {actionableRecommendations.slice(0, 2).map((rec, index) => (
-                <div key={index} className="flex items-start">
-                  <span className="text-brand-primary mr-2 mt-1">•</span>
-                  <span className="text-xs">{rec}</span>
-                </div>
-              ))}
+              <div className="text-xs">
+                <MarkdownRenderer content={actionableRecommendations.slice(0, 2).map(rec => `- ${rec}`).join('\n')} />
+              </div>
               {actionableRecommendations.length > 2 && (
                 <p className="text-xs text-brand-text-secondary mt-1">
                   +{actionableRecommendations.length - 2} more items

@@ -528,11 +528,14 @@ class DependencyDrivenWorkflow(BaseWorkflow):
         lines = report_content.split('\n')
         cleaned_lines = []
         skip_next = False
+        header_found = False
         
         for i, line in enumerate(lines):
             # Skip duplicate "Investment Analysis Report" headers
-            if '📊 Investment Analysis Report' in line and i > 0:
-                continue
+            if '📊 Investment Analysis Report' in line:
+                if header_found:
+                    continue  # Skip duplicate headers
+                header_found = True
             # Skip empty lines after headers
             if skip_next and line.strip() == '':
                 skip_next = False
