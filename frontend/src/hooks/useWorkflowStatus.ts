@@ -1,9 +1,12 @@
 // In hooks/useWorkflowStatus.ts
-import { useState, useEffect, useCallback } from 'react';
-import { WorkflowStatus } from '../types';
+import { useEffect, useCallback } from 'react';
+import { useWorkflowStore } from '../stores/workflowStore';
 
-export const useWorkflowStatus = (workflowId: string | null, initialStateSet: boolean) => {
-    const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(null);
+export const useWorkflowStatus = (workflowId: string | null) => {
+    const { updateWorkflowStatus, status: workflowStatus } = useWorkflowStore(state => ({
+        updateWorkflowStatus: state.updateWorkflowStatus,
+        status: state.status,
+    }));
 
     const fetchStatus = useCallback(async () => {
         if (!workflowId) return;
@@ -13,53 +16,73 @@ export const useWorkflowStatus = (workflowId: string | null, initialStateSet: bo
             if (response.ok) {
                 const status = await response.json();
                 
-                // Add debug logging
-                console.log(`[WorkflowStatus] Fetched status for ${workflowId}:`, {
+                // Comprehensive logging to track data flow
+                console.log(`[useWorkflowStatus] Raw backend data for ${workflowId}:`, status);
+                console.log(`[useWorkflowStatus] Data breakdown:`, {
                     status: status.status,
                     hasNodes: !!status.nodes,
                     hasEdges: !!status.edges,
+                    nodesCount: status.nodes?.length || 0,
+                    edgesCount: status.edges?.length || 0,
+                    hasGraph: !!status.workflow_graph,
                     hasResult: !!status.result,
+                    hasEnhancedResult: !!status.enhanced_result,
+                    hasAgentInvocations: !!status.agent_invocations,
+                    hasToolCalls: !!status.tool_calls,
+                    hasTrace: !!status.trace,
+                    currentTask: status.current_task,
+                    executionTime: status.execution_time,
                     resultType: typeof status.result,
-                    hasEnhancedResult: !!status.enhanced_result
+                    enhancedResultType: typeof status.enhanced_result,
                 });
+
+                // Update the store directly
+                updateWorkflowStatus(status);
                 
-                // Accept any status that has basic workflow information
-                if (status && (status.status || status.nodes || status.result || status.enhanced_result)) {
-                    console.log('[WorkflowStatus] Accepting status:', {
-                        status: status.status,
-                        hasNodes: !!status.nodes,
-                        hasResult: !!status.result,
-                        hasEnhancedResult: !!status.enhanced_result,
-                        resultType: typeof status.result
+                // Log after store update
+                setTimeout(() => {
+                    const storeState = useWorkflowStore.getState();
+                    console.log(`[useWorkflowStatus] Store state after update:`, {
+                        storeStatus: storeState.status,
+                        storeHasResult: !!storeState.result,
+                        storeHasEnhancedResult: !!storeState.enhanced_result,
+                        storeHasAgentInvocations: !!storeState.agent_invocations,
                     });
-                    setWorkflowStatus(status);
-                } else {
-                    console.warn('[WorkflowStatus] Incomplete workflow status received:', status);
-                }
+                }, 0);
             }
         } catch (err) {
-            console.error('[WorkflowStatus] Failed to fetch workflow status:', err);
+            console.error('[useWorkflowStatus] Failed to fetch workflow status:', err);
         }
-    }, [workflowId]);
+    }, [workflowId, updateWorkflowStatus]);
+
+    // Initial fetch when the component mounts or workflowId changes
+    useEffect(() => {
+        if (workflowId) {
+            fetchStatus();
+        }
+    }, [workflowId, fetchStatus]);
 
     // Polling effect
     useEffect(() => {
-        if (!workflowId || !initialStateSet) {
-            return; // Don't start polling until we have an ID and the initial state is set
+        if (!workflowId) {
+            return;
         }
 
-        console.log(`[WorkflowStatus] Starting to poll for workflow: ${workflowId}`);
+        console.log(`[useWorkflowStatus] Starting to poll for workflow: ${workflowId}`);
         const interval = setInterval(() => {
-            if (workflowStatus?.status === 'completed' || workflowStatus?.status === 'failed') {
-                console.log(`[WorkflowStatus] Workflow ${workflowId} finished, stopping polling`);
+            if (workflowStatus === 'completed' || workflowStatus === 'failed') {
+                console.log(`[useWorkflowStatus] Workflow ${workflowId} finished with status: ${workflowStatus}. Stopping polling.`);
                 clearInterval(interval);
                 return;
             }
             fetchStatus();
-        }, 1000);
+        }, 2000); // Polling interval set to 2 seconds
 
-        return () => clearInterval(interval);
-    }, [workflowId, initialStateSet, fetchStatus, workflowStatus?.status]);
+        return () => {
+            console.log(`[useWorkflowStatus] Cleaning up polling for ${workflowId}`);
+            clearInterval(interval);
+        };
+    }, [workflowId, fetchStatus, workflowStatus]);
 
-    return { workflowStatus, setWorkflowStatus };
+    // This hook no longer returns anything as it interacts directly with the store
 };

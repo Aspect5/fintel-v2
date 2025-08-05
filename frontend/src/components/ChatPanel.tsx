@@ -1,43 +1,50 @@
 // components/ChatPanel.tsx
 import React, { useState, useEffect, useRef } from 'react';
-import { ChatMessage, WorkflowStatus } from '../types';
+import { ChatMessage } from '../types';
 import MarkdownRenderer from './MarkdownRenderer';
 import SpinnerIcon from './icons/SpinnerIcon';
 import { useWorkflowStatus } from '../hooks/useWorkflowStatus';
 import { useStore } from '../stores/store';
+import { useWorkflowStore } from '../stores/workflowStore'; // Import the workflow store
 
 interface ChatPanelProps {
   chatMessages: ChatMessage[];
-  onSendMessage: (message: string) => void;
   onAddMessage: (message: ChatMessage) => void;
-  isLoading: boolean;
-  onWorkflowStart?: (status: WorkflowStatus) => void;
+  // onWorkflowStart is no longer needed as the panel will trigger the store directly
 }
 
 const ChatPanel: React.FC<ChatPanelProps> = ({
   chatMessages,
   onAddMessage,
-  onWorkflowStart
 }) => {
   const [query, setQuery] = useState('');
-  const [workflowId, setWorkflowId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [initialStateSet, setInitialStateSet] = useState(false);
   const hasAddedResult = useRef(false);
   
-  const { workflowStatus } = useWorkflowStatus(workflowId, initialStateSet);
+  // Get state and actions from the stores
   const { controlFlowProvider, clearChatMessages } = useStore();
+  const { 
+      workflowId, 
+      status: workflowStatus, 
+      result: workflowResult, 
+      error: workflowError,
+      trace: workflowTrace,
+      current_task: workflowCurrentTask,
+      executionTime: workflowExecutionTime,
+      startWorkflow, // Get the startWorkflow action
+      resetWorkflow,
+  } = useWorkflowStore();
+
+  // This hook now just initiates polling when workflowId changes
+  useWorkflowStatus(workflowId);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!query.trim()) return;
     
     setIsLoading(true);
-    setWorkflowId(null);
-    setInitialStateSet(false);
     hasAddedResult.current = false;
     
-    // Add user message
     const userMessage: ChatMessage = { role: 'user', content: query };
     onAddMessage(userMessage);
     
@@ -53,14 +60,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
       
       if (response.ok) {
         const data = await response.json();
-        setWorkflowId(data.workflow_id);
-        
-        // Notify parent component with the full initial status
-        if (onWorkflowStart) {
-          onWorkflowStart(data.workflow_status);
-        }
-        setInitialStateSet(true);
-
+        // Start the workflow via the store
+        startWorkflow(data.workflow_id, query, data.workflow_status);
       } else {
         const errorData = await response.json();
         throw new Error(errorData.error || `HTTP ${response.status}`);
@@ -80,41 +81,31 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
 
   const handleClearChat = () => {
     clearChatMessages();
-    setWorkflowId(null);
-    setInitialStateSet(false);
+    resetWorkflow();
     hasAddedResult.current = false;
   };
 
   // Update result when workflow completes
   useEffect(() => {
-    if (!workflowStatus || !workflowId || hasAddedResult.current) return;
+    if (!workflowId || hasAddedResult.current) return;
 
-    // Make sure this is the current workflow
-    if (workflowStatus.workflow_id !== workflowId) return;
-    
-    if (workflowStatus.status === 'completed' && workflowStatus.result) {
+    if (workflowStatus === 'completed' && workflowResult) {
       hasAddedResult.current = true;
-      setIsLoading(false);
-      
-      // Add assistant message with a simple summary instead of the full report
       const assistantMessage: ChatMessage = {
         role: 'assistant',
-        content: `✅ Analysis completed! Click on the "Final Report" node in the workflow to view the detailed analysis.`,
-        trace: workflowStatus.trace
+        content: `✅ Analysis complete! View the final report by clicking the last node.`,
+        trace: workflowTrace,
       };
       onAddMessage(assistantMessage);
-    } else if (workflowStatus.status === 'failed') {
+    } else if (workflowStatus === 'failed') {
       hasAddedResult.current = true;
-      setIsLoading(false);
-      
-      // Add error message
       const errorMessage: ChatMessage = {
         role: 'assistant',
-        content: `Analysis failed: ${workflowStatus.error || 'Unknown error'}`
+        content: `Analysis failed: ${workflowError || 'Unknown error'}`
       };
       onAddMessage(errorMessage);
     }
-  }, [workflowStatus, workflowId, onAddMessage]);
+  }, [workflowStatus, workflowId, workflowResult, workflowError, workflowTrace, onAddMessage]);
 
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
   
@@ -122,9 +113,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
+  useEffect(() => {
+      setIsLoading(workflowStatus === 'running' || workflowStatus === 'initializing');
+  }, [workflowStatus]);
+
   return (
     <div className="flex flex-col h-full bg-brand-bg">
-      {/* Header with clear button */}
       {chatMessages.length > 0 && (
         <div className="p-3 border-b border-brand-border bg-brand-surface flex justify-between items-center">
           <h3 className="text-sm font-medium text-brand-text-primary">Chat History</h3>
@@ -137,7 +131,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
         </div>
       )}
 
-      {/* Messages area */}
       <div className="flex-1 overflow-y-auto p-4">
         <div className="space-y-4">
           {chatMessages.map((msg, index) => (
@@ -147,40 +140,22 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
                   ? 'bg-brand-primary text-white' 
                   : 'bg-brand-surface text-brand-text-primary'
               }`}>
-                <div className="break-words">
-                  <MarkdownRenderer content={msg.content} />
-                </div>
-                {msg.trace && (
-                  <details className="mt-2 text-xs text-brand-text-secondary">
-                    <summary className="cursor-pointer hover:text-brand-text-primary">
-                      View execution details
-                    </summary>
-                    <pre className="mt-2 p-2 bg-brand-bg rounded overflow-x-auto text-xs">
-                      {JSON.stringify(msg.trace, null, 2)}
-                    </pre>
-                  </details>
-                )}
+                <MarkdownRenderer content={msg.content} />
               </div>
             </div>
           ))}
           
-          {/* Loading indicator */}
-          {isLoading && workflowStatus && workflowStatus.status !== 'completed' && workflowStatus.status !== 'failed' && (
+          {isLoading && (
             <div className="flex justify-start">
               <div className="bg-brand-surface p-3 rounded-lg">
                 <div className="flex items-center space-x-2">
                   <SpinnerIcon className="w-5 h-5 text-brand-primary" />
                   <span className="text-brand-text-primary">
-                    {workflowStatus.status === 'running' 
-                      ? `Analyzing... ${workflowStatus.current_task || ''}`
+                    {workflowStatus === 'running' 
+                      ? `Analyzing... ${workflowCurrentTask || ''}`
                       : 'Starting analysis...'}
                   </span>
                 </div>
-                {workflowStatus.execution_time && (
-                  <div className="text-xs text-brand-text-secondary mt-1">
-                    Time elapsed: {workflowStatus.execution_time.toFixed(1)}s
-                  </div>
-                )}
               </div>
             </div>
           )}
@@ -189,47 +164,44 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
         </div>
       </div>
 
-      {/* Workflow status bar */}
-      {workflowStatus && (
+      {workflowStatus && workflowStatus !== 'idle' && (
         <div className="p-3 border-t border-brand-border bg-brand-surface">
           <div className="flex items-center justify-between">
             <div className="text-sm">
               <span className="text-brand-text-secondary">Status: </span>
               <span className={`font-semibold ${
-                workflowStatus.status === 'completed' ? 'text-green-400' :
-                workflowStatus.status === 'failed' ? 'text-red-400' :
-                workflowStatus.status === 'running' ? 'text-yellow-400' :
-                'text-blue-400'
+                workflowStatus === 'completed' ? 'text-green-400' :
+                workflowStatus === 'failed' ? 'text-red-400' :
+                'text-yellow-400'
               }`}>
-                {workflowStatus.status}
+                {workflowStatus}
               </span>
             </div>
-            {workflowStatus.execution_time && (
+            {workflowExecutionTime && (
               <div className="text-sm text-brand-text-secondary">
-                Completed in {workflowStatus.execution_time.toFixed(1)}s
+                Time: {workflowExecutionTime.toFixed(1)}s
               </div>
             )}
           </div>
         </div>
       )}
 
-      {/* Input form */}
       <form onSubmit={handleSubmit} className="p-4 border-t border-brand-border">
         <div className="flex gap-2">
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Ask about investments (e.g., 'Should I invest in AAPL?')"
-            className="flex-1 px-3 py-2 bg-brand-surface border border-brand-border rounded text-brand-text-primary placeholder-brand-text-secondary focus:outline-none focus:ring-2 focus:ring-brand-primary"
+            placeholder="e.g., 'Should I invest in AAPL?'"
+            className="flex-1 px-3 py-2 bg-brand-surface border-brand-border rounded"
             disabled={isLoading}
           />
           <button
             type="submit"
             disabled={isLoading || !query.trim()}
-            className="px-4 py-2 bg-brand-primary text-white rounded hover:bg-brand-secondary disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="px-4 py-2 bg-brand-primary text-white rounded hover:bg-brand-secondary disabled:opacity-50"
           >
-            {isLoading ? <SpinnerIcon className="w-5 h-5" /> : 'Analyze'}
+            {isLoading ? <SpinnerIcon /> : 'Analyze'}
           </button>
         </div>
       </form>

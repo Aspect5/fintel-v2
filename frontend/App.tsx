@@ -1,17 +1,7 @@
-// App.tsx - Updated handleNodeDoubleClick
+// App.tsx - Refactored for Zustand
 import React, { useState, useEffect } from 'react';
-
-// Suppress ResizeObserver loop error (known issue with React Flow)
-const originalError = console.error;
-console.error = (...args) => {
-  if (args[0]?.includes?.('ResizeObserver loop completed with undelivered notifications')) {
-    return;
-  }
-  originalError.apply(console, args);
-};
-import { useNodesState, useEdgesState } from 'reactflow';
-import { AgentNodeData, ChatMessage, CustomNode, WorkflowStatus, Report } from './src/types';
 import { useStore } from './src/stores/store';
+import { useWorkflowStore } from './src/stores/workflowStore'; // Import the new store
 import SidePanel from './src/components/SidePanel';
 import WorkflowCanvas from './src/components/WorkflowCanvas';
 import { ApiKeyModal } from './src/components/ApiKeyModal';
@@ -20,154 +10,105 @@ import ReportModal from './src/components/ReportModal';
 import Notification from './src/components/Notification';
 import { useWorkflowStatus } from './src/hooks/useWorkflowStatus';
 import WorkflowHistory from './src/components/WorkflowHistory';
+import {
+  CustomNode, Report, AgentFinding, EnhancedResult,
+} from './src/types';
 
-
-// Helper functions for report generation
-const generateCrossAgentInsights = (agentFindings: any[], provider: string): string => {
-    if (agentFindings.length === 0) {
-        return `Analysis completed successfully using ${provider}.`;
-    }
-    
-    const insights = [];
-    const agentNames = agentFindings.map(f => f.agentName);
-    
-    if (agentFindings.length > 1) {
-        insights.push(`Analysis completed using ${agentNames.join(' and ')} with ${provider}.`);
-        
-        // Check for consensus
-        const hasConsensus = agentFindings.every(f => 
-            f.summary.toLowerCase().includes('positive') || 
-            f.summary.toLowerCase().includes('favorable') ||
-            f.summary.toLowerCase().includes('good')
-        );
-        
-        if (hasConsensus) {
-            insights.push("All agents identified positive trends, indicating strong consensus.");
-        } else {
-            insights.push("Agents provided mixed perspectives, suggesting balanced analysis.");
-        }
-    }
-    
-    return insights.join(' ');
+// Suppress ResizeObserver loop error
+const originalError = console.error;
+console.error = (...args) => {
+  if (args[0]?.includes?.('ResizeObserver loop completed with undelivered notifications')) {
+    return;
+  }
+  originalError.apply(console, args);
 };
 
+// Helper functions (assuming they are still needed, otherwise can be removed)
+const generateCrossAgentInsights = (agentFindings: any[], provider: string): string => {
+    if (agentFindings.length === 0) return `Analysis completed using ${provider}.`;
+    const agentNames = agentFindings.map(f => f.agentName);
+    const insights = [`Analysis completed using ${agentNames.join(' and ')} with ${provider}.`];
+    const hasConsensus = agentFindings.every(f => f.summary.toLowerCase().includes('positive'));
+    if (hasConsensus) {
+        insights.push("All agents identified positive trends, indicating strong consensus.");
+    } else {
+        insights.push("Agents provided mixed perspectives, suggesting balanced analysis.");
+    }
+    return insights.join(' ');
+};
 const extractActionableRecommendations = (content: string): string[] => {
-    const recommendations = [];
+    const recommendations: string[] = [];
     const lines = content.split('\n');
-    
-    for (const line of lines) {
-        if (line.includes('Action Items') || line.includes('📋 Action Items')) {
-            // Extract bullet points after this section
-            const startIndex = lines.indexOf(line);
-            for (let i = startIndex + 1; i < lines.length; i++) {
-                const currentLine = lines[i].trim();
-                if (currentLine.startsWith('-') || currentLine.startsWith('•')) {
-                    // Clean up the recommendation text
-                    let rec = currentLine.substring(1).trim();
-                    // Remove any markdown formatting
-                    rec = rec.replace(/\*\*(.*?)\*\*/g, '$1'); // Remove bold
-                    rec = rec.replace(/\*(.*?)\*/g, '$1'); // Remove italic
-                    recommendations.push(rec);
-                } else if (currentLine.startsWith('###') || currentLine.startsWith('##')) {
-                    break; // New section
-                }
-            }
+    const startIndex = lines.findIndex(line => line.includes('Action Items') || line.includes('📋'));
+    if (startIndex === -1) return ['Review analysis details'];
+    for (let i = startIndex + 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (line.startsWith('-') || line.startsWith('•')) {
+            recommendations.push(line.substring(1).trim().replace(/\*\*/g, ''));
+        } else if (line.startsWith('#')) {
             break;
         }
     }
-    
     return recommendations.length > 0 ? recommendations : ['Review analysis details'];
 };
 
 const extractRiskAssessment = (content: string): string => {
     const lines = content.split('\n');
-    for (const line of lines) {
-        if (line.includes('Risk Assessment') || line.includes('⚠️')) {
-            const startIndex = lines.indexOf(line);
-            const riskLines = [];
-            for (let i = startIndex + 1; i < lines.length; i++) {
-                const currentLine = lines[i].trim();
-                if (currentLine.startsWith('#')) {
-                    break; // New section
-                }
-                if (currentLine) {
-                    riskLines.push(currentLine);
-                }
-            }
-            return riskLines.join(' ').substring(0, 200) + (riskLines.join(' ').length > 200 ? '...' : '');
-        }
+    const startIndex = lines.findIndex(line => line.includes('Risk Assessment') || line.includes('⚠️'));
+    if (startIndex === -1) return "Standard market risks apply";
+    const riskLines: string[] = [];
+    for (let i = startIndex + 1; i < lines.length; i++) {
+        if (lines[i].trim().startsWith('#')) break;
+        if (lines[i].trim()) riskLines.push(lines[i].trim());
     }
-    return "Standard market risks apply";
+    return riskLines.join(' ').substring(0, 200) + '...';
 };
 
 const extractConfidenceLevel = (content: string): number => {
-    const confidenceMatch = content.match(/confidence.*?(\d+)/i);
-    if (confidenceMatch) {
-        const level = parseInt(confidenceMatch[1]);
-        return Math.min(Math.max(level / 10, 0), 1); // Convert to 0-1 scale
-    }
-    return 0.85; // Default confidence
+    const match = content.match(/confidence.*?(\d+)/i);
+    return match ? Math.min(Math.max(parseInt(match[1], 10) / 10, 0), 1) : 0.85;
 };
 
 const generateDataQualityNotes = (agentFindings: any[], toolCalls?: any[]): string => {
-    let toolCount = 0;
     const dataSources = new Set<string>();
-    
-    // Count from agent findings
+    let toolCount = 0;
     agentFindings.forEach(finding => {
         if (finding.toolCalls) {
             toolCount += finding.toolCalls.length;
-            finding.toolCalls.forEach((tc: any) => {
-                if (tc.toolName) {
-                    dataSources.add(tc.toolName);
-                }
-            });
+            finding.toolCalls.forEach((tc: any) => dataSources.add(tc.toolName));
         }
     });
-    
-    // Count from direct tool calls if available
-    if (toolCalls && Array.isArray(toolCalls)) {
+    if (toolCalls) {
         toolCount += toolCalls.length;
-        toolCalls.forEach((tc: any) => {
-            if (tc.tool) {
-                dataSources.add(tc.tool);
-            }
-        });
+        toolCalls.forEach((tc: any) => dataSources.add(tc.tool));
     }
-    
     const sourcesList = Array.from(dataSources);
-    if (sourcesList.length > 0) {
-        return `Analysis based on ${toolCount} data points from ${dataSources.size} sources (${sourcesList.join(', ')}).`;
-    } else {
-        return `Analysis completed using modular agent system with ${agentFindings.length} specialist agents.`;
-    }
-};
-
-// Type guard to check if a node is an AgentNode
-const isAgentNode = (node: CustomNode): node is CustomNode & { data: AgentNodeData } => {
-  return 'result' in node.data || 'error' in node.data;
+    return sourcesList.length > 0 ? `Analysis based on ${toolCount} data points from ${sourcesList.length} sources (${sourcesList.join(', ')}).` : `Analysis completed with ${agentFindings.length} specialist agents.`;
 };
 
 
 const App: React.FC = () => {
+    // Component-level state
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [currentWorkflowId, setCurrentWorkflowId] = useState<string | null>(null);
     const [selectedNode, setSelectedNode] = useState<CustomNode | null>(null);
-    const [initialStateSet, setInitialStateSet] = useState(false);
     const [currentReport, setCurrentReport] = useState<Report | null>(null);
     const [isReportModalVisible, setIsReportModalVisible] = useState(false);
-    const [reportGenerated, setReportGenerated] = useState(false); // Track if report was already generated
+    const [reportGenerated, setReportGenerated] = useState(false);
 
-    // State for the react-flow canvas
-    const [nodes, setNodes, onNodesChange] = useNodesState([]);
-    const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-
-    // Get workflow status
-    const { workflowStatus, setWorkflowStatus } = useWorkflowStatus(currentWorkflowId, initialStateSet);
-
-    // Get global state from the Zustand store
+    // Global state from regular Zustand store
     const { setIsApiKeyModalOpen, chatMessages, addChatMessage } = useStore();
+
+    // Global state from the new workflow-specific Zustand store
+    const {
+        nodes, edges, onNodesChange, onEdgesChange,
+        workflowId, setPollingWorkflow,
+        status: workflowStatus, query: workflowQuery, executionTime,
+        event_history
+    } = useWorkflowStore();
+
+    // This hook now manages polling and updates the store directly
+    useWorkflowStatus(workflowId);
 
     // Effect to show the API key modal on first visit
     useEffect(() => {
@@ -178,366 +119,108 @@ const App: React.FC = () => {
         }
     }, [setIsApiKeyModalOpen]);
 
-    // Layout function to position nodes in a logical flow
-    const layoutNodes = (nodes: any[], edges: any[]) => {
-        const nodeMap = new Map();
-        const levels = new Map();
-        
-        // Create adjacency list
-        const adjacencyList = new Map();
-        nodes.forEach(node => {
-            adjacencyList.set(node.id, []);
-            nodeMap.set(node.id, node);
-        });
-        
-        edges.forEach(edge => {
-            if (adjacencyList.has(edge.from)) {
-                adjacencyList.get(edge.from).push(edge.to);
-            }
-        });
-        
-        // Find root nodes (nodes with no incoming edges)
-        const rootNodes = nodes.filter(node => 
-            !edges.some(edge => edge.to === node.id)
-        );
-        
-        // Assign levels using BFS
-        const queue = [...rootNodes.map(node => ({ node, level: 0 }))];
-        const visited = new Set();
-        
-        while (queue.length > 0) {
-            const { node, level } = queue.shift()!;
-            if (visited.has(node.id)) continue;
-            
-            visited.add(node.id);
-            if (!levels.has(level)) levels.set(level, []);
-            levels.get(level).push(node.id);
-            
-            // Add children to queue
-            adjacencyList.get(node.id)?.forEach(childId => {
-                if (!visited.has(childId)) {
-                    queue.push({ node: nodeMap.get(childId), level: level + 1 });
-                }
-            });
-        }
-        
-        // Position nodes
-        const nodeWidth = 250;
-        const nodeHeight = 120;
-        const levelSpacing = 300;
-        const nodeSpacing = 200;
-        
-        return nodes.map(node => {
-            let level = 0;
-            for (const [l, levelNodes] of levels.entries()) {
-                if (levelNodes.includes(node.id)) {
-                    level = l;
-                    break;
-                }
-            }
-            
-            const levelNodes = levels.get(level) || [];
-            const nodeIndex = levelNodes.indexOf(node.id);
-            const levelWidth = levelNodes.length * nodeSpacing;
-            const startX = -levelWidth / 2;
-            
-            return {
-                ...node,
-                position: {
-                    x: startX + nodeIndex * nodeSpacing + 400, // Center offset
-                    y: level * levelSpacing + 100
-                }
-            };
-        });
-    };
-
-    // Update nodes and edges when workflow status changes
+    // Effect to handle workflow completion and generate a report
     useEffect(() => {
-        console.log('[App] Workflow status changed:', {
-            hasNodes: !!workflowStatus?.nodes,
-            hasEdges: !!workflowStatus?.edges,
-            hasWorkflowGraph: !!workflowStatus?.workflow_graph,
-            nodeCount: workflowStatus?.nodes?.length || 0,
-            edgeCount: workflowStatus?.edges?.length || 0,
-            workflowGraphNodes: workflowStatus?.workflow_graph?.nodes?.length || 0,
-            workflowGraphEdges: workflowStatus?.workflow_graph?.edges?.length || 0
-        });
-        
-        // Extract nodes and edges from workflow_graph if available, otherwise use direct nodes/edges
-        let nodesToUse = workflowStatus?.nodes;
-        let edgesToUse = workflowStatus?.edges;
-        
-        if (workflowStatus?.workflow_graph?.nodes && workflowStatus?.workflow_graph?.edges) {
-            nodesToUse = workflowStatus.workflow_graph.nodes;
-            edgesToUse = workflowStatus.workflow_graph.edges;
-            console.log('[App] Using workflow_graph data:', {
-                nodeCount: nodesToUse.length,
-                edgeCount: edgesToUse.length
-            });
-        }
-        
-        if (nodesToUse && edgesToUse) {
-            // Layout the nodes
-            const positionedNodes = layoutNodes(nodesToUse, edgesToUse);
+        const workflowData = useWorkflowStore.getState();
+        if (workflowData.status === 'completed' && !reportGenerated) {
+            console.log('[App] Workflow completed. Generating report...');
             
-            const typedNodes = positionedNodes.map((node: any) => ({
-                id: node.id,
-                type: node.type || 'default',
-                position: node.position,
-                data: {
-                    label: node.label,
-                    status: node.status || 'pending',
-                    agent: node.agent,
-                    details: node.details,
-                    result: node.result,
-                    error: node.error
+            // Look for enhanced result in multiple places - first try enhanced_result, then result
+            let enhancedResult: EnhancedResult | null = null;
+            if (workflowData.enhanced_result) {
+                enhancedResult = workflowData.enhanced_result as EnhancedResult;
+            } else if (typeof workflowData.result === 'object' && workflowData.result !== null) {
+                enhancedResult = workflowData.result as EnhancedResult;
+            }
+            
+            const { result, agent_invocations, provider, query, tool_calls } = enhancedResult || {};
+            
+            // Use agent_invocations from the store if not in enhanced_result
+            const agentInvocationsToUse = agent_invocations || workflowData.agent_invocations || [];
+            const toolCallsToUse = tool_calls || workflowData.tool_calls || [];
+            
+            let reportContent = "Analysis completed successfully.";
+            if (typeof result === 'string') {
+                reportContent = result;
+            } else if (typeof result === 'object' && result !== null) {
+                if ('recommendation' in result) {
+                    reportContent = (result as { recommendation: string }).recommendation;
+                } else if ('market_analysis' in result) {
+                    reportContent = (result as { market_analysis: string }).market_analysis;
+                } else if ('content' in result) {
+                    reportContent = (result as { content: string }).content;
+                } else {
+                    reportContent = JSON.stringify(result, null, 2);
                 }
+            }
+            
+            const agentFindings: AgentFinding[] = agentInvocationsToUse.map((inv: any) => ({
+                agentName: inv.agent || inv.agentName || 'Unknown Agent',
+                specialization: inv.specialization || 'Financial Analysis',
+                summary: inv.task || inv.naturalLanguageTask || 'Analysis completed',
+                details: inv.details || [],
+                toolCalls: inv.tool_calls || inv.toolCalls || [],
             }));
             
-            // Convert edges from backend format (from/to) to React Flow format (source/target)
-            const reactFlowEdges = edgesToUse.map((edge: any, index: number) => ({
-                id: `edge-${index}`,
-                source: edge.from,
-                target: edge.to,
-                type: 'default'
-            }));
-            
-            console.log('[App] Setting nodes and edges:', {
-                typedNodes: typedNodes,
-                reactFlowEdges: reactFlowEdges,
-                nodeCount: typedNodes.length,
-                edgeCount: reactFlowEdges.length
-            });
-            
-            setNodes(typedNodes as CustomNode[]);
-            setEdges(reactFlowEdges);
-            
-            // Debug: Check if nodes are actually set
-            setTimeout(() => {
-                console.log('[App] After setting nodes/edges:', {
-                    nodesLength: typedNodes.length,
-                    edgesLength: reactFlowEdges.length,
-                    firstNode: typedNodes[0],
-                    firstEdge: reactFlowEdges[0]
-                });
-            }, 100);
-        }
-    }, [workflowStatus, setNodes, setEdges]);
+            const crossAgentInsights = generateCrossAgentInsights(agentFindings, provider || 'unknown');
 
-    // Handle workflow completion and show report modal
-    useEffect(() => {
-        if (workflowStatus?.status === 'completed' && !reportGenerated) {
-            console.log('[App] Workflow completed, status:', workflowStatus);
-            
-            // Handle enhanced workflow results
-            let reportContent = 'Analysis completed successfully';
-            let enhancedResult = null;
-
-            console.log('[App] Processing workflow result:', {
-                result: workflowStatus.result,
-                resultType: typeof workflowStatus.result,
-                hasEnhancedResult: !!workflowStatus.enhanced_result
-            });
-
-            // Check if this is an enhanced workflow result
-            console.log('[App] Processing workflow result:', {
-                result: workflowStatus.result,
-                resultType: typeof workflowStatus.result,
-                hasEnhancedResult: !!workflowStatus.enhanced_result,
-                enhancedResultType: typeof workflowStatus.enhanced_result,
-                resultKeys: workflowStatus.result ? Object.keys(workflowStatus.result) : [],
-                enhancedResultKeys: workflowStatus.enhanced_result ? Object.keys(workflowStatus.enhanced_result) : []
-            });
-            
-            if (workflowStatus.enhanced_result && typeof workflowStatus.enhanced_result === 'object') {
-                // Enhanced result in separate field (primary path)
-                enhancedResult = workflowStatus.enhanced_result;
-                reportContent = enhancedResult.recommendation || enhancedResult.market_analysis || enhancedResult.content || 'Analysis completed';
-            } else if (workflowStatus.result && typeof workflowStatus.result === 'object') {
-                if (workflowStatus.result.ticker || workflowStatus.result.recommendation || workflowStatus.result.market_analysis) {
-                    // Direct enhanced workflow format
-                    enhancedResult = workflowStatus.result;
-                    reportContent = enhancedResult.recommendation || enhancedResult.market_analysis || enhancedResult.content || 'Analysis completed';
-                } else if (workflowStatus.result.enhanced_result) {
-                    // Nested enhanced workflow format
-                    enhancedResult = workflowStatus.result.enhanced_result;
-                    reportContent = enhancedResult.recommendation || enhancedResult.market_analysis || enhancedResult.content || 'Analysis completed';
-                }
-            } else if (workflowStatus.result && typeof workflowStatus.result === 'string') {
-                // Legacy format
-                reportContent = workflowStatus.result;
-            }
-
-            console.log('[App] Enhanced result extracted:', enhancedResult);
-            
-            // Extract agent findings from the trace if available
-            const agentFindings: AgentFinding[] = [];
-            const agentInvocations: any[] = [];
-            
-            // Use agent_invocations from workflow status if available
-            if (workflowStatus.agent_invocations && Array.isArray(workflowStatus.agent_invocations)) {
-                for (const invocation of workflowStatus.agent_invocations) {
-                    agentFindings.push({
-                        agentName: invocation.agent,
-                        specialization: 'Financial Analysis',
-                        summary: invocation.task,
-                        details: [],
-                        toolCalls: []
-                    });
-                    
-                    agentInvocations.push({
-                        agentName: invocation.agent,
-                        naturalLanguageTask: invocation.task,
-                        toolCalls: [],
-                        synthesizedResponse: 'Analysis completed',
-                        status: invocation.status
-                    });
-                }
-            } else if (workflowStatus.trace?.agent_results) {
-                // Fallback to old format
-                for (const [agentKey, agentData] of Object.entries(workflowStatus.trace.agent_results)) {
-                    const data = agentData as any;
-                    agentFindings.push({
-                        agentName: data.name || agentKey,
-                        specialization: data.specialization || 'Analysis',
-                        summary: data.result || 'Analysis completed',
-                        details: data.tool_calls ? data.tool_calls.map((tc: any) => 
-                            `${tc.toolName}: ${tc.toolOutputSummary || 'Executed successfully'}`
-                        ) : [],
-                        toolCalls: data.tool_calls || []
-                    });
-                    
-                    // Create agent invocation for step counting
-                    agentInvocations.push({
-                        agentName: data.name || agentKey,
-                        naturalLanguageTask: `Analysis for ${agentKey}`,
-                        toolCalls: data.tool_calls || [],
-                        synthesizedResponse: data.result || 'Analysis completed',
-                        status: 'success'
-                    });
-                }
-            }
-            
-            // Generate dynamic cross-agent insights
-            const crossAgentInsights = generateCrossAgentInsights(agentFindings, workflowStatus.provider || 'unknown');
-            
             const report: Report = {
                 executiveSummary: reportContent,
-                agentFindings: agentFindings,
+                agentFindings,
                 failedAgents: [],
-                crossAgentInsights: crossAgentInsights,
+                crossAgentInsights,
                 actionableRecommendations: extractActionableRecommendations(reportContent),
                 riskAssessment: extractRiskAssessment(reportContent),
                 confidenceLevel: extractConfidenceLevel(reportContent),
-                dataQualityNotes: generateDataQualityNotes(agentFindings, workflowStatus.tool_calls),
+                dataQualityNotes: generateDataQualityNotes(agentFindings, toolCallsToUse),
                 executionTrace: {
-                    fintelQueryAnalysis: workflowStatus.query || "",
-                    agentInvocations: agentInvocations
+                    fintelQueryAnalysis: query || workflowData.query || "",
+                    agentInvocations: agentInvocationsToUse,
                 },
-                result: enhancedResult || workflowStatus.result // Include the enhanced result for the ReportDisplay component
+                result: result || workflowData.result,
             };
-            
-            setCurrentReport(report);
-            setReportGenerated(true); // Mark report as generated
-            setIsReportModalVisible(true);
-            
-            console.log('[App] Report generated and modal opened:', {
-                hasEnhancedResult: !!enhancedResult,
-                reportContent: reportContent.substring(0, 100) + '...',
+
+            console.log('[App] Generated report:', {
                 agentFindingsCount: agentFindings.length,
-                workflowStatus: workflowStatus.status,
-                hasResult: !!workflowStatus.result,
-                resultType: typeof workflowStatus.result
+                hasResult: !!result,
+                hasEnhancedResult: !!workflowData.enhanced_result,
+                hasAgentInvocations: !!agentInvocationsToUse.length,
             });
+
+            setCurrentReport(report);
+            setReportGenerated(true);
+            setIsReportModalVisible(true);
         }
     }, [workflowStatus, reportGenerated]);
+    
+    // Effect to manage loading state based on workflow status
+    useEffect(() => {
+        setIsLoading(workflowStatus === 'running' || workflowStatus === 'initializing');
+    }, [workflowStatus]);
 
-    const handleWorkflowStart = (initialStatus: WorkflowStatus) => {
-        setIsLoading(true);
-        setError(null);
-        setInitialStateSet(false); // Reset for the new workflow
-        setCurrentReport(null); // Reset report
-        setReportGenerated(false); // Reset report generation flag
-        setIsReportModalVisible(false); // Hide report modal
-        
-        // Use the initial status from the API response
-        if (initialStatus?.nodes && initialStatus?.edges) {
-            setWorkflowStatus(initialStatus);
-            const typedNodes = initialStatus.nodes.map((node: any) => ({
-                ...node,
-                type: node.type || 'default',
-                data: {
-                    ...node.data,
-                    status: node.data?.status || 'pending'
-                }
-            }));
-            setNodes(typedNodes as CustomNode[]);
-            setEdges(initialStatus.edges);
-        }
-        
-        setCurrentWorkflowId(initialStatus.workflow_id || null);
-        setInitialStateSet(true); // Signal that the initial state is now set
-    };
-
-    const handleSelectHistoricalWorkflow = (workflowId: string) => {
-        setCurrentWorkflowId(workflowId);
-        setInitialStateSet(true); // Assume historical data is complete
+    const handleSelectHistoricalWorkflow = (selectedWorkflowId: string) => {
+        // Use store action to set the workflow for polling
+        setPollingWorkflow(selectedWorkflowId);
     };
 
     const handleNodeDoubleClick = (_event: React.MouseEvent, node: CustomNode) => {
-        console.log('Node double-clicked:', node);
-        console.log('Node data:', node.data);
-        console.log('Node type:', node.type);
-        
-        // Check if it's the final report node or any completed node
         if (node.id === 'enhanced_result' || node.data.status === 'completed') {
-            console.log('Opening report modal for completed node');
             setIsReportModalVisible(true);
             return;
         }
-        
-        // Check if it's an agent node with data
-        const hasAgentData = 'result' in node.data || 'error' in node.data || 'toolCalls' in node.data;
-        
-        if (hasAgentData) {
-            console.log('Opening modal for agent node:', node.id);
+        if ('result' in node.data || 'error' in node.data || 'toolCalls' in node.data) {
             setSelectedNode(node);
-        } else {
-            console.log('Node not eligible for modal:', {
-                id: node.id,
-                type: node.type,
-                status: node.data.status,
-                hasAgentData
-            });
         }
-    };
-
-    // Update loading state based on workflow status
-    useEffect(() => {
-        if (workflowStatus?.status === 'completed' || workflowStatus?.status === 'failed') {
-            setIsLoading(false);
-        }
-    }, [workflowStatus]);
-
-    const handleAddMessage = (message: ChatMessage) => {
-        addChatMessage(message);
-    };
-
-    const handleCloseReportModal = () => {
-        setIsReportModalVisible(false);
-        // Don't reset the report or workflow state - keep the graph visible
     };
 
     return (
         <div className="flex h-screen bg-brand-bg text-white font-sans">
             <SidePanel
                 chatMessages={chatMessages}
-                onAddMessage={handleAddMessage}
+                onAddMessage={addChatMessage}
                 isLoading={isLoading}
-                onWorkflowStart={handleWorkflowStart}
                 onSendMessage={() => {}}
             />
-
 
             <main className="flex-1 relative">
                 <div className="absolute inset-0">
@@ -550,36 +233,36 @@ const App: React.FC = () => {
                     />
                     
                     <WorkflowHistory 
-                        currentWorkflowId={currentWorkflowId}
+                        currentWorkflowId={workflowId}
                         onSelectWorkflow={handleSelectHistoricalWorkflow}
                     />
                     
-                    {workflowStatus && (
+                    {workflowStatus !== 'idle' && (
                         <div className="absolute top-4 left-4 bg-brand-surface p-4 rounded-lg shadow-lg max-w-md z-10">
                             <h3 className="text-lg font-semibold text-brand-text-primary mb-2">
                                 Workflow Analysis
                             </h3>
                             <p className="text-sm text-brand-text-secondary mb-2 break-words">
-                                Query: {workflowStatus.query}
+                                Query: {workflowQuery}
                             </p>
                             <div className="flex items-center space-x-2">
                                 <span className="text-sm text-brand-text-secondary">Status:</span>
                                 <span className={`text-sm font-semibold ${
-                                    workflowStatus.status === 'completed' ? 'text-green-400' :
-                                    workflowStatus.status === 'failed' ? 'text-red-400' :
-                                    workflowStatus.status === 'running' ? 'text-yellow-400' :
+                                    workflowStatus === 'completed' ? 'text-green-400' :
+                                    workflowStatus === 'failed' ? 'text-red-400' :
+                                    workflowStatus === 'running' ? 'text-yellow-400' :
                                     'text-blue-400'
                                 }`}>
-                                    {workflowStatus.status}
+                                    {workflowStatus}
                                 </span>
                             </div>
-                            {workflowStatus.execution_time && (
+                            {executionTime > 0 && (
                                 <div className="text-sm text-brand-text-secondary mt-1">
-                                    Execution time: {workflowStatus.execution_time.toFixed(2)}s
+                                    Execution time: {executionTime.toFixed(2)}s
                                 </div>
                             )}
                             <div className="text-xs text-brand-text-secondary mt-3">
-                                💡 Double-click on agent nodes to see details
+                                💡 Double-click nodes for details.
                             </div>
                         </div>
                     )}
@@ -590,14 +273,14 @@ const App: React.FC = () => {
                 <AgentTraceModal 
                     node={selectedNode} 
                     onClose={() => setSelectedNode(null)}
-                    eventHistory={workflowStatus?.event_history || []}
+                    eventHistory={event_history || []}
                 />
             )}
             <ReportModal 
                 report={currentReport}
                 isVisible={isReportModalVisible}
-                onClose={handleCloseReportModal}
-                query={workflowStatus?.query || ''}
+                onClose={() => setIsReportModalVisible(false)}
+                query={workflowQuery || ''}
             />
             {error && <Notification type="error" message={error} onClose={() => setError(null)} />}
         </div>

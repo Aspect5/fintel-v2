@@ -16,8 +16,7 @@ const SidePanel: React.FC<{
     onSendMessage: (message: string) => void;
     onAddMessage: (message: ChatMessage) => void;
     isLoading: boolean;
-    onWorkflowStart?: (status: WorkflowStatus) => void;
-}> = ({ chatMessages, onSendMessage, onAddMessage, isLoading, onWorkflowStart }) => {
+}> = ({ chatMessages, onSendMessage, onAddMessage, isLoading }) => {
     const [activeTab, setActiveTab] = useState<'chat' | 'toolkit' | 'agents' | 'workflows'>('chat');
     const [isResizing, setIsResizing] = useState(false);
     const [panelWidth, setPanelWidth] = useState(450);
@@ -168,7 +167,6 @@ const SidePanel: React.FC<{
                             onSendMessage={onSendMessage}
                             onAddMessage={onAddMessage}
                             isLoading={isLoading}
-                            onWorkflowStart={onWorkflowStart}
                         />
                     </div>
                     

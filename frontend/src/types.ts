@@ -1,21 +1,16 @@
+// frontend/src/types.ts
 import { Node, Edge } from 'reactflow';
 
 export type { Node, Edge };
 
 // --- Core Chat and Notification Types ---
 
-/**
- * Defines the structure of a single chat message, used in App.tsx.
- */
 export interface ChatMessage {
-  role: 'user' | 'assistant'; // The role of the message sender
-  content: string; // The text content of the message
-  trace?: any; // Optional agent trace data for visualization
+  role: 'user' | 'assistant';
+  content: string;
+  trace?: any;
 }
 
-/**
- * Defines the structure for a UI notification, used in the global store.
- */
 export interface Notification {
   type: 'success' | 'error' | 'info';
   message: string;
@@ -33,12 +28,12 @@ export interface AgentFinding {
 
 export interface ToolCallRequest {
   toolName: string;
-  parameters: string; // This will be a JSON string from the model
+  parameters: string;
 }
 
 export interface ToolCallResult {
   toolName: string;
-  toolInput: string; // A stringified version of the parameters for display
+  toolInput: string;
   toolOutput: any;
   toolOutputSummary: string;
 }
@@ -71,10 +66,9 @@ export interface Report {
   executionTrace: ExecutionTrace;
   retryAnalysis?: RetryAnalysisData;
   parsedSections?: ParsedReport;
-  result?: any; // Enhanced workflow results
+  result?: any;
 }
 
-// Import retry analysis types from the parser
 export interface RetryAnalysisData {
   agentsEncounteringErrors: string[];
   specificErrors: string[];
@@ -128,7 +122,7 @@ export interface AgentFailure {
     error: string;
 }
 
-// --- React Flow Node Types for Workflow Canvas ---
+// --- React Flow Node Types ---
 
 export interface BasicNodeData {
   label: string;
@@ -167,73 +161,48 @@ export interface WorkflowGraphEdge {
 }
 
 export interface WorkflowGraph {
-  nodes: WorkflowGraphNode[];
+  nodes: CustomNode[]; // Use CustomNode for consistency
   edges: WorkflowGraphEdge[];
-  ticker?: string;
 }
 
-export interface WorkflowStatus {
-    workflow_id?: string;
-    nodes?: CustomNode[];
-    edges?: CustomEdge[];
-    workflow_graph?: WorkflowGraph;
-    status: 'initializing' | 'running' | 'completed' | 'failed';
+// --- Backend and State Types ---
+
+// This represents the detailed, structured result from a completed workflow.
+export interface EnhancedResult {
+    result: string | object;
+    agent_invocations?: AgentInvocation[];
+    provider?: string;
     query?: string;
-    result?: string;
+    tool_calls?: any[];
+    recommendation?: string;
+    market_analysis?: string;
+    content?: string;
+}
+
+// Represents the full state of a workflow as polled from the backend
+export interface PersistedWorkflowStatus {
+    workflow_id: string;
+    status: 'initializing' | 'running' | 'completed' | 'failed';
+    query: string;
+    result?: string | EnhancedResult; // Can be simple or complex
     trace?: any;
     error?: string;
     current_task?: string;
-    execution_time?: number;
-    enhanced_result?: any;
-    agent_invocations?: AgentInvocation[];
+    execution_time: number;
+    workflow_graph?: WorkflowGraph;
+    agent_invocations?: AgentInvocation[]; // Duplicated for now
     tool_calls?: any[];
-    tool_analytics?: any;
-    metrics?: any;
-    resource_usage?: any;
-    registry_status?: any;
-    // Enhanced live inspection data
-    live_details?: {
-        task_name: string;
-        task_progress: {
-            current_step: string;
-            steps_completed: number;
-            total_steps: number;
-        };
-        agent_reasoning?: string;
-        tool_calls?: Array<{
-            tool_name: string;
-            tool_input: any;
-            timestamp: string;
-        }>;
-    };
-    workflow_metrics?: {
-        total_tasks: number;
-        completed_tasks: number;
-        execution_time: number;
-    };
-    // Event history for audit trails
-    event_history?: Array<{
-        event_type: string;
-        timestamp: string;
-        agent_name?: string;
-        message_content?: string;
-        tool_calls?: any[];
-        tool_name?: string;
-        tool_input?: any;
-        tool_output?: any;
-        task_id?: string;
-        task_objective?: string;
-        result?: string;
-        error?: string;
-    }>;
+}
+
+// This is the primary status object used within the frontend logic
+export interface WorkflowStatus extends Omit<PersistedWorkflowStatus, 'result'> {
+    nodes?: CustomNode[];
+    edges?: CustomEdge[];
+    result?: any; // Keep result flexible here for various stages
 }
 
 // --- Global Type Declarations ---
 
-/**
- * Extends the global Window interface to include the experimental 'ai' property
- * for the built-in browser AI, used in App.tsx.
- */
 declare global {
   interface Window {
     ai?: {
