@@ -419,7 +419,7 @@ def run_workflow():
         data = request.get_json()
         query = data.get('query', '')
         provider = data.get('provider', 'openai')
-        workflow_type = data.get('workflow_type', 'enhanced_simplified')
+        workflow_type = data.get('workflow_type', 'quick_stock_analysis')
         
         if not query:
             return jsonify({"error": "Query is required"}), 400
@@ -636,7 +636,7 @@ def get_workflow_configs():
         workflows = []
         
         # Get all workflow configurations
-        for workflow_name in ['enhanced_simplified', 'comprehensive']:
+        for workflow_name in ['quick_stock_analysis', 'competitor_deep_dive', 'macroeconomic_outlook']:
             workflow_config = config_loader.get_workflow_config(workflow_name)
             if workflow_config:
                 # Get available agents for this workflow

@@ -50,7 +50,7 @@ class ConfigDrivenWorkflow(BaseWorkflow):
     Completely replaces hardcoded workflow implementations.
     """
     
-    def __init__(self, workflow_type: str = "enhanced_simplified"):
+    def __init__(self, workflow_type: str = "quick_stock_analysis"):
         """Initialize workflow with configuration validation"""
         
         self.workflow_type = workflow_type
@@ -396,7 +396,7 @@ class ConfigDrivenWorkflow(BaseWorkflow):
             for task_name in ['market_analysis', 'risk_assessment', 'final_synthesis']
         ]
 
-def create_config_driven_workflow(workflow_type: str = "enhanced_simplified") -> ConfigDrivenWorkflow:
+def create_config_driven_workflow(workflow_type: str = "quick_stock_analysis") -> ConfigDrivenWorkflow:
     """
     Factory function to create config-driven workflow instances
     

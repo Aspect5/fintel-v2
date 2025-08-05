@@ -14,6 +14,6 @@ def get_workflow_factory():
     from .factory import get_workflow_factory as _get_workflow_factory
     return _get_workflow_factory()
 
-def create_config_driven_workflow(workflow_type: str = "enhanced_simplified"):
+def create_config_driven_workflow(workflow_type: str = "quick_stock_analysis"):
     from .config_driven_workflow import create_config_driven_workflow as _create_config_driven_workflow
     return _create_config_driven_workflow(workflow_type)

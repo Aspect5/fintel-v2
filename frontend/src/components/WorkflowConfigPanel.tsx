@@ -20,7 +20,7 @@ interface WorkflowConfig {
 
 const WorkflowConfigPanel: React.FC = () => {
   const [workflows, setWorkflows] = useState<WorkflowConfig[]>([]);
-  const [selectedWorkflow, setSelectedWorkflow] = useState<string>('enhanced_simplified');
+  const [selectedWorkflow, setSelectedWorkflow] = useState<string>('quick_stock_analysis');
   const [isExpanded, setIsExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
 

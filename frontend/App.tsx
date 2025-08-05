@@ -20,7 +20,7 @@ import ReportModal from './src/components/ReportModal';
 import Notification from './src/components/Notification';
 import { useWorkflowStatus } from './src/hooks/useWorkflowStatus';
 import WorkflowHistory from './src/components/WorkflowHistory';
-import WorkflowConfigPanel from './src/components/WorkflowConfigPanel';
+
 
 // Helper functions for report generation
 const generateCrossAgentInsights = (agentFindings: any[], provider: string): string => {
@@ -537,9 +537,8 @@ const App: React.FC = () => {
                 onWorkflowStart={handleWorkflowStart}
                 onSendMessage={() => {}}
             />
-            
-            {/* Workflow Configuration Panel */}
-            <WorkflowConfigPanel />
+
+
             <main className="flex-1 relative">
                 <div className="absolute inset-0">
                     <WorkflowCanvas

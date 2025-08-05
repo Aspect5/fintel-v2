@@ -4,8 +4,10 @@ import { ChatMessage, WorkflowStatus } from '../types';
 import ChatPanel from './ChatPanel';
 import CodeBracketIcon from './icons/CodeBracketIcon';
 import DocumentTextIcon from './icons/DocumentTextIcon';
+import SparklesIcon from './icons/SparklesIcon';
 import ToolkitPanel from './ToolkitPanel';
 import AgentPanel from './AgentPanel';
+import WorkflowConfigPanel from './WorkflowConfigPanel';
 import { useStore } from '../../../store';
 import { useKeyStatus } from '../hooks/useKeyStatus';
 
@@ -16,7 +18,7 @@ const SidePanel: React.FC<{
     isLoading: boolean;
     onWorkflowStart?: (status: WorkflowStatus) => void;
 }> = ({ chatMessages, onSendMessage, onAddMessage, isLoading, onWorkflowStart }) => {
-    const [activeTab, setActiveTab] = useState<'chat' | 'toolkit' | 'agents'>('chat');
+    const [activeTab, setActiveTab] = useState<'chat' | 'toolkit' | 'agents' | 'workflows'>('chat');
     const [isResizing, setIsResizing] = useState(false);
     const [panelWidth, setPanelWidth] = useState(450);
     const resizeRef = useRef<HTMLDivElement>(null);
@@ -66,7 +68,7 @@ const SidePanel: React.FC<{
         };
     }, [isResizing]);
 
-    const TabButton: React.FC<{ tabName: 'chat' | 'toolkit' | 'agents'; label: string; children: React.ReactNode }> = ({ tabName, label, children }) => (
+    const TabButton: React.FC<{ tabName: 'chat' | 'toolkit' | 'agents' | 'workflows'; label: string; children: React.ReactNode }> = ({ tabName, label, children }) => (
         <button
             onClick={() => setActiveTab(tabName)}
             className={`flex-1 flex items-center justify-center p-3 text-sm font-medium border-b-2 transition-colors ${
@@ -152,6 +154,9 @@ const SidePanel: React.FC<{
                             <span className="text-white text-xs font-bold">A</span>
                         </div>
                     </TabButton>
+                    <TabButton tabName="workflows" label="Workflows">
+                        <SparklesIcon className="w-5 h-5" />
+                    </TabButton>
                 </div>
 
                 {/* --- Tab Content --- */}
@@ -175,6 +180,13 @@ const SidePanel: React.FC<{
                     {/* Always render AgentPanel but hide it when not active */}
                     <div className={`h-full ${activeTab === 'agents' ? 'block' : 'hidden'}`}>
                         <AgentPanel />
+                    </div>
+
+                    {/* Always render WorkflowConfigPanel but hide it when not active */}
+                    <div className={`h-full ${activeTab === 'workflows' ? 'block' : 'hidden'}`}>
+                        <div className="h-full overflow-y-auto p-4">
+                            <WorkflowConfigPanel />
+                        </div>
                     </div>
                 </div>
             </aside>

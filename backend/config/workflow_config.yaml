@@ -1,94 +1,67 @@
-# Workflow Configuration for Easy Agent/Tool Customization
-# This file allows you to easily swap agents and tools without code changes
+#
+# Fintel v2 - Universal Workflow Configuration
+#
+# This file is the single source of truth for defining analytical workflows.
+# Each workflow assembles a team of specialist agents from agents.yaml
+# to achieve a specific financial analysis goal.
+#
 
 workflows:
-  enhanced_simplified:
-    name: "Enhanced Simplified Analysis"
-    description: "Modular financial analysis using specialist agents"
+  # WORKFLOW 1: Quick, high-level analysis of a single stock.
+  quick_stock_analysis:
+    name: "Quick Stock Analysis"
+    description: "Fast, high-level analysis of a specific stock for a go/no-go investment decision."
     agents:
       - name: "MarketAnalyst"
         role: "market_analysis"
         required: true
         fallback: "FinancialAnalyst"
         tools: ["get_market_data", "get_company_overview"]
-        
-      - name: "FinancialAnalyst"
-        role: "sentiment_classification"
-        required: false
-        fallback: "MarketAnalyst"
-        tools: ["get_market_data", "get_company_overview", "get_economic_data_from_fred"]
-        
-      - name: "FinancialAnalyst"
-        role: "key_insights"
-        required: false
-        fallback: "MarketAnalyst"
-        tools: ["get_market_data", "get_company_overview", "calculate_pe_ratio"]
-        
       - name: "RiskAssessment"
         role: "risk_assessment"
-        required: false
+        required: true
         fallback: "FinancialAnalyst"
         tools: ["get_market_data"]
-        # Removed misleading_data_validator due to reliability issues
-        
       - name: "Summarizer"
         role: "recommendation"
-        required: false
+        required: true
         fallback: "FinancialAnalyst"
         tools: []
-    
-    # Dynamic agent selection based on query keywords
-    agent_selection:
-      market_keywords: ["stock", "price", "market", "trading", "volume", "technical"]
-      economic_keywords: ["economic", "gdp", "inflation", "interest", "rate", "fed", "recession"]
-      risk_keywords: ["risk", "volatility", "beta", "sharpe", "drawdown", "correlation"]
-      
-    # Tool usage tracking
-    track_tool_usage: true
-    include_agent_invocations: true
-    
-  # Add more workflow types here
-  comprehensive:
-    name: "Comprehensive Analysis"
-    description: "Full analysis with all available agents"
+
+  # WORKFLOW 2: Deep dive into a company's competitive landscape.
+  competitor_deep_dive:
+    name: "Sector & Competitor Deep Dive"
+    description: "Analyzes a company's position within its sector by comparing it against key competitors."
     agents:
-      - name: "FinancialAnalyst"
-        role: "coordinator"
-        required: true
-        tools: ["get_market_data", "get_company_overview", "get_economic_data_from_fred", "misleading_data_validator"]
-        
       - name: "MarketAnalyst"
-        role: "market_analysis"
+        role: "primary_company_analysis"
         required: true
-        tools: ["get_market_data", "get_company_overview"]
-        
-      - name: "EconomicAnalyst"
-        role: "economic_analysis"
-        required: false
-        tools: ["get_economic_data_from_fred"]
-        
-      - name: "RiskAssessment"
-        role: "risk_assessment"
-        required: false
-        tools: ["get_market_data"]
-        # Removed misleading_data_validator due to reliability issues
-        
+        tools: ["get_company_overview", "get_competitor_analysis"]
+      - name: "FinancialAnalyst"
+        role: "competitor_comparison"
+        required: true
+        tools: ["get_market_data", "calculate_pe_ratio"]
       - name: "Summarizer"
-        role: "synthesis"
+        role: "strategic_summary"
         required: true
         tools: []
-    
-    agent_selection:
-      market_keywords: ["stock", "price", "market", "trading"]
-      economic_keywords: ["economic", "gdp", "inflation", "interest"]
-      risk_keywords: ["risk", "volatility", "beta"]
-      
-    track_tool_usage: true
-    include_agent_invocations: true
 
-# Global settings
+  # WORKFLOW 3: High-level analysis of broad economic trends.
+  macroeconomic_outlook:
+    name: "Macroeconomic Outlook"
+    description: "Assesses the overall economic climate using key indicators like GDP, inflation, and unemployment."
+    agents:
+      - name: "EconomicAnalyst"
+        role: "economic_data_analysis"
+        required: true
+        tools: ["get_economic_data_from_fred"]
+      - name: "Summarizer"
+        role: "economic_summary"
+        required: true
+        tools: []
+
+# --- Global Settings ---
 settings:
-  default_workflow: "enhanced_simplified"
+  default_workflow: "quick_stock_analysis"
   enable_fallback_agents: true
   log_agent_availability: true
-  track_performance_metrics: true 
