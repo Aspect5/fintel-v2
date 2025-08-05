@@ -1,0 +1,169 @@
+# Unified Tool Configuration - Single Source of Truth
+# This file defines all available tools in the system with their metadata and dependencies
+
+tools:
+  # Market Data Tools
+  get_market_data:
+    name: "get_market_data"
+    description: "Get real-time market data for a stock ticker"
+    category: "market_data"
+    function: "get_market_data"
+    class: "MarketDataTool"
+    api_key_required: "alpha_vantage"
+    enabled: true
+    examples:
+      - "get_market_data(ticker='AAPL')"
+      - "get_market_data(ticker='GOOG')"
+    
+  get_company_overview:
+    name: "get_company_overview"
+    description: "Get comprehensive company overview and fundamental data"
+    category: "market_data"
+    function: "get_company_overview"
+    class: "CompanyOverviewTool"
+    api_key_required: "alpha_vantage"
+    enabled: true
+    examples:
+      - "get_company_overview(ticker='AAPL')"
+      - "get_company_overview(ticker='MSFT')"
+    
+  # Economic Data Tools
+  get_economic_data_from_fred:
+    name: "get_economic_data_from_fred"
+    description: "Get economic data from FRED (Federal Reserve Economic Data)"
+    category: "economic_data"
+    function: "get_economic_data_from_fred"
+    class: "EconomicDataTool"
+    api_key_required: "fred"
+    enabled: true
+    examples:
+      - "get_economic_data_from_fred(series_id='GDP')"
+      - "get_economic_data_from_fred(series_id='UNRATE', limit=20)"
+    
+  # Utility Tools
+  detect_stock_ticker:
+    name: "detect_stock_ticker"
+    description: "AI-powered stock ticker detection from natural language queries"
+    category: "utility"
+    function: "detect_stock_ticker"
+    class: null
+    api_key_required: null
+    enabled: true
+    examples:
+      - "detect_stock_ticker(query='analyze Apple stock')"
+      - "detect_stock_ticker(query='what is happening with TSLA')"
+    
+  process_strict_json:
+    name: "process_strict_json"
+    description: "Process a dictionary of financial data with strict JSON validation"
+    category: "utility"
+    function: "process_strict_json"
+    class: null
+    api_key_required: null
+    enabled: true
+    examples:
+      - "process_strict_json(data={'asset': 'BTC', 'value': 70000})"
+    
+  # Validation Tools
+  process_financial_data:
+    name: "process_financial_data"
+    description: "Validate and ensure data quality for financial analysis"
+    category: "validation"
+    function: "process_financial_data"
+    class: null
+    api_key_required: null
+    enabled: true
+    examples:
+      - "process_financial_data(data={'price': 150.25, 'volume': 1234567})"
+    
+  misleading_data_validator:
+    name: "misleading_data_validator"
+    description: "Validate financial data with advanced format checking"
+    category: "validation"
+    function: "misleading_data_validator"
+    class: null
+    api_key_required: null
+    enabled: true
+    examples:
+      - "misleading_data_validator(data={'ticker': 'AAPL', 'price': 185.50})"
+    
+  # Analysis Tools
+  calculate_pe_ratio:
+    name: "calculate_pe_ratio"
+    description: "Calculate P/E ratio for a given stock and compare it to industry averages"
+    category: "analysis"
+    function: "calculate_pe_ratio"
+    class: null
+    api_key_required: null
+    enabled: true
+    examples:
+      - "calculate_pe_ratio(ticker='AAPL')"
+      - "calculate_pe_ratio(ticker='GOOG', current_price=150.0)"
+    
+  analyze_cash_flow:
+    name: "analyze_cash_flow"
+    description: "Analyze cash flow for a company and identify trends and financial health indicators"
+    category: "analysis"
+    function: "analyze_cash_flow"
+    class: null
+    api_key_required: null
+    enabled: true
+    examples:
+      - "analyze_cash_flow(ticker='AAPL')"
+      - "analyze_cash_flow(ticker='MSFT', period='annual')"
+    
+  get_competitor_analysis:
+    name: "get_competitor_analysis"
+    description: "Compare company against competitors and analyze competitive positioning"
+    category: "analysis"
+    function: "get_competitor_analysis"
+    class: null
+    api_key_required: null
+    enabled: true
+    examples:
+      - "get_competitor_analysis(ticker='AAPL')"
+      - "get_competitor_analysis(ticker='GOOG', competitors=['MSFT', 'AMZN'])"
+
+# Tool Categories
+categories:
+  market_data:
+    name: "Market Data"
+    description: "Tools for fetching real-time market data and company information"
+    
+  economic_data:
+    name: "Economic Data"
+    description: "Tools for accessing macroeconomic indicators and economic data"
+    
+  utility:
+    name: "Utility"
+    description: "General utility tools for data processing and analysis"
+    
+  validation:
+    name: "Validation"
+    description: "Tools for validating and ensuring data quality"
+    
+  analysis:
+    name: "Analysis"
+    description: "Tools for performing financial analysis and calculations"
+
+# API Key Requirements
+api_keys:
+  alpha_vantage:
+    name: "Alpha Vantage"
+    description: "Required for market data and company overview tools"
+    env_var: "ALPHA_VANTAGE_API_KEY"
+    
+  fred:
+    name: "FRED"
+    description: "Required for economic data tools"
+    env_var: "FRED_API_KEY"
+    
+  openai:
+    name: "OpenAI"
+    description: "Required for AI-powered tools and agents"
+    env_var: "OPENAI_API_KEY"
+    
+  google:
+    name: "Google"
+    description: "Alternative AI provider"
+    env_var: "GOOGLE_API_KEY" 

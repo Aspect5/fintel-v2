@@ -5,6 +5,7 @@ import ChatPanel from './ChatPanel';
 import CodeBracketIcon from './icons/CodeBracketIcon';
 import DocumentTextIcon from './icons/DocumentTextIcon';
 import ToolkitPanel from './ToolkitPanel';
+import AgentPanel from './AgentPanel';
 import { useStore } from '../../../store';
 import { useKeyStatus } from '../hooks/useKeyStatus';
 
@@ -15,7 +16,7 @@ const SidePanel: React.FC<{
     isLoading: boolean;
     onWorkflowStart?: (status: WorkflowStatus) => void;
 }> = ({ chatMessages, onSendMessage, onAddMessage, isLoading, onWorkflowStart }) => {
-    const [activeTab, setActiveTab] = useState<'chat' | 'toolkit'>('chat');
+    const [activeTab, setActiveTab] = useState<'chat' | 'toolkit' | 'agents'>('chat');
     const [isResizing, setIsResizing] = useState(false);
     const [panelWidth, setPanelWidth] = useState(450);
     const resizeRef = useRef<HTMLDivElement>(null);
@@ -65,7 +66,7 @@ const SidePanel: React.FC<{
         };
     }, [isResizing]);
 
-    const TabButton: React.FC<{ tabName: 'chat' | 'toolkit'; label: string; children: React.ReactNode }> = ({ tabName, label, children }) => (
+    const TabButton: React.FC<{ tabName: 'chat' | 'toolkit' | 'agents'; label: string; children: React.ReactNode }> = ({ tabName, label, children }) => (
         <button
             onClick={() => setActiveTab(tabName)}
             className={`flex-1 flex items-center justify-center p-3 text-sm font-medium border-b-2 transition-colors ${
@@ -140,8 +141,17 @@ const SidePanel: React.FC<{
                 
                 {/* --- Tab Navigation --- */}
                 <div className="flex border-b border-brand-border flex-shrink-0">
-                    <TabButton tabName="chat" label="Chat"><DocumentTextIcon className="w-5 h-5" /></TabButton>
-                    <TabButton tabName="toolkit" label="Toolkit"><CodeBracketIcon className="w-5 h-5" /></TabButton>
+                    <TabButton tabName="chat" label="Chat">
+                        <DocumentTextIcon className="w-5 h-5" />
+                    </TabButton>
+                    <TabButton tabName="toolkit" label="Tools">
+                        <CodeBracketIcon className="w-5 h-5" />
+                    </TabButton>
+                    <TabButton tabName="agents" label="Agents">
+                        <div className="w-5 h-5 bg-purple-500 rounded-full flex items-center justify-center">
+                            <span className="text-white text-xs font-bold">A</span>
+                        </div>
+                    </TabButton>
                 </div>
 
                 {/* --- Tab Content --- */}
@@ -160,6 +170,11 @@ const SidePanel: React.FC<{
                     {/* Always render ToolkitPanel but hide it when not active */}
                     <div className={`h-full ${activeTab === 'toolkit' ? 'block' : 'hidden'}`}>
                         <ToolkitPanel />
+                    </div>
+
+                    {/* Always render AgentPanel but hide it when not active */}
+                    <div className={`h-full ${activeTab === 'agents' ? 'block' : 'hidden'}`}>
+                        <AgentPanel />
                     </div>
                 </div>
             </aside>

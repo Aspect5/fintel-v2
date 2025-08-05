@@ -22,6 +22,8 @@ os.environ["CONTROLFLOW_ENABLE_EXPERIMENTAL_TUI"] = "false"
 os.environ["CONTROLFLOW_ENABLE_PRINT_HANDLER"] = "false"
 os.environ["PREFECT_LOGGING_LEVEL"] = "CRITICAL"
 os.environ["PREFECT_EVENTS_ENABLED"] = "false"
+os.environ["PREFECT_LOGGING_TO_API_ENABLED"] = "false"
+os.environ["PREFECT_CLIENT_ENABLE_LIFESPAN_HOOKS"] = "false"
 
 # Global workflow status storage
 active_workflows = {}
@@ -35,12 +37,11 @@ import time
 # Import our modules
 from backend.config.settings import get_settings
 from backend.providers.factory import ProviderFactory
-from backend.agents.registry import get_agent_registry
-from backend.tools.registry import get_tool_registry
-from backend.workflows.orchestrator import get_orchestrator
+from backend.registry import get_registry_manager
 from backend.utils.logging import setup_logging
 from backend.utils.errors import FintelError
-from backend.workflows.dependency_workflow import DependencyDrivenWorkflow
+from backend.utils.monitoring import workflow_monitor
+# Import workflow factory when needed to avoid circular imports
 
 # Setup logging
 logger = setup_logging()
@@ -57,24 +58,57 @@ logger.info("Settings loaded")
 provider_factory = ProviderFactory()
 logger.info("Provider factory initialized")
 
-agent_registry = get_agent_registry()
-logger.info(f"Agent registry initialized with agents: {agent_registry.get_available_agents()}")
+# Initialize unified registry manager
+registry_manager = get_registry_manager()
+validation_result = registry_manager.get_validation_status()
 
-tool_registry = get_tool_registry()
-logger.info(f"Tool registry initialized: {type(tool_registry)}")
+if not validation_result.valid:
+    logger.error(f"Registry validation failed with {len(validation_result.errors)} errors:")
+    for error in validation_result.errors:
+        logger.error(f"  - {error}")
+    
+    if validation_result.warnings:
+        logger.warning(f"Registry validation warnings ({len(validation_result.warnings)}):")
+        for warning in validation_result.warnings:
+            logger.warning(f"  - {warning}")
+else:
+    logger.info("Registry validation passed successfully")
+    if validation_result.warnings:
+        logger.warning(f"Registry validation warnings ({len(validation_result.warnings)}):")
+        for warning in validation_result.warnings:
+            logger.warning(f"  - {warning}")
 
-orchestrator = get_orchestrator()
-logger.info("Orchestrator initialized")
+logger.info(f"Registry manager initialized with {len(registry_manager.tool_registry._tools)} tools and {len(registry_manager.agent_registry._agent_configs)} agents")
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    """Health check endpoint"""
+    """Health check endpoint with resource monitoring and registry validation"""
+    # Get current resource usage
+    resource_usage = workflow_monitor.check_resources()
+    
+    # Get registry validation status
+    validation_result = registry_manager.get_validation_status()
+    system_summary = registry_manager.get_system_summary()
+    
     return jsonify({
-        "status": "healthy",
+        "status": "healthy" if validation_result.valid else "degraded",
         "version": "2.0.0",
         "providers": provider_factory.get_provider_status(),
-        "agents": agent_registry.get_available_agents(),
-        "tools": tool_registry.get_tool_descriptions()
+        "registry": {
+            "validation": {
+                "valid": validation_result.valid,
+                "errors": validation_result.errors,
+                "warnings": validation_result.warnings
+            },
+            "summary": system_summary
+        },
+        "resources": resource_usage,
+        "active_workflows": len(active_workflows),
+        "workflow_metrics": {
+            "total_workflows": len(workflow_monitor.get_all_metrics()),
+            "successful_workflows": len([m for m in workflow_monitor.get_all_metrics().values() if m.success]),
+            "failed_workflows": len([m for m in workflow_monitor.get_all_metrics().values() if not m.success])
+        }
     })
 
 @app.route('/api/status/keys', methods=['GET'])
@@ -95,55 +129,160 @@ def get_providers():
 
 @app.route('/api/agents', methods=['GET'])
 def get_agents():
-    """Get available agents"""
-    agents = {}
-    for agent_name in agent_registry.get_available_agents():
-        agents[agent_name] = agent_registry.get_agent_info(agent_name)
-    return jsonify(agents)
+    """Get available agents with validation"""
+    try:
+        available_agents = registry_manager.agent_registry.get_available_agents()
+        agent_info = {}
+        
+        for agent_name in available_agents:
+            info = registry_manager.get_agent_info(agent_name)
+            if info:
+                # Add tool validation to agent info
+                tool_validation = registry_manager.validate_agent_tools(agent_name)
+                info['tool_validation'] = tool_validation
+                agent_info[agent_name] = info
+        
+        return jsonify({
+            "agents": available_agents,
+            "agent_info": agent_info,
+            "capabilities": list(registry_manager._get_all_capabilities())
+        })
+    except Exception as e:
+        logger.error(f"Error getting agents: {e}")
+        return jsonify({"error": str(e)}), 500
     
-@app.route('/api/tools', methods=['GET'])
+@app.route('/api/registry/health', methods=['GET'])
+def get_registry_health():
+    """Get comprehensive registry health check"""
+    try:
+        health_check = registry_manager.get_health_check()
+        return jsonify(health_check)
+    except Exception as e:
+        logger.error(f"Error getting registry health: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/registry/status', methods=['GET'])
+def get_registry_status():
+    """Get detailed registry status with validation information"""
+    try:
+        validation_result = registry_manager.get_validation_status()
+        system_summary = registry_manager.get_system_summary()
+        
+        return jsonify({
+            "validation": {
+                "valid": validation_result.valid,
+                "errors": validation_result.errors,
+                "warnings": validation_result.warnings,
+                "details": validation_result.details
+            },
+            "summary": system_summary,
+            "timestamp": datetime.now().isoformat()
+        })
+    except Exception as e:
+        logger.error(f"Error getting registry status: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/registry/validation', methods=['GET'])
+def get_registry_validation():
+    """Get registry validation status"""
+    try:
+        validation_result = registry_manager.get_validation_status()
+        return jsonify({
+            "valid": validation_result.valid,
+            "errors": validation_result.errors,
+            "warnings": validation_result.warnings,
+            "details": validation_result.details
+        })
+    except Exception as e:
+        logger.error(f"Error getting registry validation: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/registry/summary', methods=['GET'])
+def get_registry_summary():
+    """Get comprehensive registry summary"""
+    try:
+        return jsonify(registry_manager.get_system_summary())
+    except Exception as e:
+        logger.error(f"Error getting registry summary: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/registry/agents/<agent_name>', methods=['GET'])
+def get_agent_details(agent_name):
+    """Get detailed information about a specific agent"""
+    try:
+        agent_info = registry_manager.get_agent_info(agent_name)
+        if not agent_info:
+            return jsonify({"error": f"Agent '{agent_name}' not found"}), 404
+        
+        # Add tool validation for this agent
+        tool_validation = registry_manager.validate_agent_tools(agent_name)
+        agent_info['tool_validation'] = tool_validation
+        
+        return jsonify(agent_info)
+    except Exception as e:
+        logger.error(f"Error getting agent details for {agent_name}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/registry/tools/<tool_name>', methods=['GET'])
+def get_tool_details(tool_name):
+    """Get detailed information about a specific tool"""
+    try:
+        tool_info = registry_manager.get_tool_info(tool_name)
+        if not tool_info:
+            return jsonify({"error": f"Tool '{tool_name}' not found"}), 404
+        
+        # Add agent mapping for this tool
+        agents_using_tool = registry_manager.get_agents_by_tool(tool_name)
+        tool_info['agents_using_tool'] = agents_using_tool
+        
+        return jsonify(tool_info)
+    except Exception as e:
+        logger.error(f"Error getting tool details for {tool_name}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/registry/capabilities', methods=['GET'])
+def get_capabilities():
+    """Get all available capabilities and their agent mappings"""
+    try:
+        capability_mapping = registry_manager.get_capability_to_agents_mapping()
+        all_capabilities = list(set().union(*capability_mapping.values())) if capability_mapping else []
+        
+        return jsonify({
+            "capabilities": all_capabilities,
+            "capability_mapping": capability_mapping
+        })
+    except Exception as e:
+        logger.error(f"Error getting capabilities: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/registry/tools', methods=['GET'])
 def get_tools():
     """Return a list of available tools and their schemas"""
     try:
-        # Get available tools from the registry
-        # Get agent capabilities mapping
-        agent_registry = get_agent_registry()
-        tool_to_agents = agent_registry.get_tool_to_agents_mapping()
-        available_tools = tool_registry.get_available_tools()
-        tool_descriptions = tool_registry.get_tool_descriptions()
+        # Get available tools from the registry manager
+        tool_to_agents = registry_manager.get_tool_to_agents_mapping()
+        available_tools = registry_manager.tool_registry.get_all_tool_info()
         
         # Convert to a list format for the frontend
         tools_list = []
-        for tool_name, tool_func in available_tools.items():
-            description_data = tool_descriptions.get(tool_name, {})
-            
-            # Handle both old string format and new structured format
-            if isinstance(description_data, str):
-                tool_info = {
+        for tool_name, tool_info in available_tools.items():
+            if tool_info:  # Only include valid tools
+                tool_data = {
                     "name": tool_name,
-                    "summary": description_data,
+                    "summary": tool_info.get('description', "No description available"),
                     "details": {
                         "args": {},
                         "returns": "Unknown",
-                        "examples": []
+                        "examples": tool_info.get('examples', [])
                     },
                     "type": "function",
-                    "capable_agents": tool_to_agents.get(tool_name, [])
+                    "capable_agents": tool_to_agents.get(tool_name, []),
+                    "category": tool_info.get('category', 'unknown'),
+                    "enabled": tool_info.get('enabled', True),
+                    "api_key_required": tool_info.get('api_key_required'),
+                    "validation_status": "available" if tool_info.get('enabled', True) else "disabled"
                 }
-            else:
-                tool_info = {
-                    "name": tool_name,
-                    "summary": description_data.get('summary', "No description available"),
-                    "details": description_data.get('details', {
-                        "args": {},
-                        "returns": "Unknown",
-                        "examples": []
-                    }),
-                    "type": "function",
-                    "capable_agents": tool_to_agents.get(tool_name, [])
-                }
-            
-            tools_list.append(tool_info)
+                tools_list.append(tool_data)
         
         return jsonify(tools_list)
     except Exception as e:
@@ -152,8 +291,65 @@ def get_tools():
 
 @app.route('/api/workflows', methods=['GET'])
 def get_workflows():
-    """Get available workflows"""
-    return jsonify(orchestrator.get_available_workflows())
+    """Get available workflows from configuration"""
+    try:
+        from backend.workflows.factory import get_workflow_factory
+        workflow_factory = get_workflow_factory()
+        workflows = workflow_factory.get_available_workflows()
+        
+        return jsonify(workflows)
+        
+    except Exception as e:
+        logger.error(f"Error getting workflows: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/workflow-metrics', methods=['GET'])
+def get_workflow_metrics():
+    """Get workflow execution metrics"""
+    all_metrics = workflow_monitor.get_all_metrics()
+    
+    # Calculate summary statistics
+    total_workflows = len(all_metrics)
+    successful_workflows = len([m for m in all_metrics.values() if m.success])
+    failed_workflows = total_workflows - successful_workflows
+    
+    avg_duration = 0
+    avg_memory = 0
+    avg_cpu = 0
+    
+    if total_workflows > 0:
+        completed_workflows = [m for m in all_metrics.values() if m.end_time]
+        if completed_workflows:
+            avg_duration = sum(m.duration for m in completed_workflows) / len(completed_workflows)
+            avg_memory = sum(m.memory_usage_mb for m in completed_workflows) / len(completed_workflows)
+            avg_cpu = sum(m.cpu_usage_percent for m in completed_workflows) / len(completed_workflows)
+    
+    return jsonify({
+        "summary": {
+            "total_workflows": total_workflows,
+            "successful_workflows": successful_workflows,
+            "failed_workflows": failed_workflows,
+            "success_rate": (successful_workflows / total_workflows * 100) if total_workflows > 0 else 0,
+            "average_duration_seconds": round(avg_duration, 2),
+            "average_memory_mb": round(avg_memory, 1),
+            "average_cpu_percent": round(avg_cpu, 1)
+        },
+        "recent_workflows": [
+            {
+                "workflow_id": workflow_id,
+                "duration": metrics.duration,
+                "memory_usage_mb": metrics.memory_usage_mb,
+                "cpu_usage_percent": metrics.cpu_usage_percent,
+                "success": metrics.success,
+                "error": metrics.error
+            }
+            for workflow_id, metrics in sorted(
+                all_metrics.items(), 
+                key=lambda x: x[1].start_time, 
+                reverse=True
+            )[:10]  # Last 10 workflows
+        ]
+    })
 
 @app.errorhandler(FintelError)
 def handle_fintel_error(error):
@@ -173,11 +369,26 @@ def handle_internal_error(error):
 
 @app.route('/api/workflow-status/<workflow_id>', methods=['GET'])
 def get_workflow_status(workflow_id):
-    """Get current workflow status for visualization"""
+    """Get current workflow status for visualization with metrics"""
     logger.debug(f"Status request for workflow: {workflow_id}")
     if workflow_id in active_workflows:
-        status = active_workflows[workflow_id]
-        logger.debug(f"Returning status: {status.get('status')}, nodes: {len(status.get('nodes', []))}")
+        status = active_workflows[workflow_id].copy()
+        
+        # Ensure completed workflows have results
+        if status.get('status') == 'completed' and not status.get('result'):
+            logger.warning(f"Completed workflow {workflow_id} missing results")
+        
+        # Add metrics if available
+        metrics = workflow_monitor.get_workflow_metrics(workflow_id)
+        if metrics:
+            status['metrics'] = {
+                'duration': metrics.duration,
+                'memory_usage_mb': metrics.memory_usage_mb,
+                'cpu_usage_percent': metrics.cpu_usage_percent,
+                'execution_time': metrics.execution_time
+            }
+        
+        logger.info(f"Returning status for {workflow_id}: status={status.get('status')}, hasResult={bool(status.get('result'))}, hasEnhancedResult={bool(status.get('enhanced_result'))}")
         return jsonify(status)
     else:
         logger.warning(f"Workflow not found: {workflow_id}")
@@ -203,24 +414,58 @@ def workflow_stream(workflow_id):
 
 @app.route('/api/run-workflow', methods=['POST'])
 def run_workflow():
-    """Execute workflow with real-time status tracking"""
+    """Execute config-driven workflow with real-time status tracking and strict validation"""
     try:
         data = request.get_json()
         query = data.get('query', '')
         provider = data.get('provider', 'openai')
+        workflow_type = data.get('workflow_type', 'enhanced_simplified')
         
         if not query:
             return jsonify({"error": "Query is required"}), 400
         
-        workflow_id = str(uuid.uuid4())
-        logger.info(f"Starting workflow {workflow_id} for query: '{query}'")
+        # Import workflow factory and exception class here to avoid circular imports
+        from backend.workflows.factory import get_workflow_factory, WorkflowValidationError
         
-        # Create workflow instance
-        workflow_instance = DependencyDrivenWorkflow()
+        # Strict validation before execution
+        workflow_factory = get_workflow_factory()
+        validation_result = workflow_factory.validate_workflow_execution(workflow_type, provider, query)
+        
+        if not validation_result.get('valid', False):
+            error_msg = validation_result.get('error', 'Workflow validation failed')
+            logger.error(f"Workflow validation failed: {error_msg}")
+            return jsonify({
+                "error": f"Cannot execute workflow: {error_msg}",
+                "validation_details": validation_result
+            }), 400
+        
+        # Log warnings but allow execution to proceed
+        if validation_result.get('warnings'):
+            for warning in validation_result['warnings']:
+                logger.warning(f"Workflow validation warning: {warning}")
+        
+        workflow_id = str(uuid.uuid4())
+        logger.info(f"Starting config-driven workflow {workflow_id}: {workflow_type} for query: '{query}'")
+        
+        # Start monitoring
+        workflow_monitor.start_workflow(workflow_id)
+        
+        # Create workflow instance using config-driven factory
+        try:
+            workflow_instance = workflow_factory.create_workflow(workflow_type)
+        except WorkflowValidationError as e:
+            logger.error(f"Failed to create workflow: {e}")
+            return jsonify({
+                "error": f"Cannot create workflow: {str(e)}",
+                "workflow_type": workflow_type
+            }), 400
         
         # Set up status callback
         def status_callback(status_update):
             with threading.Lock():
+                # Add detailed logging
+                logger.info(f"Status callback received: {status_update}")
+                
                 # Ensure workflow_id is always present
                 status_update['workflow_id'] = workflow_id
                 
@@ -236,13 +481,9 @@ def run_workflow():
                     status_update['edges'] = current['edges']
                     
                 active_workflows[workflow_id].update(status_update)
-                logger.debug(f"Updated workflow {workflow_id}: status={status_update.get('status')}, nodes={len(status_update.get('nodes', []))}")
+                logger.info(f"Updated workflow {workflow_id}: status={status_update.get('status')}, hasResult={bool(status_update.get('result'))}, hasEnhancedResult={bool(status_update.get('enhanced_result'))}")
         
         workflow_instance.add_status_callback(status_callback)
-        
-        # CRITICAL: Initialize nodes synchronously BEFORE starting thread
-        agents = workflow_instance._get_agents_for_query(query, provider)
-        workflow_instance._initialize_workflow_nodes(query, agents)
         
         # Get initial status and store it
         initial_status = workflow_instance.workflow_status.copy()
@@ -254,7 +495,7 @@ def run_workflow():
         
         # Store initial status in active_workflows
         active_workflows[workflow_id] = initial_status
-        logger.info(f"Stored initial workflow state: {len(initial_status.get('nodes', []))} nodes, {len(initial_status.get('edges', []))} edges")
+        logger.info(f"Stored initial workflow state for config-driven workflow: {workflow_type}")
         
         # Execute workflow in background thread
         def execute_workflow_target():
@@ -267,25 +508,37 @@ def run_workflow():
                 
                 # Final update with complete results
                 final_update = {
-                    'result': result.result,
+                    'result': result.result,  # This should now be the enhanced result object
+                    'enhanced_result': result.result,  # Also include as enhanced_result for compatibility
                     'success': result.success,
                     'execution_time': result.execution_time,
                     'status': 'completed' if result.success else 'failed',
                     'trace': result.trace,
-                    'nodes': workflow_instance.workflow_status.get('nodes', []),
-                    'edges': workflow_instance.workflow_status.get('edges', [])
+                    'agent_invocations': result.agent_invocations,
+                    'hasResult': True,
+                    'hasEnhancedResult': True  # Explicitly mark enhanced result as available
                 }
                 status_callback(final_update)
-                logger.info(f"Workflow {workflow_id} completed with {len(final_update.get('nodes', []))} nodes")
+                logger.info(f"Config-driven workflow {workflow_id} ({workflow_type}) completed successfully")
+                
+                # End monitoring with success
+                workflow_monitor.end_workflow(workflow_id, success=True)
                 
             except Exception as e:
-                logger.error(f"Workflow {workflow_id} execution failed: {e}", exc_info=True)
+                logger.error(f"Config-driven workflow {workflow_id} ({workflow_type}) execution failed: {e}", exc_info=True)
+                
+                # Provide more detailed error information
+                error_details = f"Analysis failed: {str(e)}"
+                if "RiskAssessment agent is not available" in str(e):
+                    error_details += "\n\nNote: The system has been updated to handle agent failures gracefully. Please try the analysis again - the coordinator will now adapt to unavailable agents."
+                
                 status_callback({
                     'status': 'failed', 
-                    'error': str(e),
-                    'nodes': workflow_instance.workflow_status.get('nodes', []),
-                    'edges': workflow_instance.workflow_status.get('edges', [])
+                    'error': error_details
                 })
+                
+                # End monitoring with failure
+                workflow_monitor.end_workflow(workflow_id, success=False, error=error_details)
         
         thread = threading.Thread(target=execute_workflow_target)
         thread.daemon = True
@@ -325,9 +578,9 @@ def create_agent():
             **parameters
         )
         
-        # Save to the main agent registry
-        agent_registry = get_agent_registry()
-        agent_registry._agents[agent_name] = agent
+        # Save to the main agent registry via registry manager
+        registry_manager = get_registry_manager()
+        registry_manager.agent_registry._agents[agent_name] = agent
         
         return jsonify({
             "success": True,
@@ -344,9 +597,9 @@ def create_agent():
 @app.route('/api/available-tools', methods=['GET'])
 def get_available_tools():
     """Get all available tools including plugins"""
-    tool_registry = get_tool_registry()
-    tools = tool_registry.get_available_tools()
-    descriptions = tool_registry.get_tool_descriptions()
+    registry_manager = get_registry_manager()
+    tools = registry_manager.tool_registry.get_available_tools()
+    descriptions = registry_manager.tool_registry.get_tool_descriptions()
     
     # Group tools by category
     categorized_tools = {
@@ -372,6 +625,53 @@ def get_available_tools():
             categorized_tools["custom"].append(tool_info)
     
     return jsonify(categorized_tools)
+
+@app.route('/api/workflow-configs', methods=['GET'])
+def get_workflow_configs():
+    """Get workflow configurations for frontend"""
+    try:
+        from backend.workflows.config_loader import get_workflow_config_loader
+        
+        config_loader = get_workflow_config_loader()
+        workflows = []
+        
+        # Get all workflow configurations
+        for workflow_name in ['enhanced_simplified', 'comprehensive']:
+            workflow_config = config_loader.get_workflow_config(workflow_name)
+            if workflow_config:
+                # Get available agents for this workflow
+                available_agents = config_loader.get_available_agents_for_workflow(workflow_name, "openai")
+                
+                # Format agent configurations
+                agents = []
+                for agent_config in workflow_config.get('agents', []):
+                    role = agent_config.get('role')
+                    agent_info = available_agents.get(role, {})
+                    
+                    agents.append({
+                        'name': agent_config.get('name'),
+                        'role': role,
+                        'required': agent_config.get('required', False),
+                        'fallback': agent_config.get('fallback'),
+                        'tools': agent_config.get('tools', []),
+                        'available': bool(agent_info.get('agent')),
+                        'primary': agent_info.get('primary', False)
+                    })
+                
+                workflows.append({
+                    'name': workflow_config.get('name', workflow_name),
+                    'description': workflow_config.get('description', ''),
+                    'agents': agents
+                })
+        
+        return jsonify({
+            'workflows': workflows,
+            'total_workflows': len(workflows)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting workflow configs: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/save-report', methods=['POST'])
 def save_report():

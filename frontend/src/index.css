@@ -1,0 +1,120 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom CSS Variables for Brand Colors */
+:root {
+  --brand-primary: #58A6FF;
+  --brand-secondary: #7C3AED;
+  --brand-accent: #F59E0B;
+  --brand-success: #10B981;
+  --brand-warning: #F59E0B;
+  --brand-danger: #EF4444;
+  
+  --brand-bg: #0D1117;
+  --brand-bg-secondary: #161B22;
+  --brand-surface: #21262D;
+  --brand-border: #30363D;
+  
+  --brand-text-primary: #F0F6FC;
+  --brand-text-secondary: #C9D1D9;
+  --brand-text-tertiary: #8B949E;
+}
+
+/* Custom component classes */
+.brand-primary {
+  color: var(--brand-primary);
+}
+
+.bg-brand-primary {
+  background-color: var(--brand-primary);
+}
+
+.brand-secondary {
+  color: var(--brand-secondary);
+}
+
+.bg-brand-secondary {
+  background-color: var(--brand-secondary);
+}
+
+.brand-success {
+  color: var(--brand-success);
+}
+
+.bg-brand-success {
+  background-color: var(--brand-success);
+}
+
+.brand-danger {
+  color: var(--brand-danger);
+}
+
+.bg-brand-danger {
+  background-color: var(--brand-danger);
+}
+
+.brand-warning {
+  color: var(--brand-warning);
+}
+
+.bg-brand-warning {
+  background-color: var(--brand-warning);
+}
+
+.bg-brand-bg {
+  background-color: var(--brand-bg);
+}
+
+.bg-brand-bg-secondary {
+  background-color: var(--brand-bg-secondary);
+}
+
+.bg-brand-surface {
+  background-color: var(--brand-surface);
+}
+
+.border-brand-border {
+  border-color: var(--brand-border);
+}
+
+.text-brand-text-primary {
+  color: var(--brand-text-primary);
+}
+
+.text-brand-text-secondary {
+  color: var(--brand-text-secondary);
+}
+
+.text-brand-text-tertiary {
+  color: var(--brand-text-tertiary);
+}
+
+/* Dark theme base styles */
+body {
+  background-color: var(--brand-bg);
+  color: var(--brand-text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--brand-bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--brand-border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--brand-text-tertiary);
+}

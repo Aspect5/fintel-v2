@@ -16,11 +16,22 @@ export const useWorkflowStatus = (workflowId: string | null, initialStateSet: bo
                 // Add debug logging
                 console.log(`[WorkflowStatus] Fetched status for ${workflowId}:`, {
                     status: status.status,
-                    nodes: status.nodes?.length || 0,
-                    edges: status.edges?.length || 0
+                    hasNodes: !!status.nodes,
+                    hasEdges: !!status.edges,
+                    hasResult: !!status.result,
+                    resultType: typeof status.result,
+                    hasEnhancedResult: !!status.enhanced_result
                 });
                 
-                if (status && status.nodes && status.edges) {
+                // Accept any status that has basic workflow information
+                if (status && (status.status || status.nodes || status.result || status.enhanced_result)) {
+                    console.log('[WorkflowStatus] Accepting status:', {
+                        status: status.status,
+                        hasNodes: !!status.nodes,
+                        hasResult: !!status.result,
+                        hasEnhancedResult: !!status.enhanced_result,
+                        resultType: typeof status.result
+                    });
                     setWorkflowStatus(status);
                 } else {
                     console.warn('[WorkflowStatus] Incomplete workflow status received:', status);

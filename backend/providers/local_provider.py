@@ -11,6 +11,12 @@ class LocalProvider(BaseProvider):
             if not self.config.base_url:
                 return False
             
+            # Only validate if LOCAL_BASE_URL is explicitly set in environment
+            import os
+            if not os.getenv("LOCAL_BASE_URL"):
+                # No local server configured, skip validation silently
+                return False
+                
             # Test health endpoint
             response = requests.get(
                 f"{self.config.base_url}/models",
@@ -18,7 +24,7 @@ class LocalProvider(BaseProvider):
             )
             return response.status_code == 200
         except Exception as e:
-            print(f"Local provider validation failed: {e}")
+            # Fail silently for local provider to avoid spam
             return False
     
     def create_model_config(self) -> str:

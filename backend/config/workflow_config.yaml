@@ -1,0 +1,94 @@
+# Workflow Configuration for Easy Agent/Tool Customization
+# This file allows you to easily swap agents and tools without code changes
+
+workflows:
+  enhanced_simplified:
+    name: "Enhanced Simplified Analysis"
+    description: "Modular financial analysis using specialist agents"
+    agents:
+      - name: "MarketAnalyst"
+        role: "market_analysis"
+        required: true
+        fallback: "FinancialAnalyst"
+        tools: ["get_market_data", "get_company_overview"]
+        
+      - name: "FinancialAnalyst"
+        role: "sentiment_classification"
+        required: false
+        fallback: "MarketAnalyst"
+        tools: ["get_market_data", "get_company_overview", "get_economic_data_from_fred"]
+        
+      - name: "FinancialAnalyst"
+        role: "key_insights"
+        required: false
+        fallback: "MarketAnalyst"
+        tools: ["get_market_data", "get_company_overview", "calculate_pe_ratio"]
+        
+      - name: "RiskAssessment"
+        role: "risk_assessment"
+        required: false
+        fallback: "FinancialAnalyst"
+        tools: ["get_market_data"]
+        # Removed misleading_data_validator due to reliability issues
+        
+      - name: "Summarizer"
+        role: "recommendation"
+        required: false
+        fallback: "FinancialAnalyst"
+        tools: []
+    
+    # Dynamic agent selection based on query keywords
+    agent_selection:
+      market_keywords: ["stock", "price", "market", "trading", "volume", "technical"]
+      economic_keywords: ["economic", "gdp", "inflation", "interest", "rate", "fed", "recession"]
+      risk_keywords: ["risk", "volatility", "beta", "sharpe", "drawdown", "correlation"]
+      
+    # Tool usage tracking
+    track_tool_usage: true
+    include_agent_invocations: true
+    
+  # Add more workflow types here
+  comprehensive:
+    name: "Comprehensive Analysis"
+    description: "Full analysis with all available agents"
+    agents:
+      - name: "FinancialAnalyst"
+        role: "coordinator"
+        required: true
+        tools: ["get_market_data", "get_company_overview", "get_economic_data_from_fred", "misleading_data_validator"]
+        
+      - name: "MarketAnalyst"
+        role: "market_analysis"
+        required: true
+        tools: ["get_market_data", "get_company_overview"]
+        
+      - name: "EconomicAnalyst"
+        role: "economic_analysis"
+        required: false
+        tools: ["get_economic_data_from_fred"]
+        
+      - name: "RiskAssessment"
+        role: "risk_assessment"
+        required: false
+        tools: ["get_market_data"]
+        # Removed misleading_data_validator due to reliability issues
+        
+      - name: "Summarizer"
+        role: "synthesis"
+        required: true
+        tools: []
+    
+    agent_selection:
+      market_keywords: ["stock", "price", "market", "trading"]
+      economic_keywords: ["economic", "gdp", "inflation", "interest"]
+      risk_keywords: ["risk", "volatility", "beta"]
+      
+    track_tool_usage: true
+    include_agent_invocations: true
+
+# Global settings
+settings:
+  default_workflow: "enhanced_simplified"
+  enable_fallback_agents: true
+  log_agent_availability: true
+  track_performance_metrics: true 

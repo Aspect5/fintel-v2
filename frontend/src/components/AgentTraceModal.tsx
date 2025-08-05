@@ -90,6 +90,26 @@ const AgentTraceModal: React.FC<AgentTraceModalProps> = ({ node, onClose }) => {
     console.log('Full node data:', node.data);
     console.log('===================================');
 
+    // CRITICAL FIX: Ensure details and result are not the same
+    // If they are the same, it means the details field was overwritten with the result
+    const isDetailsOverwritten = details === result && details && result;
+    const safeDetails = isDetailsOverwritten ? null : details;
+    
+    // Generate fallback task description based on agent label
+    const getFallbackTaskDescription = (agentLabel: string) => {
+        if (agentLabel.includes('Market')) return 'Analyze market data, financial metrics, and trading patterns';
+        if (agentLabel.includes('Economic')) return 'Evaluate economic indicators and macroeconomic factors';
+        if (agentLabel.includes('Risk')) return 'Assess investment risks and volatility factors';
+        if (agentLabel.includes('Financial')) return 'Provide comprehensive investment recommendation and analysis';
+        return `Perform ${agentLabel} analysis`;
+    };
+    
+    const taskDescription = safeDetails || getFallbackTaskDescription(label);
+    
+    if (isDetailsOverwritten) {
+        console.warn('AgentTraceModal: Details field was overwritten with result! Using fallback task description.');
+    }
+
     return (
         <div 
             className="fixed inset-0 bg-black/80 z-[9999] flex items-center justify-center animate-fade-in" 
@@ -113,9 +133,9 @@ const AgentTraceModal: React.FC<AgentTraceModalProps> = ({ node, onClose }) => {
                         </DetailSection>
                     )}
 
-                    {details && (
+                    {taskDescription && (
                         <DetailSection title="Agent Task">
-                            <p>{details}</p>
+                            <p>{taskDescription}</p>
                         </DetailSection>
                     )}
 

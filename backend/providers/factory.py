@@ -4,7 +4,7 @@ from .openai_provider import OpenAIProvider
 from .gemini_provider import GeminiProvider
 from .local_provider import LocalProvider
 from backend.config.settings import get_settings
-from backend.config.providers import ProviderConfig
+from backend.config.settings import ProviderConfig
 
 class ProviderFactory:
     """Factory for creating LLM providers"""
@@ -24,33 +24,31 @@ class ProviderFactory:
             return cls._instances[provider_name]
         
         if provider_name not in cls._providers:
-            raise ValueError(f"Unknown provider: {provider_name}")
+            return None  # Return None instead of raising exception
         
-        settings = get_settings()
-        provider_config_dict = settings.get_provider_config(provider_name)
-        
-        # Create provider config
-        # Filter only valid fields for ProviderConfig
-        valid_fields = {'api_key', 'base_url', 'temperature', 'max_tokens', 'timeout', 'model'}
-        filtered_config = {k: v for k, v in provider_config_dict.items() if k in valid_fields}
-        
-        config = ProviderConfig(
-            name=provider_name,
-            **filtered_config
-        )
-        
-        # Validate configuration
-        
-        # Create provider instance
-        provider_class = cls._providers[provider_name]
-        provider = provider_class(config)
-        
-        # Cache if valid
-        if provider.is_available():
-            cls._instances[provider_name] = provider
-            return provider
-        
-        return None
+        try:
+            settings = get_settings()
+            provider_config = settings.get_provider_config(provider_name)
+            
+            if not provider_config:
+                return None
+            
+            # Use the provider config directly since it's already a ProviderConfig object
+            config = provider_config
+            
+            # Create provider instance
+            provider_class = cls._providers[provider_name]
+            provider = provider_class(config)
+            
+            # Cache if valid
+            if provider.is_available():
+                cls._instances[provider_name] = provider
+                return provider
+            
+            return None
+        except Exception as e:
+            # Log silently and return None to prevent startup failures
+            return None
     
     @classmethod
     def get_available_providers(cls) -> Dict[str, BaseProvider]:

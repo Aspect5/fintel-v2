@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import CodeBracketIcon from './icons/CodeBracketIcon';
+import { getTools, getRegistryHealth, ToolInfo, RegistryHealth } from '../../services/apiService';
 
 interface ToolDetails {
   args: Record<string, any>;
@@ -12,7 +13,11 @@ interface Tool {
   summary: string;
   details: ToolDetails;
   type: string;
-  capable_agents?: string[];  // Optional for backward compatibility
+  capable_agents?: string[];
+  category?: string;
+  enabled?: boolean;
+  api_key_required?: string;
+  validation_status?: string;
 }
 
 const AgentCapabilities: React.FC<{ agents: string[] }> = ({ agents }) => {
@@ -48,21 +53,59 @@ const AgentCapabilities: React.FC<{ agents: string[] }> = ({ agents }) => {
     </div>
   );
 };
+
+const ToolStatusBadge: React.FC<{ tool: Tool }> = ({ tool }) => {
+  if (!tool.enabled) {
+    return (
+      <span className="inline-block px-2 py-1 text-xs bg-red-600 text-white rounded-full font-medium">
+        Disabled
+      </span>
+    );
+  }
+
+  if (tool.api_key_required) {
+    return (
+      <span className="inline-block px-2 py-1 text-xs bg-yellow-600 text-white rounded-full font-medium" 
+            title={`Requires ${tool.api_key_required} API key`}>
+        API Key Required
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-block px-2 py-1 text-xs bg-green-600 text-white rounded-full font-medium">
+      Available
+    </span>
+  );
+};
+
 const ToolCard: React.FC<{ tool: Tool }> = ({ tool }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     
     return (
-        <div className="bg-brand-bg p-4 rounded-lg border border-brand-border mb-4 transition-shadow hover:shadow-lg hover:border-brand-primary/50">
+        <div className={`bg-brand-bg p-4 rounded-lg border border-brand-border mb-4 transition-shadow hover:shadow-lg hover:border-brand-primary/50 ${
+            !tool.enabled ? 'opacity-60' : ''
+        }`}>
             <div className="flex items-center mb-2">
                 <CodeBracketIcon className="w-5 h-5 text-brand-primary mr-3 flex-shrink-0" />
-                <h4 className="font-bold text-brand-text-primary flex-grow">{tool.name}</h4>
-                <button
-                    onClick={() => setIsExpanded(!isExpanded)}
-                    className="text-brand-text-secondary hover:text-brand-primary text-sm px-2 py-1 rounded transition-colors"
-                    title={isExpanded ? "Collapse details" : "Expand details"}
-                >
-                    {isExpanded ? '▼' : '▶'}
-                </button>
+                <div className="flex-grow">
+                    <h4 className="font-bold text-brand-text-primary">{tool.name}</h4>
+                    {tool.category && (
+                        <span className="text-xs text-brand-text-tertiary bg-brand-bg-secondary px-2 py-1 rounded">
+                            {tool.category}
+                        </span>
+                    )}
+                </div>
+                <div className="flex items-center gap-2">
+                    <ToolStatusBadge tool={tool} />
+                    <button
+                        onClick={() => setIsExpanded(!isExpanded)}
+                        className="text-brand-text-secondary hover:text-brand-primary text-sm px-2 py-1 rounded transition-colors"
+                        title={isExpanded ? "Collapse details" : "Expand details"}
+                    >
+                        {isExpanded ? '▼' : '▶'}
+                    </button>
+                </div>
             </div>
             <p className="text-sm text-brand-text-secondary mb-3 pl-8 leading-relaxed">{tool.summary}</p>
             
@@ -71,6 +114,19 @@ const ToolCard: React.FC<{ tool: Tool }> = ({ tool }) => {
                         
             {isExpanded && (
                 <div className="pl-8 space-y-4 border-l-2 border-brand-border ml-2">
+                    {/* API Key Requirement */}
+                    {tool.api_key_required && (
+                        <div>
+                            <h5 className="font-semibold text-brand-text-primary text-sm mb-2 flex items-center">
+                                <span className="w-2 h-2 bg-yellow-500 rounded-full mr-2"></span>
+                                API Key Required
+                            </h5>
+                            <p className="text-xs text-brand-text-secondary bg-yellow-50 p-2 rounded border border-yellow-200">
+                                This tool requires a <strong>{tool.api_key_required}</strong> API key to function.
+                            </p>
+                        </div>
+                    )}
+                    
                     {Object.keys(tool.details.args).length > 0 && (
                         <div>
                             <h5 className="font-semibold text-brand-text-primary text-sm mb-2 flex items-center">
@@ -129,35 +185,91 @@ const ToolCard: React.FC<{ tool: Tool }> = ({ tool }) => {
     );
 };
 
+const SystemStatus: React.FC<{ health: RegistryHealth | null }> = ({ health }) => {
+    if (!health) return null;
+
+    const getStatusColor = (status: string) => {
+        switch (status) {
+            case 'healthy': return 'text-green-500';
+            case 'degraded': return 'text-yellow-500';
+            default: return 'text-red-500';
+        }
+    };
+
+    return (
+        <div className="mb-4 p-3 bg-brand-bg-secondary rounded-lg border border-brand-border">
+            <div className="flex items-center justify-between mb-2">
+                <h4 className="font-semibold text-brand-text-primary">System Status</h4>
+                <span className={`text-sm font-medium ${getStatusColor(health.status)}`}>
+                    {health.status.toUpperCase()}
+                </span>
+            </div>
+            <div className="grid grid-cols-2 gap-4 text-xs">
+                <div>
+                    <span className="text-brand-text-secondary">Tools:</span>
+                    <span className="ml-1 text-brand-text-primary">
+                        {health.summary.enabled_tools}/{health.summary.total_tools}
+                    </span>
+                </div>
+                <div>
+                    <span className="text-brand-text-secondary">Agents:</span>
+                    <span className="ml-1 text-brand-text-primary">
+                        {health.summary.enabled_agents}/{health.summary.total_agents}
+                    </span>
+                </div>
+                <div>
+                    <span className="text-brand-text-secondary">Errors:</span>
+                    <span className="ml-1 text-red-500">{health.validation.errors.length}</span>
+                </div>
+                <div>
+                    <span className="text-brand-text-secondary">Warnings:</span>
+                    <span className="ml-1 text-yellow-500">{health.validation.warnings.length}</span>
+                </div>
+            </div>
+            {health.validation.errors.length > 0 && (
+                <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-xs">
+                    <div className="font-medium text-red-700 mb-1">Errors:</div>
+                    {health.validation.errors.slice(0, 2).map((error, index) => (
+                        <div key={index} className="text-red-600">• {error}</div>
+                    ))}
+                    {health.validation.errors.length > 2 && (
+                        <div className="text-red-500 italic">... and {health.validation.errors.length - 2} more</div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
+
 const ToolkitPanel: React.FC = () => {
     const [tools, setTools] = useState<Tool[]>([]);
+    const [health, setHealth] = useState<RegistryHealth | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        const fetchTools = async () => {
+        const fetchData = async () => {
             try {
-                const response = await fetch('/api/tools');
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
-                const data = await response.json();
+                setLoading(true);
                 
-                if (Array.isArray(data)) {
-                    setTools(data);
-                } else {
-                    console.error("Expected array but got:", data);
-                    setError("Invalid data format received from server");
-                }
+                // Fetch both tools and health status in parallel
+                const [toolsData, healthData] = await Promise.all([
+                    getTools(),
+                    getRegistryHealth()
+                ]);
+                
+                setTools(toolsData);
+                setHealth(healthData);
+                setError(null);
             } catch (error) {
-                console.error("Failed to fetch tools:", error);
+                console.error("Failed to fetch toolkit data:", error);
                 setError(error instanceof Error ? error.message : "Unknown error occurred");
             } finally {
                 setLoading(false);
             }
         };
 
-        fetchTools();
+        fetchData();
     }, []);
 
     if (error) {
@@ -194,6 +306,10 @@ const ToolkitPanel: React.FC = () => {
              `}</style>
             <div className="animate-slide-in">
                 <h3 className="text-lg font-semibold text-brand-text-primary mb-4 px-2">Available Tools</h3>
+                
+                {/* System Status */}
+                <SystemStatus health={health} />
+                
                 {loading ? (
                     <p className="text-brand-text-secondary">Loading tools...</p>
                 ) : (

@@ -20,7 +20,7 @@ export const runAgent = async (
     const payload: WorkflowPayload = {
         query,
         provider,
-        workflow: 'dependency_driven' // Use new workflow by default
+        workflow: 'enhanced_simplified' // Use enhanced simplified workflow
     };
     
     // Add base_url only if provider is local and baseUrl is provided

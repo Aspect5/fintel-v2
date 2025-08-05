@@ -1,42 +1,19 @@
-# Update backend/workflows/base.py to include workflow_status field
+# backend/tools/base.py - Simple, modular tool base class
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 from dataclasses import dataclass
-from datetime import datetime, timedelta 
+from datetime import datetime, timedelta
 
 @dataclass
-class WorkflowResult:
-    """Result of workflow execution"""
+class ToolResult:
+    """Simple tool execution result"""
     success: bool
-    result: str
-    trace: Any  # Can be string or dict
-    agent_invocations: List[Dict[str, Any]]
-    execution_time: float
-    workflow_name: str
+    data: Dict[str, Any]
     error: Optional[str] = None
-    workflow_status: Optional[Dict[str, Any]] = None  # Add this field
-
-class BaseWorkflow(ABC):
-    """Base class for all workflows"""
-    
-    def __init__(self, name: str, description: str):
-        self.name = name
-        self.description = description
-    
-    @abstractmethod
-    def execute(self, query: str, provider: str = "openai", **kwargs) -> WorkflowResult:
-        """Execute the workflow"""
-        pass
-    
-    def get_info(self) -> Dict[str, Any]:
-        """Get workflow information"""
-        return {
-            "name": self.name,
-            "description": self.description
-        }
+    execution_time: float = 0.0
 
 class BaseTool(ABC):
-    """Base class for all tools"""
+    """Simple base class for all tools - modular and easy to extend"""
     
     def __init__(self, name: str, description: str, rate_limit: int = 60):
         self.name = name
@@ -63,7 +40,7 @@ class BaseTool(ABC):
         self._call_count += 1
     
     @abstractmethod
-    def execute(self, **kwargs) -> Dict[str, Any]:
+    def execute(self, **kwargs) -> ToolResult:
         """Execute the tool"""
         pass
     

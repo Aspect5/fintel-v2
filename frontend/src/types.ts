@@ -43,7 +43,7 @@ export interface ToolCallResult {
   toolOutputSummary: string;
 }
 
-export type AgentInvocationStatus = 'pending' | 'running' | 'success' | 'failure';
+export type AgentInvocationStatus = 'pending' | 'running' | 'success' | 'failure' | 'completed';
 
 export interface AgentInvocation {
   agentName:string;
@@ -71,6 +71,7 @@ export interface Report {
   executionTrace: ExecutionTrace;
   retryAnalysis?: RetryAnalysisData;
   parsedSections?: ParsedReport;
+  result?: any; // Enhanced workflow results
 }
 
 // Import retry analysis types from the parser
@@ -131,13 +132,15 @@ export interface AgentFailure {
 
 export interface BasicNodeData {
   label: string;
-  details: string;
   status: AgentInvocationStatus;
-};
+  type?: string;
+  agent?: string;
+  details?: string;
+  result?: any;
+  error?: string;
+}
 
 export interface AgentNodeData extends BasicNodeData {
-  error?: string;
-  result?: string;
   toolCalls?: ToolCallResult[];
 }
 
@@ -145,10 +148,35 @@ export type CustomNodeData = BasicNodeData | AgentNodeData;
 export type CustomNode = Node<CustomNodeData>;
 export type CustomEdge = Edge;
 
+// --- Workflow Graph Types ---
+
+export interface WorkflowGraphNode {
+  id: string;
+  label: string;
+  status: AgentInvocationStatus;
+  type: 'input' | 'tool' | 'agent' | 'output';
+  agent?: string;
+  details?: string;
+  result?: any;
+  error?: string;
+}
+
+export interface WorkflowGraphEdge {
+  from: string;
+  to: string;
+}
+
+export interface WorkflowGraph {
+  nodes: WorkflowGraphNode[];
+  edges: WorkflowGraphEdge[];
+  ticker?: string;
+}
+
 export interface WorkflowStatus {
     workflow_id?: string;
-    nodes: CustomNode[];
-    edges: CustomEdge[];
+    nodes?: CustomNode[];
+    edges?: CustomEdge[];
+    workflow_graph?: WorkflowGraph;
     status: 'initializing' | 'running' | 'completed' | 'failed';
     query?: string;
     result?: string;
@@ -156,6 +184,13 @@ export interface WorkflowStatus {
     error?: string;
     current_task?: string;
     execution_time?: number;
+    enhanced_result?: any;
+    agent_invocations?: AgentInvocation[];
+    tool_calls?: any[];
+    tool_analytics?: any;
+    metrics?: any;
+    resource_usage?: any;
+    registry_status?: any;
 }
 
 // --- Global Type Declarations ---

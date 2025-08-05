@@ -13,6 +13,56 @@ interface ReportDisplayProps {
 }
 
 const ReportDisplay: React.FC<ReportDisplayProps> = ({ report, isLoading = false, query = '' }) => {
+  // Debug logging
+  console.log('[ReportDisplay] Report received:', report);
+  console.log('[ReportDisplay] Report result:', report?.result);
+  
+  // Helper function to parse enhanced workflow results
+  const parseEnhancedResult = (result: any) => {
+    console.log('[ReportDisplay] Parsing result:', result);
+    
+    // Handle different result formats
+    if (result && result.enhanced_result) {
+      // Format: { enhanced_result: { ... } }
+      const enhanced = result.enhanced_result;
+      return {
+        ticker: enhanced.ticker,
+        sentiment: enhanced.sentiment,
+        confidence: enhanced.confidence,
+        keyInsights: enhanced.key_insights,
+        marketAnalysis: enhanced.market_analysis,
+        recommendation: enhanced.recommendation,
+        riskAssessment: enhanced.risk_assessment
+      };
+    } else if (result && result.ticker) {
+      // Format: { ticker: "...", sentiment: "...", etc. }
+      return {
+        ticker: result.ticker,
+        sentiment: result.sentiment,
+        confidence: result.confidence,
+        keyInsights: result.key_insights,
+        marketAnalysis: result.market_analysis,
+        recommendation: result.recommendation,
+        riskAssessment: result.risk_assessment
+      };
+    } else if (result && typeof result === 'object' && Object.keys(result).length > 0) {
+      // Try to extract any object with ticker-like properties
+      const possibleTicker = result.ticker || result.symbol || result.stock;
+      if (possibleTicker) {
+        return {
+          ticker: possibleTicker,
+          sentiment: result.sentiment || 'neutral',
+          confidence: result.confidence || 0.5,
+          keyInsights: result.key_insights || result.insights || ['Analysis completed'],
+          marketAnalysis: result.market_analysis || result.analysis || 'Analysis completed',
+          recommendation: result.recommendation || 'Consider the analysis results',
+          riskAssessment: result.risk_assessment || result.risk || 'Standard market risks apply'
+        };
+      }
+    }
+    return null;
+  };
+
   // Helper function to extract executive summary from full report
   const extractExecutiveSummary = (fullReport: string): string => {
     const lines = fullReport.split('\n');
@@ -85,6 +135,86 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({ report, isLoading = false
           </div>
         )}
       </div>
+
+      {/* Enhanced Workflow Results - Display if available */}
+      {(report.result && (() => {
+        const enhanced = parseEnhancedResult(report.result);
+        console.log('[ReportDisplay] Parsed enhanced result:', enhanced);
+        return enhanced && enhanced.ticker;
+      })()) && (
+        <section className="bg-brand-surface p-6 rounded-xl border border-brand-border">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-xl font-bold text-brand-text-primary">🚀 Enhanced Analysis Results</h3>
+            {query && (
+              <DownloadButton report={report} query={query} />
+            )}
+          </div>
+          
+          {(() => {
+            const enhanced = parseEnhancedResult(report.result) || report.result;
+            if (!enhanced || !enhanced.ticker) return null;
+            
+            return (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Key Metrics */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-3 bg-brand-bg rounded-lg">
+                    <span className="text-brand-text-secondary">Ticker</span>
+                    <span className="font-bold text-white">{enhanced.ticker}</span>
+                  </div>
+                  
+                  <div className="flex items-center justify-between p-3 bg-brand-bg rounded-lg">
+                    <span className="text-brand-text-secondary">Sentiment</span>
+                    <span className={`font-medium ${
+                      enhanced.sentiment === 'positive' ? 'text-green-400' :
+                      enhanced.sentiment === 'negative' ? 'text-red-400' :
+                      'text-yellow-400'
+                    }`}>
+                      {enhanced.sentiment?.charAt(0).toUpperCase() + enhanced.sentiment?.slice(1)}
+                    </span>
+                  </div>
+                  
+                  <div className="flex items-center justify-between p-3 bg-brand-bg rounded-lg">
+                    <span className="text-brand-text-secondary">Confidence</span>
+                    <span className={`font-medium ${
+                      (enhanced.confidence || 0) >= 0.8 ? 'text-green-400' :
+                      (enhanced.confidence || 0) >= 0.6 ? 'text-yellow-400' :
+                      'text-red-400'
+                    }`}>
+                      {Math.round((enhanced.confidence || 0) * 100)}%
+                    </span>
+                  </div>
+                </div>
+                
+                {/* Analysis Content */}
+                <div className="space-y-4">
+                  {enhanced.recommendation && (
+                    <div>
+                      <h4 className="text-lg font-semibold text-brand-text-primary mb-2">💡 Recommendation</h4>
+                      <div className="text-brand-text-secondary bg-brand-bg p-3 rounded-lg">
+                        {enhanced.recommendation}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {enhanced.keyInsights && enhanced.keyInsights.length > 0 && (
+                    <div>
+                      <h4 className="text-lg font-semibold text-brand-text-primary mb-2">🔍 Key Insights</h4>
+                      <ul className="space-y-2">
+                        {enhanced.keyInsights.map((insight: string, index: number) => (
+                          <li key={index} className="text-brand-text-secondary bg-brand-bg p-2 rounded-lg text-sm">
+                            • {insight}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+        </section>
+      )}
 
       {/* Key Metrics Grid - Always visible for quick decision making */}
       <KeyMetricsGrid

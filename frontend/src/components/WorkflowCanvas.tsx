@@ -20,6 +20,10 @@ import 'reactflow/dist/style.css';
 import SpinnerIcon from './icons/SpinnerIcon';
 import CheckCircleIcon from './icons/CheckCircleIcon';
 import XCircleIcon from './icons-solid/XCircleIcon';
+import TaskNode from './workflow/TaskNode';
+import OutputNode from './workflow/OutputNode';
+import DependencyEdge from './workflow/DependencyEdge';
+import ProducesEdge from './workflow/ProducesEdge';
 
 // Custom node component with proper typing
 const CustomNode: React.FC<NodeProps> = ({ data }) => {
@@ -167,11 +171,20 @@ const WorkflowCanvasContent: React.FC<WorkflowCanvasProps> = ({
 }) => {
   const { fitView } = useReactFlow();
 
+  // Debug logging
+  console.log('[WorkflowCanvas] Rendering with:', {
+    nodesCount: nodes.length,
+    edgesCount: edges.length,
+    nodes: nodes,
+    edges: edges
+  });
+
   // Memoize node types to prevent React Flow warnings
   const nodeTypes = useMemo(() => ({
     default: CustomNode,
     input: CustomNode,
-    output: CustomNode,
+    output: OutputNode,
+    task: TaskNode,
   }), []);
 
   useEffect(() => {
@@ -186,28 +199,50 @@ const WorkflowCanvasContent: React.FC<WorkflowCanvasProps> = ({
     }
   }, [nodes, fitView]);
 
+  // Memoize edge types to prevent React Flow warnings
+  const edgeTypes = useMemo(() => ({
+    depends_on: DependencyEdge,
+    produces: ProducesEdge,
+  }), []);
+
   return (
-    <ReactFlow
-      nodes={nodes}
-      edges={edges}
-      onNodesChange={onNodesChange}
-      onEdgesChange={onEdgesChange}
-      onNodeDoubleClick={onNodeDoubleClick}
-      nodeTypes={nodeTypes}
-      connectionMode={ConnectionMode.Loose}
-      fitView
-      className="bg-brand-bg"
-      proOptions={{ hideAttribution: true }}
-    >
-      <Background gap={24} color="#30363D" />
-      <Controls className="react-flow__controls-brand" />
-      <MiniMap 
-        nodeStrokeWidth={3} 
-        zoomable 
-        pannable 
-        className="react-flow__minimap-brand" 
-      />
-    </ReactFlow>
+    <>
+      {nodes.length === 0 ? (
+        <div className="flex items-center justify-center h-full bg-brand-bg text-brand-text-secondary">
+          <div className="text-center">
+            <div className="text-2xl mb-2">📊</div>
+            <div className="text-lg font-semibold mb-2">No Workflow Data</div>
+            <div className="text-sm">Waiting for workflow execution...</div>
+            <div className="text-xs mt-2 text-brand-text-tertiary">
+              Debug: {nodes.length} nodes, {edges.length} edges
+            </div>
+          </div>
+        </div>
+      ) : (
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onNodeDoubleClick={onNodeDoubleClick}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          connectionMode={ConnectionMode.Loose}
+          fitView
+          className="bg-brand-bg"
+          proOptions={{ hideAttribution: true }}
+        >
+          <Background gap={24} color="#30363D" />
+          <Controls className="react-flow__controls-brand" />
+          <MiniMap 
+            nodeStrokeWidth={3} 
+            zoomable 
+            pannable 
+            className="react-flow__minimap-brand" 
+          />
+        </ReactFlow>
+      )}
+    </>
   );
 };
 

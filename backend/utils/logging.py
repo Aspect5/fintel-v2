@@ -6,15 +6,29 @@ def setup_logging():
     """Setup structured logging for the application"""
     settings = get_settings()
     
-    # Suppress noisy loggers
-    logging.getLogger("prefect").setLevel(logging.CRITICAL)
-    logging.getLogger("prefect.events").setLevel(logging.CRITICAL)
-    logging.getLogger("prefect.task_engine").setLevel(logging.CRITICAL)
-    logging.getLogger("prefect._internal.concurrency").setLevel(logging.CRITICAL)
-    logging.getLogger("prefect._internal.services").setLevel(logging.CRITICAL)
-    logging.getLogger("prefect.events.worker").setLevel(logging.CRITICAL)
-    logging.getLogger("langchain_google_genai").setLevel(logging.CRITICAL)
-    logging.getLogger("tzlocal").setLevel(logging.CRITICAL)
+    # Suppress noisy loggers more aggressively
+    noisy_loggers = [
+        "prefect",
+        "prefect.events", 
+        "prefect.task_engine",
+        "prefect._internal.concurrency",
+        "prefect._internal.services",
+        "prefect.events.worker",
+        "prefect._internal.events",
+        "prefect.engine",
+        "prefect.client",
+        "prefect.flows",
+        "prefect.tasks",
+        "langchain_google_genai",
+        "tzlocal",
+        "httpx",
+        "httpcore"
+    ]
+    
+    for logger_name in noisy_loggers:
+        logger = logging.getLogger(logger_name)
+        logger.setLevel(logging.CRITICAL)
+        logger.disabled = True
     
     # Configure main logger
     logging.basicConfig(
