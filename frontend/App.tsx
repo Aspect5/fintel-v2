@@ -11,7 +11,7 @@ console.error = (...args) => {
 };
 import { useNodesState, useEdgesState } from 'reactflow';
 import { AgentNodeData, ChatMessage, CustomNode, WorkflowStatus, Report } from './src/types';
-import { useStore } from '../store';
+import { useStore } from './src/stores/store';
 import SidePanel from './src/components/SidePanel';
 import WorkflowCanvas from './src/components/WorkflowCanvas';
 import { ApiKeyModal } from './src/components/ApiKeyModal';
@@ -589,7 +589,8 @@ const App: React.FC = () => {
             {selectedNode && (
                 <AgentTraceModal 
                     node={selectedNode} 
-                    onClose={() => setSelectedNode(null)} 
+                    onClose={() => setSelectedNode(null)}
+                    eventHistory={workflowStatus?.event_history || []}
                 />
             )}
             <ReportModal 

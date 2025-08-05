@@ -8,7 +8,7 @@ import SparklesIcon from './icons/SparklesIcon';
 import ToolkitPanel from './ToolkitPanel';
 import AgentPanel from './AgentPanel';
 import WorkflowConfigPanel from './WorkflowConfigPanel';
-import { useStore } from '../../../store';
+import { useStore } from '../stores/store';
 import { useKeyStatus } from '../hooks/useKeyStatus';
 
 const SidePanel: React.FC<{

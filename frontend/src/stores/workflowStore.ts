@@ -72,8 +72,14 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
             update.nodes.forEach(updatedNode => {
                 const existingNode = nodeMap.get(updatedNode.id);
                 if (existingNode) {
-                    // This merge is critical for preserving the node object reference
-                    const mergedData = { ...existingNode.data, ...updatedNode.data };
+                    // Enhanced merge to include live inspection data
+                    const mergedData = { 
+                        ...existingNode.data, 
+                        ...updatedNode.data,
+                        // Preserve live details if they exist
+                        liveDetails: updatedNode.data.liveDetails || existingNode.data.liveDetails,
+                        workflowMetrics: updatedNode.data.workflowMetrics || existingNode.data.workflowMetrics
+                    };
                     nodeMap.set(updatedNode.id, { ...existingNode, data: mergedData });
                 } else {
                     nodeMap.set(updatedNode.id, updatedNode);

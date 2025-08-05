@@ -4,7 +4,7 @@ import { ChatMessage, WorkflowStatus } from '../types';
 import MarkdownRenderer from './MarkdownRenderer';
 import SpinnerIcon from './icons/SpinnerIcon';
 import { useWorkflowStatus } from '../hooks/useWorkflowStatus';
-import { useStore } from '../../../store';
+import { useStore } from '../stores/store';
 
 interface ChatPanelProps {
   chatMessages: ChatMessage[];

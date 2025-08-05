@@ -191,6 +191,41 @@ export interface WorkflowStatus {
     metrics?: any;
     resource_usage?: any;
     registry_status?: any;
+    // Enhanced live inspection data
+    live_details?: {
+        task_name: string;
+        task_progress: {
+            current_step: string;
+            steps_completed: number;
+            total_steps: number;
+        };
+        agent_reasoning?: string;
+        tool_calls?: Array<{
+            tool_name: string;
+            tool_input: any;
+            timestamp: string;
+        }>;
+    };
+    workflow_metrics?: {
+        total_tasks: number;
+        completed_tasks: number;
+        execution_time: number;
+    };
+    // Event history for audit trails
+    event_history?: Array<{
+        event_type: string;
+        timestamp: string;
+        agent_name?: string;
+        message_content?: string;
+        tool_calls?: any[];
+        tool_name?: string;
+        tool_input?: any;
+        tool_output?: any;
+        task_id?: string;
+        task_objective?: string;
+        result?: string;
+        error?: string;
+    }>;
 }
 
 // --- Global Type Declarations ---

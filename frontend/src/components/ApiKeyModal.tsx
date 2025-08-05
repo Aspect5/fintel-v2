@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useStore } from '../../../store'; // Corrected: Changed useAppStore to useStore
+import { useStore } from '../stores/store';
 import CheckCircleIcon from './icons-solid/CheckCircleIcon'; // Corrected: Default import
 import XCircleIcon from './icons-solid/XCircleIcon'; // Corrected: Default import
 import KeyIcon from './icons/KeyIcon'; // Corrected: Default import

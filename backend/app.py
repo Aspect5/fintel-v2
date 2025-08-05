@@ -469,6 +469,14 @@ def run_workflow():
                 # Ensure workflow_id is always present
                 status_update['workflow_id'] = workflow_id
                 
+                # Add event history from the event handler if available
+                if hasattr(workflow_instance, 'event_handler') and workflow_instance.event_handler:
+                    try:
+                        status_update['event_history'] = workflow_instance.event_handler.get_events()
+                    except AttributeError:
+                        # Event handler doesn't have the method yet, skip it
+                        status_update['event_history'] = []
+                
                 # Initialize or update the active workflow
                 if workflow_id not in active_workflows:
                     active_workflows[workflow_id] = {}
@@ -481,7 +489,7 @@ def run_workflow():
                     status_update['edges'] = current['edges']
                     
                 active_workflows[workflow_id].update(status_update)
-                logger.info(f"Updated workflow {workflow_id}: status={status_update.get('status')}, hasResult={bool(status_update.get('result'))}, hasEnhancedResult={bool(status_update.get('enhanced_result'))}")
+                logger.info(f"Updated workflow {workflow_id}: status={status_update.get('status')}, hasResult={bool(status_update.get('result'))}, hasEnhancedResult={bool(status_update.get('enhanced_result'))}, eventCount={len(status_update.get('event_history', []))}")
         
         workflow_instance.add_status_callback(status_callback)
         

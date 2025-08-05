@@ -118,11 +118,37 @@ class ConfigDrivenWorkflow(BaseWorkflow):
         self.status_callbacks.append(callback)
     
     def _update_status(self, update: Dict[str, Any]):
-        """Update workflow status and notify callbacks"""
+        """Update workflow status and notify callbacks with enhanced live inspection data"""
         self.execution_context.update(update)
         
         # Add timestamp
         update['timestamp'] = datetime.now().isoformat()
+        
+        # Enhanced live inspection data
+        if 'current_task' in update:
+            task_details = {
+                'task_name': update['current_task'],
+                'task_progress': self._get_task_progress(update['current_task']),
+                'agent_reasoning': self._get_current_agent_reasoning(),
+                'tool_calls': self._get_recent_tool_calls(),
+                'execution_context': self.execution_context.copy()
+            }
+            update['live_details'] = task_details
+        
+        # Add workflow-level metrics
+        update['workflow_metrics'] = self._get_workflow_metrics()
+        
+        # Generate workflow graph for frontend visualization
+        try:
+            workflow_graph = self._generate_workflow_graph()
+            update['nodes'] = workflow_graph['nodes']
+            update['edges'] = workflow_graph['edges']
+            update['hasNodes'] = True if workflow_graph['nodes'] else False
+        except Exception as e:
+            logger.error(f"Error generating workflow graph: {e}", exc_info=True)
+            update['nodes'] = []
+            update['edges'] = []
+            update['hasNodes'] = False
         
         # Notify all callbacks
         for callback in self.status_callbacks:
@@ -130,6 +156,41 @@ class ConfigDrivenWorkflow(BaseWorkflow):
                 callback(update)
             except Exception as e:
                 logger.error(f"Status callback error: {e}")
+    
+    def _get_task_progress(self, task_name: str) -> Dict[str, Any]:
+        """Get detailed progress information for a specific task"""
+        return {
+            'task_name': task_name,
+            'status': 'running',
+            'start_time': self.execution_context.get(f'{task_name}_start_time'),
+            'current_step': self.execution_context.get(f'{task_name}_current_step', 'initializing'),
+            'steps_completed': self.execution_context.get(f'{task_name}_steps_completed', 0),
+            'total_steps': self.execution_context.get(f'{task_name}_total_steps', 1)
+        }
+    
+    def _get_current_agent_reasoning(self) -> Optional[str]:
+        """Get the most recent agent reasoning from the event handler"""
+        try:
+            if hasattr(self, 'event_handler') and self.event_handler:
+                if hasattr(self.event_handler, 'get_events_by_type'):
+                    events = self.event_handler.get_events_by_type('agent_message')
+                    if events:
+                        latest_event = events[-1]
+                        return latest_event.get('message_content', 'No reasoning available')
+        except Exception as e:
+            logger.warning(f"Could not retrieve agent reasoning: {e}")
+        return None
+    
+    def _get_recent_tool_calls(self) -> List[Dict[str, Any]]:
+        """Get recent tool calls for live inspection"""
+        try:
+            if hasattr(self, 'event_handler') and self.event_handler:
+                if hasattr(self.event_handler, 'get_events_by_type'):
+                    tool_events = self.event_handler.get_events_by_type('agent_tool_call')
+                    return tool_events[-3:] if tool_events else []
+        except Exception as e:
+            logger.warning(f"Could not retrieve tool calls: {e}")
+        return []
     
     def _extract_ticker_from_query(self, query: str) -> str:
         """Extract ticker symbol using AI-powered detection"""
@@ -143,20 +204,17 @@ class ConfigDrivenWorkflow(BaseWorkflow):
                 return detection_result["ticker"]
             else:
                 logger.warning("AI ticker detection failed, using fallback")
-                return "AAPL"  # Fallback for demo
+                return "AAPL"
                 
         except Exception as e:
             logger.error(f"Ticker detection error: {e}")
-            return "AAPL"  # Fallback for demo
+            return "AAPL"
     
     def _should_include_agent_for_query(self, agent_config: Dict[str, Any], query: str) -> bool:
         """Determine if agent should be included based on query analysis"""
-        
-        # Always include required agents
         if agent_config.get('required', False):
             return True
         
-        # Use keyword-based selection from config
         role = agent_config.get('role')
         return self.config_loader.should_include_agent(self.workflow_type, role, query)
     
@@ -164,17 +222,15 @@ class ConfigDrivenWorkflow(BaseWorkflow):
     def execute(self, query: str, provider: str = "openai", **kwargs) -> BaseWorkflowResult:
         """
         Main workflow execution using ControlFlow patterns
-        
-        This method orchestrates the entire workflow using ControlFlow's
-        task dependency system and structured result handling.
         """
         start_time = datetime.now()
         workflow_id = kwargs.get('workflow_id', 'unknown')
         
+        self.execution_context['start_time'] = start_time
+        
         try:
             logger.info(f"Starting config-driven workflow {workflow_id}: {self.workflow_type}")
             
-            # Update initial status
             self._update_status({
                 'status': 'initializing',
                 'workflow_id': workflow_id,
@@ -183,16 +239,11 @@ class ConfigDrivenWorkflow(BaseWorkflow):
                 'provider': provider
             })
             
-            # Extract ticker from query
             ticker = self._extract_ticker_from_query(query)
             self.execution_context['ticker'] = ticker
             
-            self._update_status({
-                'status': 'creating_agents',
-                'ticker': ticker
-            })
+            self._update_status({'status': 'creating_agents', 'ticker': ticker})
             
-            # Create agents for this workflow execution (isolated per execution)
             agents = self.agent_factory.create_agents_for_workflow(self.workflow_type, provider)
             
             self._update_status({
@@ -201,10 +252,8 @@ class ConfigDrivenWorkflow(BaseWorkflow):
                 'available_agents': list(agents.keys())
             })
             
-            # Execute workflow using ControlFlow task orchestration
             result = self._execute_workflow_tasks(query, ticker, agents)
             
-            # Calculate execution time
             execution_time = (datetime.now() - start_time).total_seconds()
             
             self._update_status({
@@ -213,7 +262,6 @@ class ConfigDrivenWorkflow(BaseWorkflow):
                 'result_summary': f"Analysis completed for {ticker}"
             })
             
-            # Build workflow result
             return BaseWorkflowResult(
                 success=True,
                 result=result.dict(),
@@ -226,8 +274,7 @@ class ConfigDrivenWorkflow(BaseWorkflow):
         except Exception as e:
             execution_time = (datetime.now() - start_time).total_seconds()
             error_message = f"Config-driven workflow failed: {str(e)}"
-            
-            logger.error(f"Workflow {workflow_id} failed: {e}")
+            logger.error(f"Workflow {workflow_id} failed: {e}", exc_info=True)
             
             self._update_status({
                 'status': 'failed',
@@ -248,127 +295,80 @@ class ConfigDrivenWorkflow(BaseWorkflow):
     def _execute_workflow_tasks(self, query: str, ticker: str, agents: Dict[str, cf.Agent]) -> InvestmentAnalysis:
         """
         Execute workflow tasks using ControlFlow task orchestration
-        
-        This follows ControlFlow patterns for dependent tasks and structured results.
         """
+        workflow_context = {"query": query, "ticker": ticker, "workflow_type": self.workflow_type}
         
-        # Create main workflow context
-        workflow_context = {
-            "query": query,
-            "ticker": ticker,
-            "workflow_type": self.workflow_type
-        }
+        from ..utils.monitoring import FintelEventHandler
+        self.event_handler = FintelEventHandler()
         
-        # Task 1: Market Analysis (if agent available)
         market_analysis_result = None
         if 'market_analysis' in agents:
-            self._update_status({'current_task': 'market_analysis'})
-            
+            self._update_status({
+                'current_task': 'market_analysis',
+                'task_details': 'Analyzing market data and company fundamentals'
+            })
+            self.execution_context['market_analysis_start_time'] = datetime.now().isoformat()
             market_analysis_result = cf.run(
                 f"Analyze market data for {ticker}",
-                instructions=f"""
-                Use your available tools to gather and analyze market data for {ticker}.
-                
-                Steps:
-                1. Get current market data using get_market_data(ticker='{ticker}')
-                2. Get company overview using get_company_overview(ticker='{ticker}')
-                3. Analyze the data and provide insights
-                
-                Provide a comprehensive market analysis summary.
-                """,
+                instructions=f"Use get_market_data(ticker='{ticker}') and get_company_overview(ticker='{ticker}') to provide a market analysis.",
                 agents=[agents['market_analysis']],
                 result_type=MarketAnalysisResult,
                 context=workflow_context,
                 max_agent_turns=3
             )
-            
             self.task_results['market_analysis'] = market_analysis_result
         
-        # Task 2: Risk Assessment (if agent available, depends on market analysis)
         risk_assessment_result = None
         if 'risk_assessment' in agents:
-            self._update_status({'current_task': 'risk_assessment'})
-            
-            # Build context including previous results
+            self._update_status({
+                'current_task': 'risk_assessment',
+                'task_details': 'Assessing investment risks and market volatility'
+            })
             risk_context = workflow_context.copy()
             if market_analysis_result:
                 risk_context['market_analysis'] = market_analysis_result
             
             risk_assessment_result = cf.run(
                 f"Assess investment risk for {ticker}",
-                instructions=f"""
-                Assess the investment risk for {ticker} based on available data.
-                
-                Consider:
-                - Market volatility and trends
-                - Company fundamentals
-                - Sector-specific risks
-                - Overall market conditions
-                
-                Provide a comprehensive risk assessment with clear risk level and factors.
-                """,
+                instructions="Assess investment risk based on available data, including market analysis.",
                 agents=[agents['risk_assessment']],
                 result_type=RiskAssessmentResult,
                 context=risk_context,
                 max_agent_turns=2
             )
-            
             self.task_results['risk_assessment'] = risk_assessment_result
         
-        # Task 3: Final Synthesis (uses results from previous tasks)
-        self._update_status({'current_task': 'final_synthesis'})
-        
-        # Find best agent for synthesis (prefer FinancialAnalyst, fallback to any available)
+        self._update_status({
+            'current_task': 'final_synthesis',
+            'task_details': 'Synthesizing analysis into a comprehensive recommendation'
+        })
         synthesis_agent = self._select_synthesis_agent(agents)
-        
-        # Build comprehensive context for synthesis
         synthesis_context = workflow_context.copy()
         if market_analysis_result:
             synthesis_context['market_analysis'] = market_analysis_result
         if risk_assessment_result:
             synthesis_context['risk_assessment'] = risk_assessment_result
-        
+            
         final_analysis = cf.run(
             f"Create comprehensive investment analysis for {ticker}",
-            instructions=f"""
-            Create a comprehensive investment analysis for {ticker} based on all available information.
-            
-            Available data:
-            - Market Analysis: {market_analysis_result.analysis_summary if market_analysis_result else 'Not available'}
-            - Risk Assessment: {risk_assessment_result.risk_summary if risk_assessment_result else 'Not available'}
-            
-            Provide:
-            1. Clear investment recommendation (Buy/Hold/Sell)
-            2. Confidence level (0.0 to 1.0)
-            3. Key insights (3-5 bullet points)
-            4. Overall sentiment (positive/negative/neutral)
-            5. Risk assessment summary
-            
-            Base your analysis on the available data and provide actionable insights.
-            """,
+            instructions="Create a final investment analysis based on all available data. Provide recommendation, confidence, insights, sentiment, and risk summary.",
             agents=[synthesis_agent],
             result_type=InvestmentAnalysis,
             context=synthesis_context,
             max_agent_turns=3
         )
-        
         self.task_results['final_synthesis'] = final_analysis
+        
         return final_analysis
     
     def _select_synthesis_agent(self, agents: Dict[str, cf.Agent]) -> cf.Agent:
         """Select the best available agent for final synthesis"""
-        
-        # Preferred order for synthesis
         preferred_roles = ['sentiment_classification', 'recommendation', 'market_analysis']
-        
         for role in preferred_roles:
             if role in agents:
                 return agents[role]
-        
-        # Fallback to any available agent
         if agents:
             return list(agents.values())[0]
-        
         raise ValueError("No agents available for synthesis")
     
     def _build_execution_trace(self) -> Dict[str, Any]:
@@ -385,8 +385,6 @@ class ConfigDrivenWorkflow(BaseWorkflow):
     
     def _build_agent_invocations(self) -> List[Dict[str, Any]]:
         """Build agent invocation history for monitoring"""
-        # This would be enhanced to track actual agent calls
-        # For now, return basic information
         return [
             {
                 'task': task_name,
@@ -395,15 +393,130 @@ class ConfigDrivenWorkflow(BaseWorkflow):
             }
             for task_name in ['market_analysis', 'risk_assessment', 'final_synthesis']
         ]
+    
+    def _get_task_status(self, task_role: str, workflow_status: str, current_task: Optional[str]) -> str:
+        """Determine the status of a task based on workflow context."""
+        if task_role in self.task_results:
+            # You might want to check for failure within the result object if applicable
+            return 'completed'
+        if task_role == current_task:
+            return 'running'
+        if workflow_status == 'failed' and task_role != current_task:
+            return 'pending' # Or 'cancelled' if you want to be more specific
+        
+        # Check if task is upstream of the current running task
+        defined_tasks = [agent.get('role') for agent in self.workflow_config.get('agents', [])]
+        try:
+            current_task_index = defined_tasks.index(current_task)
+            task_index = defined_tasks.index(task_role)
+            if task_index < current_task_index:
+                return 'completed' # Should have been completed if we are past it
+        except (ValueError, TypeError):
+             # A task isn't in the defined list, or current_task is None
+            pass
+
+        return 'pending'
+
+    def _generate_workflow_graph(self) -> Dict[str, List[Dict[str, Any]]]:
+        """Dynamically generate workflow nodes and edges for frontend visualization."""
+        nodes, edges = [], []
+        agent_configs = self.workflow_config.get('agents', [])
+        current_task = self.execution_context.get('current_task')
+        workflow_status = self.execution_context.get('status', 'initializing')
+
+        if not agent_configs:
+            return {"nodes": [], "edges": []}
+
+        node_width, x_pos, y_pos = 280, 0, 100
+        
+        # Input Node
+        nodes.append({
+            "id": "input", "type": "input", "position": {"x": x_pos, "y": y_pos},
+            "data": {"label": "User Query", "status": "completed", "description": self.execution_context.get('query', '')}
+        })
+        last_node_id = "input"
+        x_pos += node_width
+
+        # Agent/Task Nodes
+        all_agent_roles = [ac.get('role') for ac in agent_configs if ac.get('role')]
+        
+        for agent_config in agent_configs:
+            role = agent_config.get('role')
+            if not role: continue
+
+            status = self._get_task_status(role, workflow_status, current_task)
+            
+            nodes.append({
+                "id": f"task_{role}", "type": "task", "position": {"x": x_pos, "y": y_pos},
+                "data": {
+                    "label": agent_config.get('label', role.replace('_', ' ').title()),
+                    "status": status,
+                    "description": agent_config.get('description', ''),
+                    "agentName": agent_config.get('name', 'N/A'),
+                    "tools": [t.get('name', '') for t in self.registry_manager.get_tools_for_agent(role)],
+                    "liveDetails": self._get_live_details_for_agent(role) if status == 'running' else None,
+                }
+            })
+            edges.append({"id": f"edge_{last_node_id}_to_task_{role}", "source": last_node_id, "target": f"task_{role}", "type": "depends_on"})
+            last_node_id = f"task_{role}"
+            x_pos += node_width
+
+        # Synthesis Task (as a virtual node)
+        synthesis_status = self._get_task_status('final_synthesis', workflow_status, current_task)
+        nodes.append({
+            "id": "task_final_synthesis", "type": "task", "position": {"x": x_pos, "y": y_pos},
+            "data": {
+                "label": "Final Synthesis", "status": synthesis_status, "description": "Synthesizing all analyses into a final report.",
+                "liveDetails": self._get_live_details_for_agent('final_synthesis') if synthesis_status == 'running' else None,
+            }
+        })
+        edges.append({"id": f"edge_{last_node_id}_to_task_final_synthesis", "source": last_node_id, "target": "task_final_synthesis", "type": "depends_on"})
+        last_node_id = "task_final_synthesis"
+        x_pos += node_width
+        
+        # Output Node
+        output_status = "completed" if workflow_status == "completed" else "pending"
+        result_data = self.task_results.get('final_synthesis')
+        nodes.append({
+            "id": "output", "type": "output", "position": {"x": x_pos, "y": y_pos},
+            "data": {
+                "label": "Final Report", "status": output_status, 
+                "result": result_data.dict() if isinstance(result_data, BaseModel) else result_data
+            }
+        })
+        edges.append({"id": f"edge_{last_node_id}_to_output", "source": last_node_id, "target": "output", "type": "produces"})
+
+        return {"nodes": nodes, "edges": edges}
+
+
+    def _get_live_details_for_agent(self, agent_role: str) -> Optional[Dict[str, Any]]:
+        """Get live details for a specific agent if it's the current task."""
+        if self.execution_context.get('current_task') == agent_role:
+            return {
+                'task_name': agent_role,
+                'task_progress': self._get_task_progress(agent_role),
+                'agent_reasoning': self._get_current_agent_reasoning(),
+                'tool_calls': self._get_recent_tool_calls()
+            }
+        return None
+    
+    def _get_workflow_metrics(self) -> Dict[str, Any]:
+        """Get current workflow metrics"""
+        start_time = self.execution_context.get('start_time')
+        execution_time = (datetime.now() - start_time).total_seconds() if start_time else 0
+        
+        # Count based on actual tasks executed or defined
+        tasks_in_config = self.workflow_config.get('agents', [])
+        total_tasks = len(tasks_in_config) + 1 # Add 1 for synthesis
+
+        return {
+            'total_tasks': total_tasks,
+            'completed_tasks': len(self.task_results),
+            'execution_time': execution_time
+        }
 
 def create_config_driven_workflow(workflow_type: str = "quick_stock_analysis") -> ConfigDrivenWorkflow:
     """
     Factory function to create config-driven workflow instances
-    
-    Args:
-        workflow_type: Type of workflow from workflow_config.yaml
-        
-    Returns:
-        ConfigDrivenWorkflow instance
     """
     return ConfigDrivenWorkflow(workflow_type)

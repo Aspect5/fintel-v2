@@ -155,6 +155,14 @@ class FintelEventHandler(Handler):
         }
         logger.info(f"TOOL RESULT: {json.dumps(log_data, indent=2)}")
         self.events.append(log_data)
+    
+    def get_events(self) -> List[Dict[str, Any]]:
+        """Get all captured events"""
+        return self.events.copy()
+    
+    def get_events_by_type(self, event_type: str) -> List[Dict[str, Any]]:
+        """Get events filtered by type"""
+        return [event for event in self.events if event.get('event_type') == event_type]
 
 class WorkflowMonitor:
     """Comprehensive monitor for workflow execution, resource usage, and observability"""

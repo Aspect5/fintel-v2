@@ -1,134 +1,98 @@
+// frontend/src/components/workflow/TaskNode.tsx
 import React from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
+import { CustomNodeData } from '../../types';
+
 import SpinnerIcon from '../icons/SpinnerIcon';
 import CheckCircleIcon from '../icons/CheckCircleIcon';
 import XCircleIcon from '../icons-solid/XCircleIcon';
+import CodeBracketIcon from '../icons/CodeBracketIcon';
+import SparklesIcon from '../icons/SparklesIcon';
 
-interface TaskNodeData {
-  label: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
-  agent?: string;
-  description?: string;
-  result?: string;
-  error?: string;
-}
+const TaskNode: React.FC<NodeProps<CustomNodeData>> = ({ data }) => {
+  const { label, status, description, agentName, tools, liveDetails } = data;
 
-const TaskNode: React.FC<NodeProps<TaskNodeData>> = ({ data }) => {
-  const { label, status, agent, description, result, error } = data;
-  
   const getStatusIcon = () => {
     switch (status) {
-      case 'running':
-        return <SpinnerIcon className="w-5 h-5 text-brand-primary animate-spin" />;
-      case 'completed':
-        return <CheckCircleIcon className="w-5 h-5 text-brand-success" />;
-      case 'failed':
-        return <XCircleIcon className="w-5 h-5 text-brand-danger" />;
-      default:
-        return null;
+      case 'running': return <SpinnerIcon className="w-5 h-5 text-blue-500 animate-spin" />;
+      case 'completed': return <CheckCircleIcon className="w-5 h-5 text-green-500" />;
+      case 'failed': return <XCircleIcon className="w-5 h-5 text-red-500" />;
+      default: return <div className="w-5 h-5" />;
     }
   };
 
   const getBorderColor = () => {
-    switch (status) {
-      case 'failed':
-        return 'border-brand-danger';
-      case 'completed':
-        return 'border-brand-success';
-      case 'running':
-        return 'border-brand-primary';
-      default:
-        return 'border-brand-border';
-    }
-  };
-
-  const getBackgroundColor = () => {
-    switch (status) {
-      case 'failed':
-        return 'bg-red-900/20';
-      case 'completed':
-        return 'bg-green-900/20';
-      case 'running':
-        return 'bg-blue-900/20';
-      default:
-        return 'bg-brand-surface';
-    }
-  };
-
-  const getStatusText = () => {
-    switch (status) {
-      case 'running':
-        return 'Running...';
-      case 'completed':
-        return 'Completed';
-      case 'failed':
-        return 'Failed';
-      case 'pending':
-        return 'Pending';
-      default:
-        return 'Ready';
-    }
+    if (status === 'failed') return 'border-red-500/80 shadow-red-500/20';
+    if (status === 'completed') return 'border-green-500/80 shadow-green-500/20';
+    if (status === 'running') return 'border-blue-500/80 shadow-blue-500/20';
+    return 'border-gray-600/80 shadow-gray-900/20';
   };
 
   return (
-    <div className={`relative p-4 border-2 rounded-lg shadow-lg min-w-[200px] max-w-[280px] ${getBorderColor()} ${getBackgroundColor()} transition-all duration-300 cursor-pointer hover:shadow-xl hover:scale-105 group`}>
-      <Handle 
-        type="target" 
-        position={Position.Left} 
-        className="!bg-brand-secondary !w-3 !h-3 !border-2 !border-brand-bg" 
-        style={{ left: '-8px' }}
-      />
+    <div className={`relative bg-gray-800 border rounded-lg shadow-lg min-w-[280px] max-w-[320px] transition-all duration-300 ${getBorderColor()} hover:shadow-xl`}>
+      <Handle type="target" position={Position.Left} className="!bg-gray-500 !w-3 !h-3 !border-2 !border-gray-800" />
       
-      <div className="flex items-center justify-between mb-3">
-        <div className="font-bold text-lg text-white">{label}</div>
-        {getStatusIcon()}
+      <div className="p-4 border-b border-gray-700">
+        <div className="flex items-center justify-between">
+          <div className="font-bold text-lg text-white">{label}</div>
+          {getStatusIcon()}
+        </div>
+        <p className="text-sm text-gray-400 mt-1">{description}</p>
       </div>
-      
-      {/* Status indicator */}
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-sm text-brand-text-secondary">{getStatusText()}</span>
+
+      <div className="p-4 space-y-3">
+        {agentName && (
+          <div className="flex items-center space-x-2 text-sm">
+            <SparklesIcon className="w-4 h-4 text-yellow-400" />
+            <span className="text-gray-300 font-semibold">Agent:</span>
+            <span className="text-gray-400">{agentName}</span>
+          </div>
+        )}
+        
+        {tools && tools.length > 0 && (
+          <div className="flex items-start space-x-2 text-sm">
+            <CodeBracketIcon className="w-4 h-4 text-cyan-400 mt-0.5" />
+            <div>
+              <span className="text-gray-300 font-semibold">Tools:</span>
+              <div className="flex flex-wrap gap-1 mt-1">
+                {tools.map((tool, index) => (
+                  <span key={index} className="bg-gray-700 text-gray-300 text-xs px-2 py-0.5 rounded-full">{tool}</span>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-      
-      {/* Agent name if available */}
-      {agent && (
-        <div className="mb-2">
-          <div className="text-xs text-brand-text-secondary opacity-75">Agent</div>
-          <div className="text-sm text-white font-medium">{agent}</div>
+
+      {status === 'running' && liveDetails && (
+        <div className="bg-gray-800/50 p-4 border-t border-gray-700">
+          <h4 className="text-sm font-semibold text-white mb-2">Live Details</h4>
+          <div className="space-y-3 text-xs">
+            {liveDetails.agent_reasoning && (
+              <div>
+                <strong className="text-gray-400">Reasoning:</strong>
+                <p className="text-gray-500 bg-gray-900 p-2 rounded mt-1 font-mono">{liveDetails.agent_reasoning}</p>
+              </div>
+            )}
+            {liveDetails.tool_calls && liveDetails.tool_calls.length > 0 && (
+               <div>
+                 <strong className="text-gray-400">Recent Tool Calls:</strong>
+                 <ul className="list-disc list-inside mt-1 space-y-1">
+                   {liveDetails.tool_calls.map((call, i) => (
+                     <li key={i} className="text-gray-500 font-mono text-xs truncate">
+                       {call.tool_name}({JSON.stringify(call.tool_args || {})})
+                     </li>
+                   ))}
+                 </ul>
+               </div>
+            )}
+          </div>
         </div>
       )}
-      
-      {/* Description if available */}
-      {description && (
-        <div className="mb-2">
-          <div className="text-xs text-brand-text-secondary opacity-75">Description</div>
-          <div className="text-sm text-white">{description}</div>
-        </div>
-      )}
-      
-      {/* Result preview if completed */}
-      {status === 'completed' && result && (
-        <div className="mt-2 p-2 bg-green-900/30 rounded border border-green-700/50">
-          <div className="text-xs text-green-300 mb-1">Result</div>
-          <div className="text-xs text-green-200 line-clamp-2">{result}</div>
-        </div>
-      )}
-      
-      {/* Error message if failed */}
-      {status === 'failed' && error && (
-        <div className="mt-2 p-2 bg-red-900/30 rounded border border-red-700/50">
-          <div className="text-xs text-red-300 mb-1">Error</div>
-          <div className="text-xs text-red-200 line-clamp-2">{error}</div>
-        </div>
-      )}
-      
-      <Handle 
-        type="source" 
-        position={Position.Right} 
-        className="!bg-brand-secondary !w-3 !h-3 !border-2 !border-brand-bg" 
-        style={{ right: '-8px' }}
-      />
+
+      <Handle type="source" position={Position.Right} className="!bg-gray-500 !w-3 !h-3 !border-2 !border-gray-800" />
     </div>
   );
 };
 
-export default TaskNode; 
+export default TaskNode;

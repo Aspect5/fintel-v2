@@ -55,6 +55,11 @@ workflows:
         role: "economic_data_analysis"
         required: true
         tools: ["get_economic_data_from_fred"]
+      - name: "RiskAssessment"
+        role: "macro_risk_assessment"
+        required: false
+        fallback: "EconomicAnalyst"
+        tools: ["get_economic_data_from_fred"]
       - name: "Summarizer"
         role: "economic_summary"
         required: true
