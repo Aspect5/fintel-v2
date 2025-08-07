@@ -16,6 +16,9 @@ import ReactFlow, {
   NodeProps
 } from 'reactflow';
 import 'reactflow/dist/style.css';
+import { createLogger } from '../utils/logger';
+
+const canvasLogger = createLogger('WorkflowCanvas');
 
 import SpinnerIcon from './icons/SpinnerIcon';
 import CheckCircleIcon from './icons/CheckCircleIcon';
@@ -172,11 +175,11 @@ const WorkflowCanvasContent: React.FC<WorkflowCanvasProps> = ({
   const { fitView } = useReactFlow();
 
   // Debug logging
-  console.log('[WorkflowCanvas] Rendering with:', {
+  canvasLogger.debug('Rendering canvas', {
     nodesCount: nodes.length,
     edgesCount: edges.length,
-    nodes: nodes,
-    edges: edges
+    sampleNode: nodes[0],
+    sampleEdge: edges[0]
   });
 
   // Memoize node types to prevent React Flow warnings
@@ -195,7 +198,7 @@ const WorkflowCanvasContent: React.FC<WorkflowCanvasProps> = ({
         }, 100);
       }
     } catch (error) {
-      console.error('Error fitting view:', error);
+      canvasLogger.error('Error fitting view', { error });
     }
   }, [nodes, fitView]);
 

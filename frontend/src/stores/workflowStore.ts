@@ -6,6 +6,9 @@ import {
 import {
   WorkflowStatus, CustomNode, PersistedWorkflowStatus,
 } from '../types';
+import { createLogger } from '../utils/logger';
+
+const storeLogger = createLogger('WorkflowStore');
 
 // This represents the comprehensive status object received from the backend.
 export interface FullWorkflowStatus extends WorkflowStatus, PersistedWorkflowStatus {}
@@ -57,16 +60,25 @@ const initialState = {
 
 // The layout logic, moved from App.tsx
 const layoutNodes = (nodes: any[], edges: any[]): CustomNode[] => {
+    storeLogger.debug('Layout function called', { nodeCount: nodes.length, edgeCount: edges.length });
+    storeLogger.debug('Sample edge structure', edges[0]);
+    
     const nodeMap = new Map(nodes.map(n => [n.id, n]));
     const adjacencyList = new Map(nodes.map(n => [n.id, []]));
     const inDegree = new Map(nodes.map(n => [n.id, 0]));
 
     edges.forEach(edge => {
-        if (adjacencyList.has(edge.from)) {
-            adjacencyList.get(edge.from).push(edge.to);
+        // Handle both formats: backend uses source/target, some legacy might use from/to
+        const source = edge.source || edge.from;
+        const target = edge.target || edge.to;
+        
+        storeLogger.debug('Processing edge', { source, target, originalEdge: edge });
+        
+        if (source && target && adjacencyList.has(source)) {
+            adjacencyList.get(source).push(target);
         }
-        if (inDegree.has(edge.to)) {
-            inDegree.set(edge.to, (inDegree.get(edge.to) || 0) + 1);
+        if (target && inDegree.has(target)) {
+            inDegree.set(target, (inDegree.get(target) || 0) + 1);
         }
     });
 
@@ -131,6 +143,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   onEdgesChange: (changes) => set({ edges: applyEdgeChanges(changes, get().edges) }),
 
   startWorkflow: (workflowId, query, initialStatus) => {
+    storeLogger.info('Starting workflow', { workflowId, query, initialStatus });
+    
     set({
       ...initialState,
       workflowId,
@@ -139,13 +153,18 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       edges: initialStatus.edges || [],
       status: initialStatus.status || 'initializing',
     });
-    // Apply layout on start
+    
+    // Apply layout on start if we have nodes and edges
     if (initialStatus.nodes && initialStatus.edges) {
+      storeLogger.info('Applying initial layout for workflow start');
       get().layoutNodes(initialStatus.nodes, initialStatus.edges);
+    } else {
+      storeLogger.info('No initial nodes/edges provided, will wait for status updates');
     }
   },
 
   setPollingWorkflow: (workflowId: string) => {
+    storeLogger.info('Setting polling workflow', { workflowId });
     set({
         ...initialState,
         workflowId,
@@ -154,16 +173,24 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   },
 
   layoutNodes: (nodes, edges) => {
-    console.log('[Store] Laying out nodes...', { nodeCount: nodes.length, edgeCount: edges.length });
+    storeLogger.info('Laying out nodes', { nodeCount: nodes.length, edgeCount: edges.length });
+    storeLogger.debug('Sample edge structure', edges[0]);
+    
     const positionedNodes = layoutNodes(nodes, edges);
+    
+    // Backend edges already have correct structure with source/target, just ensure they have proper IDs
     const reactFlowEdges = edges.map((edge: any, index: number) => ({
-        id: `edge-${index}`,
-        source: edge.from,
-        target: edge.to,
-        type: 'default', // Or a custom edge type
+        id: edge.id || `edge-${index}`,
+        source: edge.source || edge.from, // Handle both formats
+        target: edge.target || edge.to,   // Handle both formats
+        type: edge.type || 'default',
     }));
     
-    console.log('[Store] Layout complete. Setting nodes and edges.');
+    storeLogger.info('Layout complete. Setting nodes and edges', {
+      positionedNodesCount: positionedNodes.length,
+      reactFlowEdgesCount: reactFlowEdges.length
+    });
+    storeLogger.debug('Sample React Flow edge', reactFlowEdges[0]);
     set({ nodes: positionedNodes, edges: reactFlowEdges });
   },
 
@@ -172,6 +199,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       if (!state.workflowId || state.workflowId !== update.workflow_id) {
         return state;
       }
+      
+      storeLogger.info('Updating workflow status', update);
       
       // Map ALL properties from the backend data to the store
       const newState: Partial<WorkflowState> = {
@@ -189,15 +218,22 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
       // Handle graph updates - backend returns nodes and edges directly, not in workflow_graph wrapper
       if (update.nodes && update.edges) {
+          storeLogger.info('Processing nodes and edges from update', {
+              nodesCount: update.nodes.length,
+              edgesCount: update.edges.length,
+              sampleNode: update.nodes[0],
+              sampleEdge: update.edges[0]
+          });
+          
           // If the store has no nodes yet, this is the initial graph. Layout and set.
           if (state.nodes.length === 0) {
-              console.log('[Store] Received initial workflow graph. Performing layout.');
-              console.log('[Store] Nodes from backend:', update.nodes);
-              console.log('[Store] Edges from backend:', update.edges);
+              storeLogger.info('Received initial workflow graph. Performing layout');
+              storeLogger.debug('Nodes from backend', update.nodes);
+              storeLogger.debug('Edges from backend', update.edges);
               get().layoutNodes(update.nodes, update.edges);
           } else {
               // Otherwise, merge status updates into existing nodes.
-              console.log('[Store] Merging node updates.');
+              storeLogger.info('Merging node updates');
               const nodeMap = new Map(state.nodes.map(n => [n.id, n]));
               update.nodes.forEach(updatedNode => {
                   const existingNode = nodeMap.get(updatedNode.id);
@@ -212,13 +248,18 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       
       // Also handle legacy workflow_graph format for backward compatibility
       if (update.workflow_graph) {
+          storeLogger.info('Processing legacy workflow_graph format', {
+              nodesCount: update.workflow_graph.nodes?.length || 0,
+              edgesCount: update.workflow_graph.edges?.length || 0
+          });
+          
           // If the store has no nodes yet, this is the initial graph. Layout and set.
           if (state.nodes.length === 0) {
-              console.log('[Store] Received legacy workflow_graph format. Performing layout.');
+              storeLogger.info('Received legacy workflow_graph format. Performing layout');
               get().layoutNodes(update.workflow_graph.nodes, update.workflow_graph.edges);
           } else {
               // Otherwise, merge status updates into existing nodes.
-              console.log('[Store] Merging node updates from legacy format.');
+              storeLogger.info('Merging node updates from legacy format');
               const nodeMap = new Map(state.nodes.map(n => [n.id, n]));
               update.workflow_graph.nodes.forEach(updatedNode => {
                   const existingNode = nodeMap.get(updatedNode.id);
@@ -235,5 +276,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     });
   },
 
-  resetWorkflow: () => set(initialState),
+  resetWorkflow: () => {
+    storeLogger.info('Resetting workflow state');
+    set(initialState);
+  },
 }));

@@ -1,6 +1,9 @@
 // In hooks/useWorkflowStatus.ts
 import { useEffect, useCallback } from 'react';
 import { useWorkflowStore } from '../stores/workflowStore';
+import { createLogger } from '../utils/logger';
+
+const hookLogger = createLogger('useWorkflowStatus');
 
 export const useWorkflowStatus = (workflowId: string | null) => {
     const { updateWorkflowStatus, status: workflowStatus } = useWorkflowStore(state => ({
@@ -8,17 +11,43 @@ export const useWorkflowStatus = (workflowId: string | null) => {
         status: state.status,
     }));
 
-    const fetchStatus = useCallback(async () => {
-        if (!workflowId) return;
+
+
+    // Polling effect
+    useEffect(() => {
+        if (!workflowId) {
+            return;
+        }
+
+        hookLogger.info('Starting to poll for workflow', { workflowId });
         
-        try {
-            const response = await fetch(`/api/workflow-status/${workflowId}`);
-            if (response.ok) {
+        let intervalId: NodeJS.Timeout;
+        let shouldContinuePolling = true;
+        
+        const pollWithErrorHandling = async () => {
+            if (!shouldContinuePolling) return;
+            
+            try {
+                const response = await fetch(`/api/workflow-status/${workflowId}`);
+                if (!response.ok) {
+                    if (response.status === 404) {
+                        hookLogger.warn('Workflow not found. Stopping polling', { workflowId, status: response.status });
+                        shouldContinuePolling = false;
+                        if (intervalId) {
+                            clearInterval(intervalId);
+                        }
+                        const { resetWorkflow } = useWorkflowStore.getState();
+                        resetWorkflow();
+                        return;
+                    }
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
                 const status = await response.json();
                 
                 // Comprehensive logging to track data flow
-                console.log(`[useWorkflowStatus] Raw backend data for ${workflowId}:`, status);
-                console.log(`[useWorkflowStatus] Data breakdown:`, {
+                hookLogger.info('Raw backend data received', { workflowId, status });
+                hookLogger.debug('Data breakdown', {
                     status: status.status,
                     hasNodes: !!status.nodes,
                     hasEdges: !!status.edges,
@@ -35,54 +64,44 @@ export const useWorkflowStatus = (workflowId: string | null) => {
                     resultType: typeof status.result,
                     enhancedResultType: typeof status.enhanced_result,
                 });
+                
+                // Extra debugging for nodes and edges
+                if (status.nodes) {
+                    hookLogger.debug('First few nodes', status.nodes.slice(0, 3));
+                }
+                if (status.edges) {
+                    hookLogger.debug('First few edges', status.edges.slice(0, 3));
+                }
 
-                // Update the store directly
                 updateWorkflowStatus(status);
                 
-                // Log after store update
-                setTimeout(() => {
-                    const storeState = useWorkflowStore.getState();
-                    console.log(`[useWorkflowStatus] Store state after update:`, {
-                        storeStatus: storeState.status,
-                        storeHasResult: !!storeState.result,
-                        storeHasEnhancedResult: !!storeState.enhanced_result,
-                        storeHasAgentInvocations: !!storeState.agent_invocations,
-                    });
-                }, 0);
+                if (status.status === 'completed' || status.status === 'failed') {
+                    hookLogger.info('Workflow finished. Stopping polling', { workflowId, status: status.status });
+                    shouldContinuePolling = false;
+                    if (intervalId) {
+                        clearInterval(intervalId);
+                    }
+                }
+            } catch (err) {
+                hookLogger.error('Error polling workflow', { workflowId, error: err });
+                // Continue polling on other errors, but stop on 404
             }
-        } catch (err) {
-            console.error('[useWorkflowStatus] Failed to fetch workflow status:', err);
-        }
-    }, [workflowId, updateWorkflowStatus]);
+        };
 
-    // Initial fetch when the component mounts or workflowId changes
-    useEffect(() => {
-        if (workflowId) {
-            fetchStatus();
-        }
-    }, [workflowId, fetchStatus]);
-
-    // Polling effect
-    useEffect(() => {
-        if (!workflowId) {
-            return;
-        }
-
-        console.log(`[useWorkflowStatus] Starting to poll for workflow: ${workflowId}`);
-        const interval = setInterval(() => {
-            if (workflowStatus === 'completed' || workflowStatus === 'failed') {
-                console.log(`[useWorkflowStatus] Workflow ${workflowId} finished with status: ${workflowStatus}. Stopping polling.`);
-                clearInterval(interval);
-                return;
-            }
-            fetchStatus();
-        }, 2000); // Polling interval set to 2 seconds
+        // Initial fetch
+        pollWithErrorHandling();
+        
+        // Set up interval for continued polling
+        intervalId = setInterval(pollWithErrorHandling, 2000);
 
         return () => {
-            console.log(`[useWorkflowStatus] Cleaning up polling for ${workflowId}`);
-            clearInterval(interval);
+            hookLogger.info('Cleaning up polling', { workflowId });
+            shouldContinuePolling = false;
+            if (intervalId) {
+                clearInterval(intervalId);
+            }
         };
-    }, [workflowId, fetchStatus, workflowStatus]);
+    }, [workflowId, updateWorkflowStatus]);
 
     // This hook no longer returns anything as it interacts directly with the store
 };

@@ -10,6 +10,7 @@ import ReportModal from './src/components/ReportModal';
 import Notification from './src/components/Notification';
 import { useWorkflowStatus } from './src/hooks/useWorkflowStatus';
 import WorkflowHistory from './src/components/WorkflowHistory';
+import LogViewer from './src/components/LogViewer';
 import {
   CustomNode, Report, AgentFinding, EnhancedResult,
 } from './src/types';
@@ -95,6 +96,7 @@ const App: React.FC = () => {
     const [currentReport, setCurrentReport] = useState<Report | null>(null);
     const [isReportModalVisible, setIsReportModalVisible] = useState(false);
     const [reportGenerated, setReportGenerated] = useState(false);
+    const [isLogViewerVisible, setIsLogViewerVisible] = useState(false);
 
     // Global state from regular Zustand store
     const { setIsApiKeyModalOpen, chatMessages, addChatMessage } = useStore();
@@ -118,6 +120,9 @@ const App: React.FC = () => {
             localStorage.setItem('hasVisited', 'true');
         }
     }, [setIsApiKeyModalOpen]);
+
+
+
 
     // Effect to handle workflow completion and generate a report
     useEffect(() => {
@@ -143,24 +148,99 @@ const App: React.FC = () => {
             if (typeof result === 'string') {
                 reportContent = result;
             } else if (typeof result === 'object' && result !== null) {
-                if ('recommendation' in result) {
-                    reportContent = (result as { recommendation: string }).recommendation;
-                } else if ('market_analysis' in result) {
-                    reportContent = (result as { market_analysis: string }).market_analysis;
-                } else if ('content' in result) {
-                    reportContent = (result as { content: string }).content;
+                // Try to extract the most meaningful content for the executive summary
+                const resultObj = result as any;
+                if (resultObj.recommendation) {
+                    reportContent = resultObj.recommendation;
+                } else if (resultObj.market_analysis) {
+                    reportContent = resultObj.market_analysis;
+                } else if (resultObj.content) {
+                    reportContent = resultObj.content;
+                } else if (resultObj.sentiment && resultObj.confidence) {
+                    // Create a summary from sentiment and confidence
+                    reportContent = `Analysis indicates a ${resultObj.sentiment} sentiment with ${Math.round(resultObj.confidence * 100)}% confidence.`;
+                    if (resultObj.key_insights && Array.isArray(resultObj.key_insights)) {
+                        reportContent += ` Key insights: ${resultObj.key_insights.slice(0, 2).join(', ')}.`;
+                    }
                 } else {
                     reportContent = JSON.stringify(result, null, 2);
                 }
             }
             
-            const agentFindings: AgentFinding[] = agentInvocationsToUse.map((inv: any) => ({
-                agentName: inv.agent || inv.agentName || 'Unknown Agent',
-                specialization: inv.specialization || 'Financial Analysis',
-                summary: inv.task || inv.naturalLanguageTask || 'Analysis completed',
-                details: inv.details || [],
-                toolCalls: inv.tool_calls || inv.toolCalls || [],
-            }));
+            // Extract agent findings from the trace data if available
+            let agentFindings: AgentFinding[] = [];
+            
+            if (workflowData.trace?.task_results) {
+                // Use the rich trace data from the backend
+                const taskResults = workflowData.trace.task_results;
+                agentFindings = Object.entries(taskResults).map(([taskName, taskResult]: [string, any]) => {
+                    // Map task names to agent names
+                    const agentNameMap: { [key: string]: string } = {
+                        'market_analysis': 'Market Analyst',
+                        'risk_assessment': 'Risk Assessor', 
+                        'final_synthesis': 'Investment Advisor',
+                        'recommendation': 'Investment Advisor'
+                    };
+                    
+                    const agentName = agentNameMap[taskName] || taskName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    
+                    // Extract analysis content from the task result
+                    let summary = 'Analysis completed';
+                    let details: string[] = [];
+                    
+                    if (typeof taskResult === 'object' && taskResult !== null) {
+                        if (taskResult.analysis_summary) {
+                            summary = taskResult.analysis_summary;
+                        } else if (taskResult.risk_summary) {
+                            summary = taskResult.risk_summary;
+                        } else if (taskResult.recommendation) {
+                            summary = taskResult.recommendation;
+                        } else if (taskResult.market_analysis) {
+                            summary = taskResult.market_analysis;
+                        }
+                        
+                        // Extract key insights or risk factors as details
+                        if (taskResult.key_insights) {
+                            details = taskResult.key_insights;
+                        } else if (taskResult.risk_factors) {
+                            details = taskResult.risk_factors;
+                        }
+                    }
+                    
+                    // Extract tool calls from the trace configuration
+                    let toolCalls: any[] = [];
+                    if (workflowData.trace?.configuration_used?.agents) {
+                        const agentConfig = workflowData.trace.configuration_used.agents.find(
+                            (agent: any) => agent.role === taskName
+                        );
+                        if (agentConfig?.tools) {
+                            toolCalls = agentConfig.tools.map((toolName: string) => ({
+                                toolName,
+                                toolInput: 'Used for analysis',
+                                toolOutput: 'Data retrieved successfully',
+                                toolOutputSummary: `Executed ${toolName}`
+                            }));
+                        }
+                    }
+                    
+                    return {
+                        agentName,
+                        specialization: taskName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+                        summary,
+                        details,
+                        toolCalls,
+                    };
+                });
+            } else {
+                // Fallback to the old mapping logic
+                agentFindings = agentInvocationsToUse.map((inv: any) => ({
+                    agentName: inv.agent || inv.agentName || 'Unknown Agent',
+                    specialization: inv.specialization || 'Financial Analysis',
+                    summary: inv.task || inv.naturalLanguageTask || 'Analysis completed',
+                    details: inv.details || [],
+                    toolCalls: inv.tool_calls || inv.toolCalls || [],
+                }));
+            }
             
             const crossAgentInsights = generateCrossAgentInsights(agentFindings, provider || 'unknown');
 
@@ -185,6 +265,9 @@ const App: React.FC = () => {
                 hasResult: !!result,
                 hasEnhancedResult: !!workflowData.enhanced_result,
                 hasAgentInvocations: !!agentInvocationsToUse.length,
+                hasTrace: !!workflowData.trace,
+                traceTaskResults: workflowData.trace?.task_results ? Object.keys(workflowData.trace.task_results) : [],
+                agentFindings: agentFindings.map(f => ({ name: f.agentName, summary: f.summary.substring(0, 50) + '...' }))
             });
 
             setCurrentReport(report);
@@ -264,6 +347,17 @@ const App: React.FC = () => {
                             <div className="text-xs text-brand-text-secondary mt-3">
                                 💡 Double-click nodes for details.
                             </div>
+                            <div className="text-xs text-brand-text-secondary mt-1">
+                                Nodes: {nodes.length}, Edges: {edges.length}
+                            </div>
+                            <div className="text-xs text-brand-text-secondary mt-1">
+                                <button
+                                    onClick={() => setIsLogViewerVisible(true)}
+                                    className="text-brand-primary hover:text-brand-primary-light underline"
+                                >
+                                    View Logs
+                                </button>
+                            </div>
                         </div>
                     )}
                 </div>
@@ -281,6 +375,10 @@ const App: React.FC = () => {
                 isVisible={isReportModalVisible}
                 onClose={() => setIsReportModalVisible(false)}
                 query={workflowQuery || ''}
+            />
+            <LogViewer 
+                isVisible={isLogViewerVisible}
+                onClose={() => setIsLogViewerVisible(false)}
             />
             {error && <Notification type="error" message={error} onClose={() => setError(null)} />}
         </div>
