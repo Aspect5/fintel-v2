@@ -397,22 +397,19 @@ class ConfigDrivenWorkflow(BaseWorkflow):
     def _get_task_status(self, task_role: str, workflow_status: str, current_task: Optional[str]) -> str:
         """Determine the status of a task based on workflow context."""
         if task_role in self.task_results:
-            # You might want to check for failure within the result object if applicable
             return 'completed'
         if task_role == current_task:
             return 'running'
-        if workflow_status == 'failed' and task_role != current_task:
-            return 'pending' # Or 'cancelled' if you want to be more specific
         
         # Check if task is upstream of the current running task
         defined_tasks = [agent.get('role') for agent in self.workflow_config.get('agents', [])]
         try:
-            current_task_index = defined_tasks.index(current_task)
-            task_index = defined_tasks.index(task_role)
-            if task_index < current_task_index:
-                return 'completed' # Should have been completed if we are past it
-        except (ValueError, TypeError):
-             # A task isn't in the defined list, or current_task is None
+            if current_task and current_task in defined_tasks and task_role in defined_tasks:
+                current_task_index = defined_tasks.index(current_task)
+                task_index = defined_tasks.index(task_role)
+                if task_index < current_task_index:
+                    return 'completed' 
+        except ValueError:
             pass
 
         return 'pending'

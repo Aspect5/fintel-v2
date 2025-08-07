@@ -132,6 +132,10 @@ export interface BasicNodeData {
   details?: string;
   result?: any;
   error?: string;
+  description?: string;
+  agentName?: string;
+  tools?: any[];
+  liveDetails?: any;
 }
 
 export interface AgentNodeData extends BasicNodeData {
@@ -184,7 +188,7 @@ export interface PersistedWorkflowStatus {
     workflow_id: string;
     status: 'initializing' | 'running' | 'completed' | 'failed';
     query: string;
-    result?: string | EnhancedResult; // Can be simple or complex
+    result?: any; // Use 'any' to resolve conflict
     trace?: any;
     error?: string;
     current_task?: string;
@@ -192,6 +196,8 @@ export interface PersistedWorkflowStatus {
     workflow_graph?: WorkflowGraph;
     agent_invocations?: AgentInvocation[]; // Duplicated for now
     tool_calls?: any[];
+    enhanced_result?: any;
+    event_history?: any[];
 }
 
 // This is the primary status object used within the frontend logic
