@@ -21,6 +21,7 @@ class MarketDataTool(BaseTool):
             mock_data = MOCK_MARKET_DATA.get(ticker, MOCK_MARKET_DATA["DEFAULT"]).copy()
             mock_data["symbol"] = ticker
             mock_data["note"] = "Using mock data - no API key configured"
+            mock_data["_mock"] = True
             return mock_data
         
         if not self.can_execute():
@@ -48,6 +49,7 @@ class MarketDataTool(BaseTool):
                 mock_data = MOCK_MARKET_DATA.get(ticker, MOCK_MARKET_DATA["DEFAULT"]).copy()
                 mock_data["symbol"] = ticker
                 mock_data["note"] = "API limit reached - using mock data"
+                mock_data["_mock"] = True
                 return mock_data
             
             if "Global Quote" in data and data["Global Quote"]:
@@ -65,6 +67,7 @@ class MarketDataTool(BaseTool):
                 mock_data = MOCK_MARKET_DATA.get(ticker, MOCK_MARKET_DATA["DEFAULT"]).copy()
                 mock_data["symbol"] = ticker
                 mock_data["note"] = "No live data available - using mock data"
+                mock_data["_mock"] = True
                 return mock_data
                 
         except Exception as e:
@@ -72,6 +75,7 @@ class MarketDataTool(BaseTool):
             mock_data = MOCK_MARKET_DATA.get(ticker, MOCK_MARKET_DATA["DEFAULT"]).copy()
             mock_data["symbol"] = ticker
             mock_data["note"] = f"Error occurred - using mock data: {str(e)}"
+            mock_data["_mock"] = True
             return mock_data
 
 class CompanyOverviewTool(BaseTool):
@@ -91,6 +95,7 @@ class CompanyOverviewTool(BaseTool):
             mock_data = MOCK_COMPANY_OVERVIEW.get(ticker, MOCK_COMPANY_OVERVIEW["DEFAULT"]).copy()
             mock_data["symbol"] = ticker
             mock_data["note"] = "Using mock data - no API key configured"
+            mock_data["_mock"] = True
             return mock_data
         
         if not self.can_execute():
@@ -118,6 +123,7 @@ class CompanyOverviewTool(BaseTool):
                 mock_data = MOCK_COMPANY_OVERVIEW.get(ticker, MOCK_COMPANY_OVERVIEW["DEFAULT"]).copy()
                 mock_data["symbol"] = ticker
                 mock_data["note"] = "API limit reached - using mock data"
+                mock_data["_mock"] = True
                 return mock_data
             
             if "Symbol" in data and data["Symbol"]:
@@ -137,6 +143,7 @@ class CompanyOverviewTool(BaseTool):
                 mock_data = MOCK_COMPANY_OVERVIEW.get(ticker, MOCK_COMPANY_OVERVIEW["DEFAULT"]).copy()
                 mock_data["symbol"] = ticker
                 mock_data["note"] = "No live data available - using mock data"
+                mock_data["_mock"] = True
                 return mock_data
                 
         except Exception as e:
@@ -144,4 +151,5 @@ class CompanyOverviewTool(BaseTool):
             mock_data = MOCK_COMPANY_OVERVIEW.get(ticker, MOCK_COMPANY_OVERVIEW["DEFAULT"]).copy()
             mock_data["symbol"] = ticker
             mock_data["note"] = f"Error occurred - using mock data: {str(e)}"
+            mock_data["_mock"] = True
             return mock_data

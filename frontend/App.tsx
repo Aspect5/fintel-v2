@@ -24,6 +24,9 @@ console.error = (...args) => {
   originalError.apply(console, args);
 };
 
+// Debug flag to gate noisy logs
+const DEBUG = import.meta.env.MODE === 'development' && (window as any).__DEBUG__;
+
 // Helper functions (assuming they are still needed, otherwise can be removed)
 const generateCrossAgentInsights = (agentFindings: any[], provider: string): string => {
     if (agentFindings.length === 0) return `Analysis completed using ${provider}.`;
@@ -70,22 +73,8 @@ const extractConfidenceLevel = (content: string): number => {
     return match ? Math.min(Math.max(parseInt(match[1], 10) / 10, 0), 1) : 0.85;
 };
 
-const generateDataQualityNotes = (agentFindings: any[], toolCalls?: any[]): string => {
-    const dataSources = new Set<string>();
-    let toolCount = 0;
-    agentFindings.forEach(finding => {
-        if (finding.toolCalls) {
-            toolCount += finding.toolCalls.length;
-            finding.toolCalls.forEach((tc: any) => dataSources.add(tc.toolName));
-        }
-    });
-    if (toolCalls) {
-        toolCount += toolCalls.length;
-        toolCalls.forEach((tc: any) => dataSources.add(tc.tool));
-    }
-    const sourcesList = Array.from(dataSources);
-    return sourcesList.length > 0 ? `Analysis based on ${toolCount} data points from ${sourcesList.length} sources (${sourcesList.join(', ')}).` : `Analysis completed with ${agentFindings.length} specialist agents.`;
-};
+// Deprecated: superseded by event_history-derived data quality notes
+// const generateDataQualityNotes = (...) => {}
 
 
 const App: React.FC = () => {
@@ -114,6 +103,15 @@ const App: React.FC = () => {
     // This hook now manages polling and updates the store directly
     useWorkflowStatus(workflowId);
 
+    // Reset local, derived state whenever the workflowId changes to prevent leakage
+    useEffect(() => {
+        setCurrentReport(null);
+        setReportGenerated(false);
+        setSelectedNode(null);
+        setIsReportModalVisible(false);
+        setBannerInfo(null);
+    }, [workflowId]);
+
     // Effect to show the API key modal on first visit
     useEffect(() => {
         const hasVisited = localStorage.getItem('hasVisited');
@@ -130,7 +128,7 @@ const App: React.FC = () => {
     useEffect(() => {
         const workflowData = useWorkflowStore.getState();
         if (workflowData.status === 'completed' && !reportGenerated) {
-            console.log('[App] Workflow completed. Generating report...');
+            if (DEBUG) console.log('[App] Workflow completed. Generating report...');
             
             // Look for enhanced result in multiple places - first try enhanced_result, then result
             let enhancedResult: EnhancedResult | null = null;
@@ -140,11 +138,10 @@ const App: React.FC = () => {
                 enhancedResult = workflowData.result as EnhancedResult;
             }
             
-            const { result, agent_invocations, provider, query, tool_calls } = enhancedResult || {};
+            const { result, agent_invocations, provider, query } = enhancedResult || {};
             
             // Use agent_invocations from the store if not in enhanced_result
             const agentInvocationsToUse = agent_invocations || workflowData.agent_invocations || [];
-            const toolCallsToUse = tool_calls || workflowData.tool_calls || [];
             
             let reportContent = "Analysis completed successfully.";
             if (typeof result === 'string') {
@@ -169,6 +166,25 @@ const App: React.FC = () => {
                 }
             }
             
+            // Build helper maps for robust event-task linking (computed fresh per completion)
+            const roleToTaskId: Record<string, string> = (() => {
+                const mapping: Record<string, string> = {};
+                try {
+                    const currentNodes = useWorkflowStore.getState().nodes || [];
+                    (currentNodes as any[]).forEach((n: any) => {
+                        if (n?.id?.startsWith?.('task_')) {
+                            const role = String(n.id).replace('task_', '');
+                            const tid = n?.data?.taskId;
+                            if (role && tid) mapping[role] = tid;
+                        }
+                    });
+                } catch {}
+                return mapping;
+            })();
+
+            const allEvents = (workflowData.event_history || []) as any[];
+            const isAgentToolCall = (e: any) => e?.event_type === 'agent_tool_call' && !e?.is_internal_controlflow_tool;
+
             // Extract agent findings from the trace data if available
             let agentFindings: AgentFinding[] = [];
             
@@ -209,21 +225,39 @@ const App: React.FC = () => {
                         }
                     }
                     
-                    // Extract tool calls from the trace configuration
+                    // Extract actual tool calls from event_history for this task/agent (exclude internal tools)
                     let toolCalls: any[] = [];
-                    if (workflowData.trace?.configuration_used?.agents) {
-                        const agentConfig = workflowData.trace.configuration_used.agents.find(
-                            (agent: any) => agent.role === taskName
-                        );
-                        if (agentConfig?.tools) {
-                            toolCalls = agentConfig.tools.map((toolName: string) => ({
-                                toolName,
-                                toolInput: 'Used for analysis',
-                                toolOutput: 'Data retrieved successfully',
-                                toolOutputSummary: `Executed ${toolName}`
-                            }));
-                        }
-                    }
+                    try {
+                        const expectedTaskId = roleToTaskId[taskName];
+                        const calls = allEvents.filter((e: any) => {
+                            if (!isAgentToolCall(e)) return false;
+                            const byTaskId = expectedTaskId && e?.task_id && e.task_id === expectedTaskId;
+                            const byAgentRole = e?.agent_role && e.agent_role === taskName;
+                            const byAgentName = e?.agent_name && e.agent_name === agentName;
+                            return Boolean(byTaskId || byAgentRole || byAgentName);
+                        });
+                        toolCalls = calls.map((e: any) => {
+                            const output = e.tool_output;
+                            let summary = '';
+                            try {
+                                if (output === null || output === undefined) {
+                                    summary = 'No output';
+                                } else if (typeof output === 'string') {
+                                    summary = output.slice(0, 140);
+                                } else {
+                                    summary = JSON.stringify(output).slice(0, 140);
+                                }
+                            } catch {
+                                summary = `Executed ${e.tool_name}`;
+                            }
+                            return {
+                                toolName: e.tool_name,
+                                toolInput: e.tool_input,
+                                toolOutput: output,
+                                toolOutputSummary: summary
+                            };
+                        });
+                    } catch {}
                     
                     return {
                         agentName,
@@ -244,7 +278,14 @@ const App: React.FC = () => {
                 }));
             }
             
-            const crossAgentInsights = generateCrossAgentInsights(agentFindings, provider || 'unknown');
+            const crossAgentInsights = generateCrossAgentInsights(agentFindings, provider || '');
+
+            // Data Quality notes derived strictly from event_history agent_tool_call (excluding internal)
+            const toolEvents = allEvents.filter(isAgentToolCall);
+            const uniqueTools = Array.from(new Set(toolEvents.map((e: any) => e.tool_name).filter(Boolean)));
+            const dataQualityNotes = uniqueTools.length > 0
+                ? `Tools used: ${toolEvents.length} calls across ${uniqueTools.length} unique tools (${uniqueTools.join(', ')}).`
+                : `No external tools were invoked.`;
 
             const report: Report = {
                 executiveSummary: reportContent,
@@ -254,7 +295,7 @@ const App: React.FC = () => {
                 actionableRecommendations: extractActionableRecommendations(reportContent),
                 riskAssessment: extractRiskAssessment(reportContent),
                 confidenceLevel: extractConfidenceLevel(reportContent),
-                dataQualityNotes: generateDataQualityNotes(agentFindings, toolCallsToUse),
+                dataQualityNotes,
                 executionTrace: {
                     fintelQueryAnalysis: query || workflowData.query || "",
                     agentInvocations: agentInvocationsToUse,
@@ -262,15 +303,17 @@ const App: React.FC = () => {
                 result: result || workflowData.result,
             };
 
-            console.log('[App] Generated report:', {
-                agentFindingsCount: agentFindings.length,
-                hasResult: !!result,
-                hasEnhancedResult: !!workflowData.enhanced_result,
-                hasAgentInvocations: !!agentInvocationsToUse.length,
-                hasTrace: !!workflowData.trace,
-                traceTaskResults: workflowData.trace?.task_results ? Object.keys(workflowData.trace.task_results) : [],
-                agentFindings: agentFindings.map(f => ({ name: f.agentName, summary: f.summary.substring(0, 50) + '...' }))
-            });
+            if (DEBUG) {
+                console.log('[App] Generated report:', {
+                    agentFindingsCount: agentFindings.length,
+                    hasResult: !!result,
+                    hasEnhancedResult: !!workflowData.enhanced_result,
+                    hasAgentInvocations: !!agentInvocationsToUse.length,
+                    hasTrace: !!workflowData.trace,
+                    traceTaskResults: workflowData.trace?.task_results ? Object.keys(workflowData.trace.task_results) : [],
+                    agentFindings: agentFindings.map(f => ({ name: f.agentName, summary: f.summary.substring(0, 50) + '...' }))
+                });
+            }
 
             setCurrentReport(report);
             setReportGenerated(true);
@@ -290,6 +333,11 @@ const App: React.FC = () => {
         setBannerInfo({ type: wfType, loadedAt });
         const msg = `Loaded ${wfType} (${loadedAt}).`;
         useStore.getState().addChatMessage({ role: 'assistant', content: msg });
+        // Clear any derived report/selection state to avoid leakage from previous workflow
+        setCurrentReport(null);
+        setReportGenerated(false);
+        setSelectedNode(null);
+        setIsReportModalVisible(false);
         // Auto-hide banner after a few seconds
         setTimeout(() => setBannerInfo(null), 4000);
     };

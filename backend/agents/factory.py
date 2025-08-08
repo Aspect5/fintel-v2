@@ -34,7 +34,7 @@ class ConfigDrivenAgentFactory:
         
         if not health_check["validation"]["valid"]:
             errors = health_check["validation"]["errors"]
-            error_msg = f"System validation failed. Cannot create agents:\n" + "\n".join(f"  - {error}" for error in errors)
+            error_msg = "System validation failed. Cannot create agents:\n" + "\n".join(f"  - {error}" for error in errors)
             logger.error(error_msg)
             raise ValueError(error_msg)
         

@@ -1,3 +1,13 @@
+Developer checks
+
+- JS/TS dead code:
+  - npm run check:js
+    - runs ts-prune and depcheck (skipping missing peer deps)
+
+- Python lint and dead code (from backend/):
+  - make -C backend lint-py
+  - make -C backend deadcode-py
+
 # FINTEL v2: Refactored Multi-Agent Financial Intelligence Assistant
 
 FINTEL v2 is a sophisticated, web-based workflow development environment for creating, visualizing, and executing multi-agent financial analysis tasks. It is built on a robust, backend-driven architecture that ensures a single source of truth for all business logic, including agent capabilities and tool definitions.

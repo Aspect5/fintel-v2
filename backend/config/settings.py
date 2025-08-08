@@ -5,9 +5,11 @@ from typing import Optional, Dict, Any
 from dotenv import load_dotenv
 from dataclasses import dataclass
 
-# Load environment variables
-env_path = Path(__file__).parent.parent / '.env'
-load_dotenv(env_path)
+# Load environment variables from multiple locations for flexibility
+project_root_env = Path(__file__).resolve().parents[2] / '.env'
+backend_env = Path(__file__).parent.parent / '.env'
+load_dotenv(project_root_env)
+load_dotenv(backend_env)
 
 @dataclass
 class ProviderConfig:

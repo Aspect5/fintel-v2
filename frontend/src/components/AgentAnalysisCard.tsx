@@ -38,7 +38,7 @@ const AgentAnalysisCard: React.FC<AgentAnalysisCardProps> = ({
       {/* Tool Calls Summary */}
       {toolCalls.length > 0 && (
         <div className="mb-3">
-          <p className="text-xs font-medium text-brand-text-secondary mb-2">Tools Used:</p>
+          <p className="text-xs font-medium text-brand-text-secondary mb-2">Tools Used</p>
           <div className="space-y-1">
             {toolCalls.map((tool, index) => (
               <div key={index} className="flex items-center text-xs">

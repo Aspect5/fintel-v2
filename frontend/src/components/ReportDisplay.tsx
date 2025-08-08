@@ -13,13 +13,16 @@ interface ReportDisplayProps {
 }
 
 const ReportDisplay: React.FC<ReportDisplayProps> = ({ report, isLoading = false, query = '' }) => {
-  // Debug logging
-  console.log('[ReportDisplay] Report received:', report);
-  console.log('[ReportDisplay] Report result:', report?.result);
+  // Debug logging gated
+  const DEBUG = import.meta.env.MODE === 'development' && (window as any).__DEBUG__;
+  if (DEBUG) {
+    console.log('[ReportDisplay] Report received:', report);
+    console.log('[ReportDisplay] Report result:', report?.result);
+  }
   
   // Helper function to parse enhanced workflow results
   const parseEnhancedResult = (result: any) => {
-    console.log('[ReportDisplay] Parsing result:', result);
+    if (DEBUG) console.log('[ReportDisplay] Parsing result:', result);
     
     // Handle different result formats
     if (result && result.enhanced_result) {
@@ -75,14 +78,30 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({ report, isLoading = false
         if (typeof enhanced.sentiment === 'string' && typeof enhanced.confidence === 'number') {
           parts.push(`${enhanced.sentiment?.charAt(0).toUpperCase() + enhanced.sentiment?.slice(1)}, ${Math.round((enhanced.confidence || 0) * 100)}%`);
         }
-        if (parts.length) return parts.join(' — ');
+         if (parts.length) {
+           // Convert to clean sentence-style
+           const rec = parts[0] ? `${parts[0].endsWith('.') ? parts[0] : parts[0] + '.'}` : '';
+           const ins = parts[1] ? ` Key insights: ${parts[1]}.` : '';
+           const sent = parts[2] ? ` ${parts[2].replace(',', '').trim()}.` : '';
+           return `${rec}${ins}${sent}`.trim();
+         }
       }
     } catch {}
     // Fallback: parse textual executive summary section if available
     if (reportObj.executiveSummary) {
+      // Inject explicit convergence/divergence hint derived from Cross-Agent Insights
+      const convergenceHint = (() => {
+        const text = reportObj.crossAgentInsights || '';
+        if (!text) return '';
+        const lowered = text.toLowerCase();
+        if (lowered.includes('convergent')) return 'Convergent findings across agents.';
+        if (lowered.includes('divergent') || lowered.includes('mixed')) return 'Divergent perspectives among agents.';
+        return '';
+      })();
       const lines = reportObj.executiveSummary.split('\n');
       const trimmed = lines.filter(l => l.trim()).join(' ').trim();
-      return trimmed || null;
+      const withHint = convergenceHint ? `${trimmed} ${convergenceHint}`.trim() : trimmed;
+      return withHint || null;
     }
     return null;
   };
@@ -169,14 +188,14 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({ report, isLoading = false
                 );
               }
 
-              // Fallback: render any textual executive summary if present
+               // Fallback: render any textual executive summary if present
               const textSummary = (report as any).executiveSummary as string | undefined;
               if (textSummary && textSummary.trim().length > 0) {
                 return (
                   <section className="mb-1">
                     <h2 className="text-lg font-semibold text-brand-text-primary mb-2">🎯 Executive Summary</h2>
                     <div className="text-brand-text-secondary">
-                      <MarkdownRenderer content={textSummary} />
+                      <MarkdownRenderer content={textSummary.replace(/\s—\s/g, '. ')} />
                     </div>
                   </section>
                 );
@@ -186,7 +205,7 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({ report, isLoading = false
           </div>
 
           {/* Enhanced Workflow Results - Display if available */}
-          {(report.result && (() => {
+           {(report.result && (() => {
             const enhanced = parseEnhancedResult(report.result);
             return enhanced && enhanced.ticker;
           })()) && (
@@ -199,7 +218,7 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({ report, isLoading = false
               </div>
               
               {(() => {
-                const enhanced = parseEnhancedResult(report.result) || report.result;
+                 const enhanced = parseEnhancedResult(report.result) || (report.result as any);
                 if (!enhanced || !enhanced.ticker) return null;
                 
                 return (
@@ -239,7 +258,7 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({ report, isLoading = false
                           })()}
                         </div>
                       )}
-                      {enhanced.keyInsights && enhanced.keyInsights.length > 0 && (
+                       {enhanced.keyInsights && enhanced.keyInsights.length > 0 && (
                         <div>
                           <h4 className="text-lg font-semibold text-brand-text-primary mb-2">🔍 Key Insights</h4>
                           <ul className="space-y-2 list-disc list-inside">
@@ -258,7 +277,7 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({ report, isLoading = false
             </section>
           )}
 
-          {/* Agent Analysis - Grid layout for compactness */}
+           {/* Agent Analysis - Grid layout for compactness */}
           {report.agentFindings && report.agentFindings.length > 0 && (
             <section className="space-y-4">
               <h3 className="text-xl font-bold text-brand-text-primary">🔍 Agent Analysis</h3>
@@ -269,7 +288,7 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({ report, isLoading = false
                     agentName={finding.agentName}
                     specialization={finding.specialization}
                     analysis={finding.summary}
-                    toolCalls={finding.toolCalls}
+                     toolCalls={(finding.toolCalls || []).filter(tc => tc.toolName && !String(tc.toolName).startsWith('mark_task_'))}
                     icon={getAgentIcon(finding.agentName)}
                   />
                 ))}
@@ -277,7 +296,7 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({ report, isLoading = false
             </section>
           )}
 
-          {/* Cross-Agent Insights - Expandable section */}
+           {/* Cross-Agent Insights - Expandable section */}
           {report.crossAgentInsights && (
             <section className="bg-brand-surface p-6 rounded-xl border border-brand-border">
               <div className="flex items-center justify-between mb-4">
@@ -291,8 +310,8 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({ report, isLoading = false
                   <DownloadButton report={report} query={query} />
                 )}
               </div>
-              <ExpandableText
-                content={report.crossAgentInsights}
+               <ExpandableText
+                content={(report.crossAgentInsights || '').replace(/\s—\s/g, '. ')}
                 maxLength={200}
                 className="text-brand-text-secondary"
                 collapsedClassName="line-clamp-2"

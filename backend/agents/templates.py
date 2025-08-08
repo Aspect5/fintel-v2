@@ -1,5 +1,5 @@
 # backend/agents/templates.py
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 from pathlib import Path
 import yaml
 import controlflow as cf

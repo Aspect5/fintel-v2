@@ -12,8 +12,8 @@ class GeminiProvider(BaseProvider):
                 return False
             
             genai.configure(api_key=self.config.api_key)
-            # Test connection
-            models = genai.list_models()
+            # Test connection (avoid assigning unused var)
+            _ = genai.list_models()
             return True
         except Exception as e:
             print(f"Gemini validation failed: {e}")

@@ -1,6 +1,6 @@
 # backend/tools/economic_data.py
 import requests
-from typing import Dict, Any, List
+from typing import Dict, Any
 from .base import BaseTool
 from .mock_data import MOCK_ECONOMIC_DATA
 

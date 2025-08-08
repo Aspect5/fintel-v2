@@ -43,6 +43,21 @@ class FintelEventHandler(Handler):
     def __init__(self):
         super().__init__()
         self.events: List[Dict[str, Any]] = []
+        # Optional fast-lookup map: (agent_name, tool_call_id) -> index in self.events
+        self._open_tool_calls: Dict[str, int] = {}
+    
+    def _get_current_task_context(self):
+        """Safely retrieve current task context for correlating events."""
+        try:
+            task = cf.get_current_task()
+            task_id = str(task.id) if task and hasattr(task, 'id') else None
+            task_name = getattr(task, 'name', None) if task else None
+            agent_role = None
+            if isinstance(task_name, str) and task_name.startswith('task_'):
+                agent_role = task_name.replace('task_', '', 1)
+            return task_id, task_name, agent_role
+        except Exception:
+            return None, None, None
     
     def on_task_start(self, event: TaskStart):
         """Log task start events"""
@@ -58,9 +73,27 @@ class FintelEventHandler(Handler):
     def on_task_success(self, event: TaskSuccess):
         """Log successful task completion"""
         result_str = str(event.task.result)
+        # Derive additional context
+        task_name = getattr(event.task, 'name', None)
+        agent_role = None
+        if isinstance(task_name, str) and task_name.startswith('task_'):
+            agent_role = task_name.replace('task_', '', 1)
+        # Try to get agent display name if available
+        agent_display_name = None
+        try:
+            agent_display_name = getattr(getattr(event.task, 'agent', None), 'name', None)
+            if not agent_display_name and hasattr(event.task, 'agents'):
+                agents = getattr(event.task, 'agents', [])
+                if agents:
+                    agent_display_name = getattr(agents[0], 'name', None)
+        except Exception:
+            agent_display_name = None
         log_data = {
             "event_type": "task_success",
             "task_id": str(event.task.id),
+            "task_name": task_name,
+            "agent_role": agent_role,
+            "agent_name": agent_display_name,
             "result": result_str[:250] + "..." if len(result_str) > 250 else result_str,
             "timestamp": datetime.now().isoformat()
         }
@@ -69,9 +102,27 @@ class FintelEventHandler(Handler):
 
     def on_task_failure(self, event: TaskFailure):
         """Log task failures"""
+        # Derive additional context
+        task_name = getattr(event.task, 'name', None)
+        agent_role = None
+        if isinstance(task_name, str) and task_name.startswith('task_'):
+            agent_role = task_name.replace('task_', '', 1)
+        # Try to get agent display name if available
+        agent_display_name = None
+        try:
+            agent_display_name = getattr(getattr(event.task, 'agent', None), 'name', None)
+            if not agent_display_name and hasattr(event.task, 'agents'):
+                agents = getattr(event.task, 'agents', [])
+                if agents:
+                    agent_display_name = getattr(agents[0], 'name', None)
+        except Exception:
+            agent_display_name = None
         log_data = {
             "event_type": "task_failure",
             "task_id": str(event.task.id),
+            "task_name": task_name,
+            "agent_role": agent_role,
+            "agent_name": agent_display_name,
             "error": str(event.reason),
             "timestamp": datetime.now().isoformat()
         }
@@ -80,12 +131,37 @@ class FintelEventHandler(Handler):
         
     def on_agent_message(self, event: AgentMessage):
         """Log raw agent messages to see their reasoning and tool calls"""
+        # Normalize message content across provider shapes
+        msg = event.message or {}
+        content = msg.get('content')
+        # If content is a list of parts, join textual content
+        if isinstance(content, list):
+            parts = []
+            for part in content:
+                # Common shapes: {type: 'text', text: '...'} or {content: '...'}
+                if isinstance(part, dict):
+                    if 'text' in part and isinstance(part['text'], str):
+                        parts.append(part['text'])
+                    elif 'content' in part and isinstance(part['content'], str):
+                        parts.append(part['content'])
+            content = '\n'.join([p for p in parts if p]) or None
+        elif isinstance(content, dict):
+            # Try to extract a simple textual field if present
+            for key in ('text', 'content', 'message'):
+                if key in content and isinstance(content[key], str):
+                    content = content[key]
+                    break
+
+        task_id, task_name, agent_role = self._get_current_task_context()
         log_data = {
             "event_type": "agent_message",
             "agent_name": event.agent.name,
-            "message_content": event.message.get('content'),
-            "tool_calls": event.message.get('tool_calls'),
-            "timestamp": datetime.now().isoformat()
+            "message_content": content,
+            "tool_calls": msg.get('tool_calls'),
+            "timestamp": datetime.now().isoformat(),
+            "task_id": task_id,
+            "task_name": task_name,
+            "agent_role": agent_role,
         }
         logger.info(f"AGENT MESSAGE: {json.dumps(log_data, indent=2)}")
         self.events.append(log_data)
@@ -96,21 +172,43 @@ class FintelEventHandler(Handler):
         
         # Extract parameters from the tool call
         tool_input = {}
+        tool_call_id = None
         if isinstance(tool_call_data, dict):
             tool_input = tool_call_data.get('args', tool_call_data.get('input', {}))
+            tool_call_id = (
+                tool_call_data.get('id')
+                or tool_call_data.get('call_id')
+                or tool_call_data.get('tool_call_id')
+            )
         elif hasattr(tool_call_data, 'args'):
             tool_input = tool_call_data.args
+            tool_call_id = getattr(tool_call_data, 'id', None) or getattr(tool_call_data, 'call_id', None)
         elif hasattr(tool_call_data, 'input'):
             tool_input = tool_call_data.input
+            tool_call_id = getattr(tool_call_data, 'id', None) or getattr(tool_call_data, 'call_id', None)
         
+        agent_name = event.agent.name
+        tool_name = tool_call_data.get('name', 'unknown_tool') if isinstance(tool_call_data, dict) else getattr(tool_call_data, 'name', 'unknown_tool')
+        is_internal = isinstance(tool_name, str) and tool_name.startswith('mark_task_')
+
+        task_id, task_name, agent_role = self._get_current_task_context()
         log_data = {
             "event_type": "agent_tool_call",
-            "agent_name": event.agent.name,
-            "tool_name": tool_call_data.get('name', 'unknown_tool') if isinstance(tool_call_data, dict) else getattr(tool_call_data, 'name', 'unknown_tool'),
+            "agent_name": agent_name,
+            "agent_display_name": agent_name,
+            "tool_name": tool_name,
             "tool_input": tool_input,
             "tool_output": None,  # Will be filled by tool_result event
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
+            "task_id": task_id,
+            "task_name": task_name,
+            "agent_role": agent_role,
         }
+        if tool_call_id:
+            log_data["tool_call_id"] = str(tool_call_id)
+            self._open_tool_calls[f"{agent_name}::{tool_call_id}"] = len(self.events)
+        # Flag ControlFlow internal helpers but do not rename
+        log_data["is_internal_controlflow_tool"] = bool(is_internal)
         logger.info(f"AGENT TOOL CALL: {json.dumps(log_data, indent=2)}")
         self.events.append(log_data)
 
@@ -120,6 +218,8 @@ class FintelEventHandler(Handler):
         result_str = "No result"
         is_error = False
         retry_info = None
+        agent_name = None
+        tool_call_id = None
 
         if hasattr(event, 'tool_result'):
             tool_result_obj = event.tool_result
@@ -133,8 +233,17 @@ class FintelEventHandler(Handler):
                 tool_call_obj = tool_result_obj.tool_call
                 if isinstance(tool_call_obj, dict):
                     tool_name = tool_call_obj.get('name', 'unknown_tool')
+                    tool_call_id = tool_call_obj.get('id') or tool_call_obj.get('call_id') or tool_call_obj.get('tool_call_id')
                 else:
                     tool_name = getattr(tool_call_obj, 'name', 'unknown_tool')
+                    tool_call_id = getattr(tool_call_obj, 'id', None) or getattr(tool_call_obj, 'call_id', None)
+            # Try to determine agent name from current task context if available
+            try:
+                current_task = cf.get_current_task()
+                if current_task and hasattr(current_task, 'agent') and current_task.agent:
+                    agent_name = getattr(current_task.agent, 'name', None)
+            except Exception:
+                agent_name = None
             
             # Extract retry information for financial data processing tool
             if tool_name == "process_financial_data":
@@ -142,9 +251,10 @@ class FintelEventHandler(Handler):
                     result_obj = json.loads(result_str) if isinstance(result_str, str) else result_str
                     if isinstance(result_obj, dict) and "retry_info" in result_obj:
                         retry_info = result_obj["retry_info"]
-                except:
+                except Exception:
                     pass
         
+        task_id, task_name, agent_role = self._get_current_task_context()
         log_data = {
             "event_type": "tool_result", 
             "tool_name": tool_name,
@@ -152,9 +262,45 @@ class FintelEventHandler(Handler):
             "is_error": is_error,
             "retry_info": retry_info,
             "timestamp": datetime.now().isoformat(),
+            "task_id": task_id,
+            "task_name": task_name,
+            "agent_role": agent_role,
         }
+        if tool_call_id:
+            log_data["tool_call_id"] = str(tool_call_id)
+        if agent_name:
+            log_data["agent_name"] = agent_name
+        # Flag ControlFlow internal helpers but do not rename
+        log_data["is_internal_controlflow_tool"] = bool(isinstance(tool_name, str) and tool_name.startswith('mark_task_'))
+
         logger.info(f"TOOL RESULT: {json.dumps(log_data, indent=2)}")
         self.events.append(log_data)
+
+        # Correlate with the most recent matching agent_tool_call (by tool_call_id if available, else by tool_name and agent)
+        try:
+            correlated_index = None
+            if agent_name and tool_call_id:
+                key = f"{agent_name}::{tool_call_id}"
+                correlated_index = self._open_tool_calls.pop(key, None)
+            if correlated_index is None:
+                # Fallback: reverse-scan events for last agent_tool_call with same tool_name, same agent if available, and empty output
+                for idx in range(len(self.events) - 1, -1, -1):
+                    ev = self.events[idx]
+                    if ev.get('event_type') != 'agent_tool_call':
+                        continue
+                    if ev.get('tool_name') != tool_name:
+                        continue
+                    if agent_name and ev.get('agent_name') != agent_name:
+                        continue
+                    if ev.get('tool_output') is None:
+                        correlated_index = idx
+                        break
+            if correlated_index is not None:
+                # Update the original tool call event with the output
+                self.events[correlated_index]['tool_output'] = result_str
+                self.events[correlated_index]['tool_result_timestamp'] = log_data['timestamp']
+        except Exception as e:
+            logger.warning(f"Failed to correlate tool_result with agent_tool_call: {e}")
     
     def get_events(self) -> List[Dict[str, Any]]:
         """Get all captured events"""

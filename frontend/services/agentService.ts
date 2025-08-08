@@ -13,8 +13,11 @@ export const runAgent = async (
     provider: ControlFlowProvider,
     baseUrl?: string
 ): Promise<{ output: string; trace: any }> => {
-    console.log('🚀 Starting request to /api/run-workflow');
-    console.log('📝 Request payload:', { query, provider, baseUrl });
+    const DEBUG = import.meta.env.MODE === 'development' && (window as any).__DEBUG__;
+    if (DEBUG) {
+        console.log('🚀 Starting request to /api/run-workflow');
+        console.log('📝 Request payload:', { query, provider, baseUrl });
+    }
     
     // Create payload with proper typing
     const payload: WorkflowPayload = {
@@ -37,18 +40,18 @@ export const runAgent = async (
             body: JSON.stringify(payload),
         });
 
-        console.log('📡 Response status:', response.status);
+        if (DEBUG) console.log('📡 Response status:', response.status);
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            console.error('❌ Error response:', errorData);
+            if (DEBUG) console.error('❌ Error response:', errorData);
             
             const errorMessage = errorData.error || `Request failed with status ${response.status}`;
             throw new Error(errorMessage);
         }
         
         const data = await response.json();
-        console.log('✅ Success! Full response:', data);
+        if (DEBUG) console.log('✅ Success! Full response:', data);
         
         return {
             output: data.result || 'No result returned',
@@ -56,7 +59,7 @@ export const runAgent = async (
         };
         
     } catch (error) {
-        console.error('❌ Fetch error:', error);
+        if (DEBUG) console.error('❌ Fetch error:', error);
         
         if (error instanceof Error) {
             throw error;

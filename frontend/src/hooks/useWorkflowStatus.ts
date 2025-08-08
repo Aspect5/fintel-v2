@@ -4,6 +4,7 @@ import { useWorkflowStore } from '../stores/workflowStore';
 import { createLogger } from '../utils/logger';
 
 const hookLogger = createLogger('useWorkflowStatus');
+const DEBUG = import.meta.env.MODE === 'development' && (window as any).__DEBUG__;
 
 export const useWorkflowStatus = (workflowId: string | null) => {
     const { updateWorkflowStatus, status: workflowStatus } = useWorkflowStore(state => ({
@@ -19,7 +20,7 @@ export const useWorkflowStatus = (workflowId: string | null) => {
             return;
         }
 
-        hookLogger.info('Starting to poll for workflow', { workflowId });
+        if (DEBUG) hookLogger.info('Starting to poll for workflow', { workflowId });
         
         let intervalId: NodeJS.Timeout;
         let shouldContinuePolling = true;
@@ -31,7 +32,7 @@ export const useWorkflowStatus = (workflowId: string | null) => {
                 const response = await fetch(`/api/workflow-status/${workflowId}`);
                 if (!response.ok) {
                     if (response.status === 404) {
-                        hookLogger.warn('Workflow not found. Stopping polling', { workflowId, status: response.status });
+                        if (DEBUG) hookLogger.warn('Workflow not found. Stopping polling', { workflowId, status: response.status });
                         shouldContinuePolling = false;
                         if (intervalId) {
                             clearInterval(intervalId);
@@ -46,8 +47,8 @@ export const useWorkflowStatus = (workflowId: string | null) => {
                 const status = await response.json();
                 
                 // Comprehensive logging to track data flow
-                hookLogger.info('Raw backend data received', { workflowId, status });
-                hookLogger.debug('Data breakdown', {
+                if (DEBUG) hookLogger.info('Raw backend data received', { workflowId, status });
+                if (DEBUG) hookLogger.debug('Data breakdown', {
                     status: status.status,
                     hasNodes: !!status.nodes,
                     hasEdges: !!status.edges,
@@ -66,24 +67,24 @@ export const useWorkflowStatus = (workflowId: string | null) => {
                 });
                 
                 // Extra debugging for nodes and edges
-                if (status.nodes) {
+                if (DEBUG && status.nodes) {
                     hookLogger.debug('First few nodes', status.nodes.slice(0, 3));
                 }
-                if (status.edges) {
+                if (DEBUG && status.edges) {
                     hookLogger.debug('First few edges', status.edges.slice(0, 3));
                 }
 
                 updateWorkflowStatus(status);
                 
                 if (status.status === 'completed' || status.status === 'failed') {
-                    hookLogger.info('Workflow finished. Stopping polling', { workflowId, status: status.status });
+                    if (DEBUG) hookLogger.info('Workflow finished. Stopping polling', { workflowId, status: status.status });
                     shouldContinuePolling = false;
                     if (intervalId) {
                         clearInterval(intervalId);
                     }
                 }
             } catch (err) {
-                hookLogger.error('Error polling workflow', { workflowId, error: err });
+                if (DEBUG) hookLogger.error('Error polling workflow', { workflowId, error: err });
                 // Continue polling on other errors, but stop on 404
             }
         };
@@ -95,7 +96,7 @@ export const useWorkflowStatus = (workflowId: string | null) => {
         intervalId = setInterval(pollWithErrorHandling, 2000);
 
         return () => {
-            hookLogger.info('Cleaning up polling', { workflowId });
+            if (DEBUG) hookLogger.info('Cleaning up polling', { workflowId });
             shouldContinuePolling = false;
             if (intervalId) {
                 clearInterval(intervalId);

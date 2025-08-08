@@ -7,7 +7,6 @@ Uses proper ControlFlow patterns for task orchestration and dependency managemen
 """
 
 import controlflow as cf
-import time
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
@@ -17,7 +16,6 @@ from pydantic import BaseModel, Field
 from .base import BaseWorkflow, WorkflowResult as BaseWorkflowResult
 from .config_loader import get_workflow_config_loader
 from ..utils.logging import setup_logging
-from ..utils.monitoring import WorkflowMonitor
 
 logger = setup_logging()
 
@@ -560,22 +558,88 @@ class ConfigDrivenWorkflow(BaseWorkflow):
                     continue
 
         if final_result is None:
-            # Attempt to construct InvestmentAnalysis from upstream results if available
+            # Attempt to construct InvestmentAnalysis from upstream results if available,
+            # incorporating convergence/divergence between agents
             try:
                 market_summary = self.task_results.get('market_analysis')
                 risk_summary = self.task_results.get('risk_assessment')
+
+                # Extract textual summaries
+                market_text = str(getattr(market_summary, 'analysis_summary', market_summary) or '')
+                risk_text = str(getattr(risk_summary, 'risk_summary', risk_summary) or '')
+
+                # Derive simple sentiments from available fields
+                # Market: positive if price increase keywords or explicit; otherwise neutral
+                derived_market_sentiment = 'neutral'
+                try:
+                    if isinstance(market_summary, BaseModel) and hasattr(market_summary, 'analysis_summary'):
+                        text = (getattr(market_summary, 'analysis_summary') or '').lower()
+                        if 'increase' in text or 'positive' in text or 'growth' in text or 'strong' in text:
+                            derived_market_sentiment = 'positive'
+                        elif 'decrease' in text or 'negative' in text or 'weak' in text:
+                            derived_market_sentiment = 'negative'
+                except Exception:
+                    pass
+
+                # Risk: map Low/Medium/High to sentiment
+                derived_risk_sentiment = 'neutral'
+                try:
+                    level = getattr(risk_summary, 'risk_level', None)
+                    if level == 'Low':
+                        derived_risk_sentiment = 'positive'
+                    elif level == 'High':
+                        derived_risk_sentiment = 'negative'
+                except Exception:
+                    pass
+
+                sentiments = [s for s in [derived_market_sentiment, derived_risk_sentiment] if s]
+                positives = sentiments.count('positive')
+                negatives = sentiments.count('negative')
+
+                # Convergence: strong consensus vs mixed
+                if positives > negatives:
+                    recommendation = 'Buy'
+                    sentiment_overall = 'positive'
+                elif negatives > positives:
+                    recommendation = 'Sell'
+                    sentiment_overall = 'negative'
+                else:
+                    recommendation = 'Hold'
+                    sentiment_overall = 'neutral'
+
+                # Confidence: base on evidence (count tool_result events) and consensus
+                # Evidence-driven confidence scaling
+                try:
+                    # Prefer monitor if attached
+                    event_count = 0
+                    if hasattr(self, 'event_handler') and self.event_handler and hasattr(self.event_handler, 'get_events_by_type'):
+                        event_count = len(self.event_handler.get_events_by_type('tool_result') or [])
+                    # Scale 0.6–0.9 with log-ish growth
+                    confidence = min(0.9, max(0.6, 0.6 + 0.05 * (event_count ** 0.5)))
+                except Exception:
+                    confidence = 0.75
+
+                insights: List[str] = []
+                if positives and negatives:
+                    insights.append('Divergent findings between Market and Risk analyses')
+                else:
+                    insights.append('Convergent findings across agents')
+                if market_text:
+                    insights.append(market_text[:180])
+                if risk_text:
+                    insights.append(risk_text[:180])
+
                 final_result = InvestmentAnalysis(
                     ticker=ticker,
-                    market_analysis=str(getattr(market_summary, 'analysis_summary', market_summary) or ''),
-                    sentiment='neutral',
-                    recommendation='No specific recommendation provided',
-                    confidence=0.5,
-                    key_insights=["Automated synthesis placeholder"],
-                    risk_assessment=str(getattr(risk_summary, 'risk_summary', risk_summary) or '')
+                    market_analysis=market_text,
+                    sentiment=sentiment_overall,  # type: ignore[arg-type]
+                    recommendation=recommendation,
+                    confidence=confidence,
+                    key_insights=insights[:3] or ["Automated synthesis"],
+                    risk_assessment=risk_text
                 )
             except Exception as e:
-                logger.error(f"Failed to construct fallback InvestmentAnalysis: {e}")
-                # Return a minimal safe object rather than raising to avoid user-facing failures
+                logger.error(f"Failed to construct convergence-aware InvestmentAnalysis: {e}")
                 final_result = InvestmentAnalysis(
                     ticker=ticker,
                     market_analysis='',
@@ -641,24 +705,34 @@ class ConfigDrivenWorkflow(BaseWorkflow):
                 if role == 'risk_assessment' and hasattr(res, 'risk_summary'):
                     return getattr(res, 'risk_summary')
                 if role == 'synthesis':
-                    # Richer synthesis summary: recommendation + up to 2 insights + sentiment/confidence
+                    # Clean, sentence-style synthesis summary without em-dashes
                     rec = getattr(res, 'recommendation', None) or ''
                     insights = list(getattr(res, 'key_insights', []) or [])
                     sentiment = getattr(res, 'sentiment', None)
                     confidence = getattr(res, 'confidence', None)
-                    parts = []
+                    sentences = []
                     if rec:
-                        parts.append(str(rec))
+                        sentences.append(f"Recommendation: {str(rec)}.")
+                    if isinstance(sentiment, str) and isinstance(confidence, (int, float)):
+                        sentences.append(f"Sentiment: {str(sentiment).title()} ({int(confidence*100)}%).")
                     if insights:
-                        parts.append("; ".join(insights[:2]))
-                    tail_bits = []
-                    if sentiment:
-                        tail_bits.append(str(sentiment).title())
-                    if isinstance(confidence, (int, float)):
-                        tail_bits.append(f"{int(confidence*100)}%")
-                    if tail_bits:
-                        parts.append(", ".join(tail_bits))
-                    return " — ".join(parts) if parts else None
+                        sentences.append(f"Key insights: {'; '.join(insights[:2])}.")
+                    # Convergence/divergence hint
+                    try:
+                        market = self.task_results.get('market_analysis')
+                        risk = self.task_results.get('risk_assessment')
+                        hint = None
+                        if market is not None and risk is not None:
+                            sentences_text = ' '.join([str(getattr(market, 'analysis_summary', market)), str(getattr(risk, 'risk_summary', risk))]).lower()
+                            if any(k in sentences_text for k in ['divergent', 'conflict', 'mixed']):
+                                hint = 'Divergent perspectives among agents.'
+                            else:
+                                hint = 'Convergent findings across agents.'
+                        if hint:
+                            sentences.append(hint)
+                    except Exception:
+                        pass
+                    return ' '.join(sentences) if sentences else None
             elif res is not None:
                 s = str(res)
                 return s[:200] + ('...' if len(s) > 200 else '')

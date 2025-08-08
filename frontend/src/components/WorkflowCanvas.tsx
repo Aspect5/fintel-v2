@@ -236,7 +236,7 @@ const WorkflowCanvasContent: React.FC<WorkflowCanvasProps> = ({
           edgeTypes={edgeTypes}
           connectionMode={ConnectionMode.Loose}
           fitView
-          className="bg-brand-bg"
+          className="bg-brand-bg px-6"
           proOptions={{ hideAttribution: true }}
         >
           <Background gap={24} color="#30363D" />
@@ -255,7 +255,7 @@ const WorkflowCanvasContent: React.FC<WorkflowCanvasProps> = ({
 
 const WorkflowCanvas: React.FC<WorkflowCanvasProps> = (props) => {
   return (
-    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, padding: '16px' }}>
       <ReactFlowProvider>
         <WorkflowCanvasContent {...props} />
       </ReactFlowProvider>

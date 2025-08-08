@@ -13,15 +13,15 @@
     "preview": "vite preview --host ${HOST:-0.0.0.0} --port ${PORT:-4173}",
     "clean": "pkill -f 'python.*app|vite' || true",
     "dev:backend": "cd backend && source venv/bin/activate && export PYTHONPATH=$PYTHONPATH:$(dirname $(pwd)) && BACKEND_PORT=5001 python3 app.py",
-    "dev:frontend": "vite --host 0.0.0.0 --port 9002"
+    "dev:frontend": "vite --host 0.0.0.0 --port 9002",
+    "check:ts-prune": "ts-prune",
+    "check:depcheck": "depcheck --skip-missing true --ignore-dirs=backend,dist --ignores=@types/node,typescript,vite,@vitejs/plugin-react,tailwindcss,@tailwindcss/postcss,postcss,autoprefixer",
+    "check:js": "npm-run-all -p check:ts-prune check:depcheck"
   },
   "dependencies": {
-    "@types/uuid": "^10.0.0",
-    "dotenv": "^17.2.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "reactflow": "11.11.4",
-    "uuid": "^11.1.0",
     "zustand": "^4.5.4"
   },
   "devDependencies": {
@@ -32,8 +32,11 @@
     "@vitejs/plugin-react": "^4.2.0",
     "autoprefixer": "^10.4.21",
     "concurrently": "^9.2.0",
+    "depcheck": "^1.4.7",
+    "npm-run-all": "^4.1.5",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.11",
+    "ts-prune": "^0.10.3",
     "typescript": "^5.3.3",
     "vite": "^5.0.0"
   }

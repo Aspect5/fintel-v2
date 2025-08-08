@@ -17,7 +17,7 @@ const OutputNode: React.FC<NodeProps<CustomNodeData>> = ({ data }) => {
   const isCompleted = status === 'completed' && result;
 
   return (
-    <div className={`relative bg-gray-800 border rounded-lg shadow-lg min-w-[280px] max-w-[320px] transition-all duration-300 ${getBorderColor()} hover:shadow-xl`}>
+    <div className={`relative bg-gray-800 border rounded-lg shadow-lg min-w-[280px] max-w-[320px] transition-all duration-300 ${getBorderColor()} hover:shadow-xl mx-2`}>
       <Handle type="target" position={Position.Left} className="!bg-gray-500 !w-3 !h-3 !border-2 !border-gray-800" />
       
       <div className="p-4 border-b border-gray-700">

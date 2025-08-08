@@ -1,6 +1,5 @@
 import logging
 import sys
-import os
 from datetime import datetime
 from pathlib import Path
 from backend.config.settings import get_settings

@@ -1,4 +1,5 @@
 # backend/app.py
+# ruff: noqa: E402
 
 import os
 import sys
@@ -8,7 +9,6 @@ from flask import Flask, request, jsonify, Response
 import threading
 import queue
 import uuid
-import threading
 import time
 from datetime import datetime, timedelta
 
@@ -25,23 +25,18 @@ os.environ["PREFECT_EVENTS_ENABLED"] = "false"
 os.environ["PREFECT_LOGGING_TO_API_ENABLED"] = "false"
 os.environ["PREFECT_CLIENT_ENABLE_LIFESPAN_HOOKS"] = "false"
 
-# Global workflow status storage
-active_workflows = {}
-workflow_status_queue = queue.Queue()
-
-from flask import Flask, request, jsonify
+# Third-party and internal imports
 from flask_cors import CORS
-import logging
-import time
-
-# Import our modules
 from backend.config.settings import get_settings
 from backend.providers.factory import ProviderFactory
 from backend.registry import get_registry_manager
 from backend.utils.logging import setup_logging
 from backend.utils.errors import FintelError
 from backend.utils.monitoring import workflow_monitor
-# Import workflow factory when needed to avoid circular imports
+
+# Global workflow status storage
+active_workflows = {}
+workflow_status_queue = queue.Queue()
 
 # Setup logging
 logger = setup_logging()
@@ -747,8 +742,9 @@ def save_report():
         data = request.get_json()
         filename = data.get('filename')
         content = data.get('content')
-        query = data.get('query')
-        timestamp = data.get('timestamp')
+        # Ignore optional fields if unused
+        _ = data.get('query')
+        _ = data.get('timestamp')
         
         if not all([filename, content]):
             return jsonify({"error": "Missing required fields"}), 400

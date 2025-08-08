@@ -6,10 +6,8 @@ This module provides a unified interface for managing tools and agents,
 ensuring consistency and validation across the entire system.
 """
 
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
-from pathlib import Path
-import yaml
 
 from backend.tools.registry import get_tool_registry, ToolCategory
 from backend.agents.registry import get_agent_registry

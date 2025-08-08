@@ -197,7 +197,21 @@ export interface PersistedWorkflowStatus {
     agent_invocations?: AgentInvocation[]; // Duplicated for now
     tool_calls?: any[];
     enhanced_result?: any;
-    event_history?: any[];
+  event_history?: Array<{
+    event_type: string;
+    timestamp: string;
+    agent_name?: string;
+    agent_role?: string;
+    task_id?: string;
+    task_name?: string;
+    tool_name?: string;
+    tool_input?: any;
+    tool_output?: any;
+    is_internal_controlflow_tool?: boolean;
+    is_error?: boolean;
+    result?: string;
+    error?: string;
+  }>;
 }
 
 // This is the primary status object used within the frontend logic

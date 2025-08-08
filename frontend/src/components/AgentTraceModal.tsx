@@ -21,6 +21,31 @@ const getSummaryStyling = (summary: string): { badge: string; badgeText: string;
     return { badge: 'bg-brand-border text-brand-text-secondary', badgeText: 'INFO', content: summary };
 };
 
+const detectFormat = (data: any): string => {
+    try {
+        if (data === null || data === undefined) return 'None';
+        if (typeof data === 'number') return 'Number';
+        if (typeof data === 'boolean') return 'Boolean';
+        if (Array.isArray(data)) return 'Array';
+        if (typeof data === 'object') return 'Object';
+        if (typeof data === 'string') {
+            const trimmed = data.trim();
+            if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+                try { JSON.parse(trimmed); return 'JSON string'; } catch {}
+            }
+            // Naive CSV detector: lines with consistent commas
+            const lines = trimmed.split(/\r?\n/).filter(l => l.length > 0);
+            if (lines.length >= 1 && lines.every(l => (l.match(/,/g)?.length || 0) >= 1)) {
+                return 'CSV text';
+            }
+            return 'Text';
+        }
+        return typeof data;
+    } catch {
+        return 'Unknown';
+    }
+};
+
 const ToolCallDisplay: React.FC<{ toolCall: ToolCallResult }> = ({ toolCall }) => {
     const prettyPrintJson = (data: any) => {
         try {
@@ -32,34 +57,59 @@ const ToolCallDisplay: React.FC<{ toolCall: ToolCallResult }> = ({ toolCall }) =
     };
 
     const { badge, badgeText, content } = getSummaryStyling(toolCall.toolOutputSummary || '');
+    // Derive LIVE/MOCK badge from tool output
+    const isMock = (() => {
+        try {
+            const out = toolCall.toolOutput;
+            if (!out) return false;
+            const obj = typeof out === 'string' ? JSON.parse(out) : out;
+            if (obj && typeof obj === 'object') {
+                if ((obj as any)._mock === true) return true;
+                const note = (obj as any).note || (obj as any).notes || '';
+                if (typeof note === 'string' && note.toLowerCase().includes('mock')) return true;
+            }
+        } catch {}
+        return false;
+    })();
 
     return (
-        <div className="bg-brand-bg border border-brand-border rounded-lg p-4 mb-4">
+                <div className={`border rounded-lg p-4 mb-4 ${content.toLowerCase().startsWith('error') ? 'bg-red-500/10 border-red-500/40' : 'bg-brand-bg border-brand-border'}`}>
             <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center">
                     <CodeBracketIcon className="w-5 h-5 text-brand-primary mr-2" />
                     <h5 className="font-bold text-brand-primary">{toolCall.toolName}</h5>
                 </div>
-                <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${badge}`}>
-                    {badgeText}
-                </span>
+                <div className="flex items-center gap-2">
+                    <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${isMock ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
+                        {isMock ? 'MOCK' : 'LIVE'}
+                    </span>
+                    <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${badge}`}>
+                        {badgeText}
+                    </span>
+                </div>
             </div>
 
             <div className="mb-4">
                  <h6 className="font-semibold text-brand-text-secondary text-xs uppercase mb-1">Execution Summary</h6>
-                 <p className="text-sm text-brand-text-primary p-2 bg-black/30 rounded">{content}</p>
+                  <p className={`text-sm p-2 rounded ${content.toLowerCase().startsWith('error') ? 'bg-red-500/20 text-red-300 border border-red-500/40' : 'bg-black/30 text-brand-text-primary'}`}>{content}</p>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                    <h6 className="font-semibold text-brand-text-secondary text-xs uppercase mb-1">Parameters</h6>
+                    <div className="flex items-center justify-between mb-1">
+                        <h6 className="font-semibold text-brand-text-secondary text-xs uppercase">Parameters</h6>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-brand-border text-brand-text-secondary">{detectFormat(toolCall.toolInput)}</span>
+                    </div>
                     <pre className="bg-black/30 p-2 rounded text-xs text-brand-text-primary overflow-x-auto">
                         <code>{prettyPrintJson(toolCall.toolInput)}</code>
                     </pre>
                 </div>
                 <div>
-                    <h6 className="font-semibold text-brand-text-secondary text-xs uppercase mb-1">Full Output</h6>
-                    <pre className="bg-black/30 p-2 rounded text-xs text-brand-text-primary overflow-x-auto">
+                    <div className="flex items-center justify-between mb-1">
+                        <h6 className="font-semibold text-brand-text-secondary text-xs uppercase">Full Output</h6>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-brand-border text-brand-text-secondary">{detectFormat(toolCall.toolOutput)}</span>
+                    </div>
+                    <pre className={`${(typeof toolCall.toolOutput === 'string' && toolCall.toolOutput.toLowerCase().startsWith('error')) ? 'bg-red-500/20 text-red-300 border border-red-500/40' : 'bg-black/30 text-brand-text-primary'} p-2 rounded text-xs overflow-x-auto`}>
                         <code>{prettyPrintJson(toolCall.toolOutput)}</code>
                     </pre>
                 </div>
@@ -103,18 +153,21 @@ const AgentTraceModal: React.FC<AgentTraceModalProps> = ({ node, onClose, eventH
     };
 
     // Enhanced debugging to identify the duplication issue
-    console.log('=== AgentTraceModal Debug Info ===');
-    console.log('Node ID:', node.id);
-    console.log('Label:', label);
-    console.log('Details (should be task description):', details);
-    console.log('Result (should be analysis output):', result);
-    console.log('Details length:', details?.length || 0);
-    console.log('Result length:', result?.length || 0);
-    console.log('Are details and result the same?', details === result);
-    console.log('Full node data:', node.data);
-    console.log('Event History:', eventHistory);
-    console.log('TaskId from node:', taskId);
-    console.log('===================================');
+    const DEBUG = import.meta.env.MODE === 'development' && (window as any).__DEBUG__;
+    if (DEBUG) {
+      console.log('=== AgentTraceModal Debug Info ===');
+      console.log('Node ID:', node.id);
+      console.log('Label:', label);
+      console.log('Details (should be task description):', details);
+      console.log('Result (should be analysis output):', result);
+      console.log('Details length:', (details as any)?.length || 0);
+      console.log('Result length:', (result as any)?.length || 0);
+      console.log('Are details and result the same?', details === result);
+      console.log('Full node data:', node.data);
+      console.log('Event History (size only):', Array.isArray(eventHistory) ? eventHistory.length : 0);
+      console.log('TaskId from node:', taskId);
+      console.log('===================================');
+    }
 
     // CRITICAL FIX: Ensure details and result are not the same
     // If they are the same, it means the details field was overwritten with the result
@@ -178,23 +231,28 @@ const AgentTraceModal: React.FC<AgentTraceModalProps> = ({ node, onClose, eventH
 
     // Filter event history for this node: match by taskId if present, otherwise by agentName
     const filteredEvents = Array.isArray(eventHistory)
-        ? eventHistory.filter((e) => {
+        ? eventHistory.filter((e: any) => {
             const byTask = taskId && e.task_id === taskId;
             const byAgent = agentName && e.agent_name === agentName;
-            return byTask || byAgent;
+            // Allow role correlation to capture correct events when task_id missing
+            const byRole = (node?.id?.startsWith?.('task_') && e?.agent_role) ? e.agent_role === (node.id as string).replace('task_', '') : false;
+            return Boolean(byTask || byAgent || byRole);
           })
         : [];
 
     // Derive tool call list from filtered events if node doesn't provide explicit toolCalls
     const derivedToolCalls = filteredEvents
-        .filter((e) => e.event_type === 'agent_tool_call')
+        .filter((e) => e.event_type === 'agent_tool_call' && !(e as any).is_internal_controlflow_tool)
         .map((e) => ({
             toolName: (e.tool_name as string) || 'unknown',
             toolInput: e.tool_input,
             toolOutput: e.tool_output,
-            toolOutputSummary: e.tool_output ? (typeof e.tool_output === 'string' ? e.tool_output : JSON.stringify(e.tool_output)) : ''
+            toolOutputSummary: e.tool_output ? (typeof e.tool_output === 'string' ? e.tool_output : JSON.stringify(e.tool_output)) : 'No output'
         }));
     const toolCallsToShow = (toolCalls && toolCalls.length > 0) ? toolCalls : derivedToolCalls;
+
+    // Collect inputs received by the agent (messages and tool inputs)
+    const agentInputEvents = filteredEvents.filter((e) => e.event_type === 'agent_message' || e.event_type === 'agent_tool_call');
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -227,13 +285,52 @@ const AgentTraceModal: React.FC<AgentTraceModalProps> = ({ node, onClose, eventH
                             </div>
                             {summary && (
                               <div className="md:col-span-2">
-                                <strong>Summary:</strong> {summary}
+                                <strong>Summary:</strong> {(() => {
+                                  const s = String(summary);
+                                  return s === 'buy' ? 'Buy' : s;
+                                })()}
                               </div>
                             )}
                         </div>
                     </DetailSection>
 
-                    {/* Event Timeline */}
+                    {/* Inputs Received */}
+                    <DetailSection title="Inputs Received">
+                        {agentInputEvents.length === 0 ? (
+                            <div className="text-sm text-brand-text-secondary">No explicit inputs recorded.</div>
+                        ) : (
+                            <div className="space-y-3">
+                                {agentInputEvents.map((e, idx) => (
+                                    <div key={idx} className="p-3 bg-brand-bg/50 rounded border border-brand-border">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <div className="text-sm font-medium text-white">
+                                                {e.event_type === 'agent_message' ? 'Agent Message' : `Tool Input: ${e.tool_name || 'unknown'}`}
+                                            </div>
+                                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-brand-border text-brand-text-secondary">
+                                                {e.event_type === 'agent_message' ? detectFormat(e.message_content) : detectFormat(e.tool_input)}
+                                            </span>
+                                        </div>
+                                        <pre className="bg-black/30 p-2 rounded text-xs text-brand-text-primary overflow-x-auto">
+                                            <code>{(() => {
+                                                const src = e.event_type === 'agent_message' ? e.message_content : e.tool_input;
+                                                try {
+                                                    if (typeof src === 'string') {
+                                                        const trimmed = src.trim();
+                                                        if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+                                                            return JSON.stringify(JSON.parse(trimmed), null, 2);
+                                                        }
+                                                    }
+                                                } catch {}
+                                                return typeof src === 'object' ? JSON.stringify(src, null, 2) : String(src);
+                                            })()}</code>
+                                        </pre>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </DetailSection>
+
+                    {/* Execution Timeline (merged view) */}
                     {filteredEvents.length > 0 && (
                         <DetailSection title="Execution Timeline">
                             <div className="space-y-3">
@@ -251,43 +348,97 @@ const AgentTraceModal: React.FC<AgentTraceModalProps> = ({ node, onClose, eventH
                                                     {formatTimestamp(event.timestamp)}
                                                 </span>
                                             </div>
-                                            
-                                            {/* Event-specific details */}
-                                            {event.event_type === 'agent_message' && event.message_content && (
+                                            {/* Agent Message */}
+                                            {event.event_type === 'agent_message' && (
                                                 <div className="text-sm text-brand-text-secondary bg-black/30 p-2 rounded">
-                                                    <strong>Reasoning:</strong> {event.message_content}
+                                                    <strong>Reasoning:</strong> {event.message_content || 'No textual reasoning (tool-only step)'}
                                                 </div>
                                             )}
-                                            
+                                            {/* Tool Call */}
                                             {event.event_type === 'agent_tool_call' && event.tool_name && (
                                                 <div className="text-sm text-brand-text-secondary">
-                                                    <strong>Tool:</strong> {event.tool_name}
+                                    <div className="flex items-center gap-2">
+                                                        <strong>Tool:</strong>
+                                                        <span>{event.tool_name}</span>
+                                                        {Boolean((event as any).is_internal_controlflow_tool) && (
+                                                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-brand-border text-brand-text-secondary">Controlflow Internal Tool</span>
+                                                        )}
+                                        {/* Live/Mock badge based on output content */}
+                                        {(() => {
+                                            const out = (event as any).tool_output;
+                                            const isMock = (() => {
+                                                try {
+                                                    if (!out) return false;
+                                                    const obj = typeof out === 'string' ? JSON.parse(out) : out;
+                                                    if (obj && typeof obj === 'object') {
+                                                        if (obj._mock === true) return true;
+                                                        const note = obj.note || obj.notes || '';
+                                                        if (typeof note === 'string' && note.toLowerCase().includes('mock')) return true;
+                                                    }
+                                                } catch {}
+                                                return false;
+                                            })();
+                                            return (
+                                                <span className={`text-[10px] px-2 py-0.5 rounded-full ${isMock ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
+                                                    {isMock ? 'MOCK' : 'LIVE'}
+                                                </span>
+                                            );
+                                        })()}
+                                                    </div>
                                                     {event.tool_input && (
                                                         <div className="mt-1 bg-black/30 p-2 rounded text-xs">
                                                             <strong>Input:</strong> {JSON.stringify(event.tool_input, null, 2)}
                                                         </div>
                                                     )}
+                                                    {event.tool_output !== undefined && (
+                                                        <div className={`mt-1 p-2 rounded text-xs ${((event as any).is_error || (typeof event.tool_output === 'string' && event.tool_output.toLowerCase().startsWith('error'))) ? 'bg-red-500/20 text-red-300 border border-red-500/40' : 'bg-black/30'}`}>
+                                                            <strong>Output:</strong> {event.tool_output === null ? 'No output' : (typeof event.tool_output === 'string' ? event.tool_output : JSON.stringify(event.tool_output, null, 2))}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             )}
-                                            
-                                            {event.event_type === 'tool_result' && event.tool_output && (
+                                            {/* Tool Result (if present as standalone) */}
+                                            {event.event_type === 'tool_result' && (
                                                 <div className="text-sm text-brand-text-secondary">
-                                                    <strong>Output:</strong> 
-                                                    <div className="mt-1 bg-black/30 p-2 rounded text-xs overflow-x-auto">
-                                                        {typeof event.tool_output === 'string' 
-                                                            ? event.tool_output 
-                                                            : JSON.stringify(event.tool_output, null, 2)}
+                                                    <div className="flex items-center gap-2">
+                                                        <strong>Tool:</strong>
+                                                        <span>{event.tool_name}</span>
+                                                        {Boolean((event as any).is_internal_controlflow_tool) && (
+                                                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-brand-border text-brand-text-secondary">Controlflow Internal Tool</span>
+                                                        )}
+                                                        {(() => {
+                                                            const out = (event as any).result;
+                                                            const isMock = (() => {
+                                                                try {
+                                                                    if (!out) return false;
+                                                                    const obj = typeof out === 'string' ? JSON.parse(out) : out;
+                                                                    if (obj && typeof obj === 'object') {
+                                                                        if (obj._mock === true) return true;
+                                                                        const note = obj.note || obj.notes || '';
+                                                                        if (typeof note === 'string' && note.toLowerCase().includes('mock')) return true;
+                                                                    }
+                                                                } catch {}
+                                                                return false;
+                                                            })();
+                                                            return (
+                                                                <span className={`text-[10px] px-2 py-0.5 rounded-full ${isMock ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
+                                                                    {isMock ? 'MOCK' : 'LIVE'}
+                                                                </span>
+                                                            );
+                                                        })()}
+                                                    </div>
+                                                    <div className="mt-1 bg-black/30 p-2 rounded text-xs">
+                                                        <strong>Output:</strong> {event.result ? event.result : 'No output'}
                                                     </div>
                                                 </div>
                                             )}
-                                            
-                                            {event.event_type === 'task_success' && event.result && (
+                                            {/* Task Success/Failure */}
+                                            {event.event_type === 'task_success' && (
                                                 <div className="text-sm text-green-400 bg-green-900/20 p-2 rounded">
                                                     <strong>Result:</strong> {event.result}
                                                 </div>
                                             )}
-                                            
-                                            {event.event_type === 'task_failure' && event.error && (
+                                            {event.event_type === 'task_failure' && (
                                                 <div className="text-sm text-red-400 bg-red-900/20 p-2 rounded">
                                                     <strong>Error:</strong> {event.error}
                                                 </div>
@@ -299,7 +450,7 @@ const AgentTraceModal: React.FC<AgentTraceModalProps> = ({ node, onClose, eventH
                         </DetailSection>
                     )}
 
-                    {/* Tool Calls */}
+                    {/* Tool Calls (retain for quick scan, now correlated and clean) */}
                     {toolCallsToShow.length > 0 && (
                         <DetailSection title="Tool Executions">
                             {toolCallsToShow.map((toolCall, index) => (

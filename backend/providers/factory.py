@@ -4,7 +4,6 @@ from .openai_provider import OpenAIProvider
 from .gemini_provider import GeminiProvider
 from .local_provider import LocalProvider
 from backend.config.settings import get_settings
-from backend.config.settings import ProviderConfig
 
 class ProviderFactory:
     """Factory for creating LLM providers"""
@@ -46,7 +45,7 @@ class ProviderFactory:
                 return provider
             
             return None
-        except Exception as e:
+        except Exception:
             # Log silently and return None to prevent startup failures
             return None
     

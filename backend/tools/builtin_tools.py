@@ -11,8 +11,6 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 import controlflow as cf
 import json
-import os
-from pathlib import Path
 
 # Global reference to tool instances (will be set by registry)
 _tool_instances = {}
@@ -234,7 +232,8 @@ def process_financial_data(data: Any, retry_id: Optional[str] = None) -> dict:
                 "data_keys": list(data.keys()),
                 "data_size": len(str(data)),
                 "validation_summary": "Data structure validated",
-                "processed_at": datetime.now().isoformat()
+                "processed_at": datetime.now().isoformat(),
+                **({"retry_info": {"retry_id": retry_id}} if retry_id else {})
             }
         
         # Check if data is a JSON string
@@ -248,7 +247,8 @@ def process_financial_data(data: Any, retry_id: Optional[str] = None) -> dict:
                     "data_keys": list(parsed_data.keys()) if isinstance(parsed_data, dict) else [],
                     "data_size": len(data),
                     "validation_summary": "JSON string validated",
-                    "processed_at": datetime.now().isoformat()
+                    "processed_at": datetime.now().isoformat(),
+                    **({"retry_info": {"retry_id": retry_id}} if retry_id else {})
                 }
             except json.JSONDecodeError as e:
                 return {
@@ -428,7 +428,8 @@ def calculate_pe_ratio(ticker: str, current_price: float = None) -> dict:
         "analysis": analysis,
         "valuation_status": "overvalued" if pe_ratio > industry_average else "undervalued",
         "timestamp": datetime.now().isoformat(),
-        "source": "mock_data"
+        "source": "mock_data",
+        **({"inputs": {"current_price": current_price}} if current_price is not None else {})
     }
 
 @cf.tool

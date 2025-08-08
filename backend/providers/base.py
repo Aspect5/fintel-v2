@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
-import controlflow as cf
+from typing import Dict, Any
 from backend.config.settings import ProviderConfig
 
 class BaseProvider(ABC):

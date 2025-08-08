@@ -54,7 +54,7 @@ const WorkflowHistory: React.FC<WorkflowHistoryProps> = ({
                         });
                     }
                 })
-                .catch(console.error);
+                .catch(() => {});
         }
     }, [currentWorkflowId]);
 
@@ -65,6 +65,8 @@ const WorkflowHistory: React.FC<WorkflowHistoryProps> = ({
             setHistory([]);
           // Avoid immediate re-population when a workflow is running
           skipIdRef.current = currentWorkflowId;
+            // Close the panel to avoid any overlapping UI state or pending refresh timers
+            setIsOpen(false);
         } finally {
             setIsClearing(false);
         }
@@ -96,7 +98,11 @@ const WorkflowHistory: React.FC<WorkflowHistoryProps> = ({
                         </button>
                     </div>
                     {/* Refresh statuses on open */}
-                    <AutoRefresher items={history} onRefresh={(updated) => setHistory(updated)} />
+                    <AutoRefresher 
+                        items={history} 
+                        onRefresh={(updated) => setHistory(updated)} 
+                        disabled={!isOpen || isClearing}
+                    />
                     {history.length === 0 ? (
                         <p className="text-brand-text-secondary text-sm">No previous workflows</p>
                     ) : (
@@ -133,30 +139,38 @@ const WorkflowHistory: React.FC<WorkflowHistoryProps> = ({
 };
 
 // Lightweight refresher component: fetches latest statuses when panel opens
-const AutoRefresher: React.FC<{ items: WorkflowHistoryItem[]; onRefresh: (items: WorkflowHistoryItem[]) => void }> = ({ items, onRefresh }) => {
+const AutoRefresher: React.FC<{ items: WorkflowHistoryItem[]; onRefresh: (items: WorkflowHistoryItem[]) => void; disabled?: boolean }> = ({ items, onRefresh, disabled = false }) => {
     React.useEffect(() => {
         let mounted = true;
+        if (disabled) {
+            return () => { mounted = false; };
+        }
         const refresh = async () => {
             try {
                 const refreshed: WorkflowHistoryItem[] = await Promise.all(items.map(async (it) => {
                     try {
                         const res = await fetch(`/api/workflow-status/${it.id}`);
+                        if (res.status === 404) {
+                            // Prune entries that no longer exist on the backend
+                            return null as any;
+                        }
                         const data = await res.json();
                         return { ...it, status: data.status as any };
                     } catch {
                         return it;
                     }
                 }));
+                const filtered = refreshed.filter(Boolean) as WorkflowHistoryItem[];
                 if (mounted) {
-                    localStorage.setItem('workflowHistory', JSON.stringify(refreshed));
-                    onRefresh(refreshed);
+                    localStorage.setItem('workflowHistory', JSON.stringify(filtered));
+                    onRefresh(filtered);
                 }
             } catch {}
         };
         refresh();
         const t = setInterval(refresh, 15000);
         return () => { mounted = false; clearInterval(t); };
-    }, [items, onRefresh]);
+    }, [items, onRefresh, disabled]);
     return null;
 };
 
