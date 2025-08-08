@@ -114,26 +114,74 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({ report, isLoading = false
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
+    <div className="w-full max-w-[1400px] mx-auto space-y-6">
       {/* Two-column layout: main content + sticky metrics sidebar */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left/Main column */}
         <div className="space-y-6 lg:col-span-2">
           {/* Executive Summary (retain single heading; avoid duplicate modal title) */}
           <div className="bg-brand-surface p-6 rounded-xl border border-brand-border">
-            
-            {/* Executive Summary */}
             {(() => {
-              const summary = deriveExecutiveSummary(report);
-              if (!summary) return null;
-              return (
-                <div className="mb-1">
-                  <h2 className="text-lg font-semibold text-brand-text-primary mb-2">🎯 Executive Summary</h2>
-                  <div className="text-brand-text-secondary">
-                    <MarkdownRenderer content={summary} />
-                  </div>
-                </div>
-              );
+              const enhanced = parseEnhancedResult(report.result);
+              const toTitleCase = (val?: string) => val ? val.charAt(0).toUpperCase() + val.slice(1) : '';
+              const normalizeRecommendation = (rec?: string) => {
+                if (!rec) return '';
+                const r = rec.toLowerCase();
+                if (/(strong\s+)?buy|accumulate|overweight/.test(r)) return 'Buy';
+                if (/hold|neutral/.test(r)) return 'Hold';
+                if (/sell|underperform|reduce/.test(r)) return 'Sell';
+                return rec.charAt(0).toUpperCase() + rec.slice(1);
+              };
+              const recLabel = normalizeRecommendation(enhanced?.recommendation);
+              const recColor = recLabel === 'Buy' ? 'bg-green-500/15 text-green-300 ring-green-500/30' : recLabel === 'Sell' ? 'bg-red-500/15 text-red-300 ring-red-500/30' : 'bg-yellow-500/15 text-yellow-300 ring-yellow-500/30';
+
+              // Structured summary when enhanced result is available
+              if (enhanced) {
+                return (
+                  <section className="mb-1">
+                    <h2 className="text-lg font-semibold text-brand-text-primary mb-3">🎯 Executive Summary</h2>
+                    <div className="flex flex-wrap items-center gap-2 mb-4">
+                      {recLabel && (
+                        <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset ${recColor}`}>
+                          {recLabel}
+                        </span>
+                      )}
+                      {enhanced.ticker && (
+                        <span className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset ring-brand-border text-brand-text-secondary">
+                          Ticker: <span className="ml-1 text-white">{enhanced.ticker}</span>
+                        </span>
+                      )}
+                      {typeof enhanced.sentiment === 'string' && typeof enhanced.confidence === 'number' && (
+                        <span className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset ring-brand-border text-brand-text-secondary">
+                          {toTitleCase(enhanced.sentiment)}, {Math.round((enhanced.confidence || 0) * 100)}%
+                        </span>
+                      )}
+                    </div>
+
+                    {Array.isArray(enhanced.keyInsights) && enhanced.keyInsights.length > 0 && (
+                      <ul className="list-disc list-inside space-y-1 text-brand-text-secondary">
+                        {enhanced.keyInsights.slice(0, 3).map((insight: string, idx: number) => (
+                          <li key={idx}>{insight}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+                );
+              }
+
+              // Fallback: render any textual executive summary if present
+              const textSummary = (report as any).executiveSummary as string | undefined;
+              if (textSummary && textSummary.trim().length > 0) {
+                return (
+                  <section className="mb-1">
+                    <h2 className="text-lg font-semibold text-brand-text-primary mb-2">🎯 Executive Summary</h2>
+                    <div className="text-brand-text-secondary">
+                      <MarkdownRenderer content={textSummary} />
+                    </div>
+                  </section>
+                );
+              }
+              return null;
             })()}
           </div>
 
@@ -178,18 +226,26 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({ report, isLoading = false
                       {enhanced.recommendation && (
                         <div>
                           <h4 className="text-lg font-semibold text-brand-text-primary mb-2">💡 Recommendation</h4>
-                          <div className="text-brand-text-secondary bg-brand-bg p-3 rounded-lg">
-                            {enhanced.recommendation}
-                          </div>
+                          {(() => {
+                            const rec = enhanced.recommendation as string | undefined;
+                            const r = rec ? rec.toLowerCase() : '';
+                            const label = r.match(/(strong\s+)?buy|accumulate|overweight/) ? 'Buy' : r.match(/hold|neutral/) ? 'Hold' : r.match(/sell|underperform|reduce/) ? 'Sell' : (rec ? rec.charAt(0).toUpperCase() + rec.slice(1) : '');
+                            const color = label === 'Buy' ? 'bg-green-500/15 text-green-300 ring-green-500/30' : label === 'Sell' ? 'bg-red-500/15 text-red-300 ring-red-500/30' : 'bg-yellow-500/15 text-yellow-300 ring-yellow-500/30';
+                            return (
+                              <span className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold ring-1 ring-inset ${color}`}>
+                                {label}
+                              </span>
+                            );
+                          })()}
                         </div>
                       )}
                       {enhanced.keyInsights && enhanced.keyInsights.length > 0 && (
                         <div>
                           <h4 className="text-lg font-semibold text-brand-text-primary mb-2">🔍 Key Insights</h4>
-                          <ul className="space-y-2">
+                          <ul className="space-y-2 list-disc list-inside">
                             {enhanced.keyInsights.map((insight: string, index: number) => (
-                              <li key={index} className="text-brand-text-secondary bg-brand-bg p-2 rounded-lg text-sm">
-                                • {insight}
+                              <li key={index} className="text-brand-text-secondary bg-brand-bg p-2 rounded-lg text-sm list-item">
+                                {insight}
                               </li>
                             ))}
                           </ul>

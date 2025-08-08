@@ -19,6 +19,7 @@ const WorkflowHistory: React.FC<WorkflowHistoryProps> = ({
     const [history, setHistory] = React.useState<WorkflowHistoryItem[]>([]);
     const [isOpen, setIsOpen] = React.useState(false);
     const [isClearing, setIsClearing] = React.useState(false);
+      const skipIdRef = React.useRef<string | null>(null);
     
     // Load history from localStorage
     React.useEffect(() => {
@@ -34,6 +35,10 @@ const WorkflowHistory: React.FC<WorkflowHistoryProps> = ({
             fetch(`/api/workflow-status/${currentWorkflowId}`)
                 .then(res => res.json())
                 .then(data => {
+                    // If user just cleared, don't immediately re-add the same active workflow
+                    if (skipIdRef.current && currentWorkflowId === skipIdRef.current) {
+                        return;
+                    }
                     if (data.query) {
                         const newItem: WorkflowHistoryItem = {
                             id: currentWorkflowId,
@@ -58,6 +63,8 @@ const WorkflowHistory: React.FC<WorkflowHistoryProps> = ({
         try {
             localStorage.removeItem('workflowHistory');
             setHistory([]);
+          // Avoid immediate re-population when a workflow is running
+          skipIdRef.current = currentWorkflowId;
         } finally {
             setIsClearing(false);
         }

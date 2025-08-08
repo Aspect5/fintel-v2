@@ -25,7 +25,7 @@ const ReportModal: React.FC<ReportModalProps> = ({ report, onClose, isVisible, q
       
       {/* Modal content */}
       <div 
-        className="relative w-full max-w-6xl h-[90vh] bg-brand-surface flex flex-col rounded-xl shadow-2xl overflow-hidden pointer-events-auto" 
+        className="relative w-full max-w-[95vw] xl:max-w-[1400px] h-[90vh] bg-brand-surface flex flex-col rounded-xl shadow-2xl overflow-hidden pointer-events-auto" 
         onClick={e => e.stopPropagation()}
       >
         <header className="flex items-center justify-between p-6 border-b border-brand-border bg-brand-surface flex-shrink-0">
