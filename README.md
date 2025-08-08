@@ -1,124 +1,225 @@
-Developer checks
+## FINTEL v2 – Modular, Config‑Driven Multi‑Agent Financial Intelligence
 
-- JS/TS dead code:
-  - npm run check:js
-    - runs ts-prune and depcheck (skipping missing peer deps)
+FINTEL v2 is a web-based, config-driven environment for designing and executing multi-agent financial analysis workflows. The system is deliberately modular and easy to reconfigure:
+- **Backend is the single source of truth** for agents, tools, and workflows
+- **Behavior is configured via YAML** in `backend/config/` (not hardcoded)
+- **Providers are pluggable** (OpenAI, Google, Local)
+- **Frontend is a thin client** that consumes backend APIs
 
-- Python lint and dead code (from backend/):
-  - make -C backend lint-py
-  - make -C backend deadcode-py
+Built on a unified, declarative workflow model using the `controlflow` library.
 
-# FINTEL v2: Refactored Multi-Agent Financial Intelligence Assistant
+### Why modular and config-driven
+- **Re-target different workflows/use cases** by editing YAML
+- **Swap agents/tools/providers** without touching Python code
+- **Validation and health checks** expose config issues early
 
-FINTEL v2 is a sophisticated, web-based workflow development environment for creating, visualizing, and executing multi-agent financial analysis tasks. It is built on a robust, backend-driven architecture that ensures a single source of truth for all business logic, including agent capabilities and tool definitions.
+### Repository overview (key paths)
+- `backend/app.py`: Flask API and workflow execution
+- `backend/config/`: system configuration (single source of truth)
+  - `settings.py`: env-driven settings and provider selection
+  - `agents.yaml`: agent definitions, tools, capabilities
+  - `tools.yaml`: tool registry with API key requirements and examples
+  - `workflow_config.yaml`: workflows (agent roles, deps, defaults)
+- `backend/{agents,providers,tools,workflows,registry,utils}`: modular building blocks
+- `frontend/`: Vite React app
+- `docs/`: in-depth design docs (logging, SSOT, production blueprint)
 
-The system uses a unified, declarative workflow model powered by the `controlflow` library. This model orchestrates a team of specialized agents to handle complex financial analysis tasks, with a Directed Acyclic Graph (DAG) of tasks being defined and executed by the `controlflow` library.
+## Prerequisites
+- Node.js v18+
+- Python 3.9+ with `pip`
 
-## Key Architectural Principles
+## First-time setup
 
-*   **Backend as a Single Source of Truth**: The Python backend is the sole authority for all business logic, including agent capabilities and tool definitions. The frontend is a "dumb" client that renders data and forwards user input, dynamically learning about capabilities from the backend's API.
-*   **Unified, Declarative Workflow**: The system uses a single, consistent pattern for agent orchestration. The chosen pattern is a Dependency-Driven Workflow, where a Directed Acyclic Graph (DAG) of tasks is defined and executed by the `controlflow` library.
+1) Create and activate a Python virtual environment
+- macOS/Linux:
+```bash
+python3 -m venv backend/venv
+source backend/venv/bin/activate
+```
+- Windows (PowerShell):
+```powershell
+python -m venv backend/venv
+backend\venv\Scripts\activate
+```
 
-## Getting Started
+2) Install backend dependencies
+```bash
+pip install -r backend/requirements.txt
+```
 
-Follow these instructions to set up and run the complete FINTEL application locally.
+3) Install frontend dependencies
+```bash
+npm install
+```
 
-### 1. Prerequisites
+4) Configure environment variables
+- Create a `.env` in the repo root (preferred) or `backend/.env`.
+- At least one LLM provider key is required (OpenAI or Google). For market/economic data tools, Alpha Vantage and FRED keys are used.
+```env
+OPENAI_API_KEY=sk-xxx
+GOOGLE_API_KEY=xxx
+ALPHA_VANTAGE_API_KEY=xxx
+FRED_API_KEY=xxx
+# Optional:
+# DEFAULT_PROVIDER=openai|google|local
+# LOG_LEVEL=INFO|DEBUG|WARNING|ERROR|CRITICAL
+# LOCAL_BASE_URL=http://127.0.0.1:8080/v1
+```
 
-*   **Node.js** (v18 or higher)
-*   **Python** (v3.9 or higher) and `pip`
+## Run locally
 
-### 2. One-Time Setup
-
-These steps only need to be performed once to prepare the project.
-
-**A. Configure the Backend:**
-
-1.  **Create a Python Virtual Environment:** From the project root, run:
-    ```bash
-    python3 -m venv backend/venv
-    ```
-2.  **Activate the Virtual Environment:**
-    *   **macOS/Linux:** `source backend/venv/bin/activate`
-    *   **Windows:** `backend env\Scripts\activate`
-3.  **Install Python Dependencies:** With the virtual environment active, run:
-    ```bash
-    pip install -r backend/requirements.txt
-    ```
-4.  **Configure API Keys:** All secrets are managed in a single file.
-    *   Create a `.env` file in the **project root** (same level as `backend/` and `frontend/` directories).
-    *   Add your API keys to the `.env` file. At least one provider (OpenAI or Google) is required:
-    ```env
-    OPENAI_API_KEY=sk-your-openai-key-here
-    GOOGLE_API_KEY=your-google-key-here
-    ALPHA_VANTAGE_API_KEY=your-alpha-vantage-key-here
-    FRED_API_KEY=your-fred-key-here
-    ```
-
-**B. Configure the Frontend:**
-
-1.  **Install Node.js Dependencies:** From the project root, run:
-    ```bash
-    npm install
-    ```
-
-### 3. Running the Application
-
-After the one-time setup, you can start the entire application with a single command from the **project root**.
-
+- Start both backend and frontend:
 ```bash
 npm run dev
 ```
-
-This command uses `concurrently` with intelligent startup sequencing:
-*   Starts the Python Flask backend server (on `http://localhost:5001`) using the correct virtual environment.
-*   Waits for the backend to be healthy before starting the frontend.
-*   Starts the Vite frontend development server (on `http://localhost:9002`).
-
-You can now open your browser to `http://localhost:9002`.
-
-### 4. Alternative Startup Options
-
-**Start Both Services Together (Recommended):**
+- Start individually:
 ```bash
-npm run dev
-```
-
-**Start Services Individually (for debugging):**
-```bash
-# Backend only
 npm run dev:backend
-
-# Frontend only (after backend is running)
 npm run dev:frontend
 ```
+- Default ports:
+  - Backend: `http://localhost:5001`
+  - Frontend: `http://localhost:9002`
 
-### 5. Health Checks and Error Handling
+## The modular, config‑driven model
 
-The application includes robust health checking and error handling:
+- **Settings**: env-driven provider configuration and defaults (`backend/config/settings.py`).
+- **Agents**: declared in `backend/config/agents.yaml` with tools and capabilities.
+- **Tools**: declared in `backend/config/tools.yaml` with API key requirements, categories, and examples.
+- **Workflows**: declared in `backend/config/workflow_config.yaml` with agent roles, dependencies, and defaults.
 
-*   **Backend Health Check**: The frontend waits for the backend to be ready before starting.
-*   **Automatic Retries**: If the backend is temporarily unavailable, the frontend will retry with exponential backoff.
-*   **Graceful Degradation**: If the backend is completely unavailable, the frontend shows helpful error messages.
-*   **Manual Retry**: Users can manually retry connecting to the backend from the UI.
+Example workflow (excerpt):
+```yaml
+workflows:
+  quick_stock_analysis:
+    name: "Quick Stock Analysis"
+    description: "Fast, high-level analysis..."
+    agents:
+      - name: "MarketAnalyst"
+        role: "market_analysis"
+        required: true
+        fallback: "FinancialAnalyst"
+        tools: ["get_market_data", "get_company_overview", "get_mock_news"]
+      - name: "RiskAssessment"
+        role: "risk_assessment"
+        required: true
+        fallback: "FinancialAnalyst"
+        tools: ["get_market_data", "get_mock_analyst_ratings"]
+      - name: "Summarizer"
+        role: "synthesis"
+        required: true
+        tools: []
+        dependencies: ["market_analysis", "risk_assessment"]
 
-### How to Use
+settings:
+  default_workflow: "quick_stock_analysis"
+  enable_fallback_agents: true
+```
 
-1.  **Configure LLM Provider:** Choose your desired LLM provider (OpenAI, Gemini, or Local) and enter a base URL if needed.
-2.  **Submit Query:** Type your financial analysis request and send the message. The backend will handle the workflow.
+Example agent (excerpt):
+```yaml
+agents:
+  FinancialAnalyst:
+    name: "FinancialAnalyst"
+    tools:
+      - "detect_stock_ticker"
+      - "get_market_data"
+      - "get_company_overview"
+      - "get_economic_data_from_fred"
+    capabilities:
+      - "market_analysis"
+      - "economic_analysis"
+      - "risk_assessment"
+    required: true
+    enabled: true
+```
 
----
-### **Advanced: Manual Server Startup**
+Example tool (excerpt):
+```yaml
+tools:
+  get_economic_data_from_fred:
+    name: "get_economic_data_from_fred"
+    description: "Get economic data from FRED..."
+    category: "economic_data"
+    function: "get_economic_data_from_fred"
+    class: "EconomicDataTool"
+    api_key_required: "fred"
+    enabled: true
+    examples:
+      - "get_economic_data_from_fred(series_id='GDP')"
+```
 
-For debugging, you can run the frontend and backend servers independently.
+## Extending the system
 
-*   **To run the backend only:**
-    ```bash
-    # Make sure your virtual environment is active
-    source backend/venv/bin/activate
-    flask run --port=5001
-    ```
-*   **To run the frontend only:**
-    ```bash
-    npm run vite
-    ```
+- **Add a tool**
+  1) Implement or reuse a function in `backend/tools/` (e.g., `market_data.py`, `economic_data.py`).
+  2) Declare it in `backend/config/tools.yaml` with `function`, optional `class`, `api_key_required`, `examples`.
+  3) If it needs an API key, add the key to `.env`.
+  4) Reference the tool from agents in `agents.yaml` and workflows in `workflow_config.yaml`.
+
+- **Add an agent**
+  1) Add a new agent under `agents:` in `backend/config/agents.yaml` with `tools`, `capabilities`, and `enabled`.
+  2) Optionally add templates/logic in `backend/agents/` if needed.
+  3) Reference the agent in a workflow via `workflow_config.yaml` with `role`, `required`, and `fallback`.
+
+- **Add a workflow**
+  1) Add a new entry in `backend/config/workflow_config.yaml` under `workflows:`.
+  2) List agent roles, required flags, fallbacks, dependencies.
+  3) Optionally update `settings.default_workflow`.
+
+- **Switch providers (OpenAI, Google, Local)**
+  - Configure keys or `LOCAL_BASE_URL` in `.env`.
+  - The selected provider can be passed by the client or defaults to `DEFAULT_PROVIDER`.
+  - Provider settings live in `backend/config/settings.py`.
+
+## Core APIs (selected)
+
+- **Health and status**
+  - `GET /api/health`
+  - `GET /api/providers`
+  - `GET /api/agents`
+  - `GET /api/registry/{health|status|validation|summary}`
+
+- **Tools and workflows**
+  - `GET /api/registry/tools`
+  - `GET /api/workflows`
+  - `GET /api/workflow-configs`
+
+- **Execute a workflow**
+  - `POST /api/run-workflow`
+    - body: `{ "query": "Analyze Apple", "provider": "openai", "workflow_type": "quick_stock_analysis" }`
+  - `GET /api/workflow-status/{workflow_id}`
+  - `GET /api/workflow-stream/{workflow_id}` (SSE)
+
+Example:
+```bash
+curl -X POST http://localhost:5001/api/run-workflow \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"Analyze AAPL for a quick go/no-go","provider":"openai","workflow_type":"quick_stock_analysis"}'
+```
+
+## Frontend usage
+- Open `http://localhost:9002`.
+- Choose provider and submit a query. The UI visualizes nodes/edges and polls `GET /api/workflow-status/{id}` for progress.
+
+## Observability and logs
+- Backend logs to console and `logs/` (see `docs/LOGGING_SYSTEM.md`).
+- Workflow metrics: `GET /api/workflow-metrics`.
+- Health checks and validation endpoints expose configuration issues.
+
+## Developer workflow
+- Python lint: `make -C backend lint-py`
+- Python dead code: `make -C backend deadcode-py`
+- JS/TS dead code: `npm run check:js` (runs ts-prune + depcheck)
+- Clean dev processes: `npm run clean`
+
+## Troubleshooting
+- **Backend not ready**: hit `GET /api/health`. Ensure venv is active and `.env` keys exist.
+- **Missing data tools**: set `ALPHA_VANTAGE_API_KEY` / `FRED_API_KEY`.
+- **Provider errors**: verify `OPENAI_API_KEY` or `GOOGLE_API_KEY`; check `DEFAULT_PROVIDER`.
+- **Port conflicts**: adjust `BACKEND_PORT` or Vite port.
+
+## Further reading
+- Single Source of Truth: `docs/SINGLE_SOURCE_OF_TRUTH_ARCHITECTURE.md`
+- Logging: `docs/LOGGING_SYSTEM.md`
+- Production blueprint (BFF, security): `docs/ARCHITECTURAL_BLUEPRINT_FOR_PRODUCTION.md`
