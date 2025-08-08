@@ -19,7 +19,8 @@ const WorkflowHistory: React.FC<WorkflowHistoryProps> = ({
     const [history, setHistory] = React.useState<WorkflowHistoryItem[]>([]);
     const [isOpen, setIsOpen] = React.useState(false);
     const [isClearing, setIsClearing] = React.useState(false);
-      const skipIdRef = React.useRef<string | null>(null);
+    const skipIdRef = React.useRef<string | null>(null);
+    const lastAddedIdRef = React.useRef<string | null>(null);
     
     // Load history from localStorage
     React.useEffect(() => {
@@ -29,33 +30,31 @@ const WorkflowHistory: React.FC<WorkflowHistoryProps> = ({
         }
     }, []);
     
-    // Add or refresh workflow in history
+    // Add current workflow to history once per id
     React.useEffect(() => {
-        if (currentWorkflowId) {
-            fetch(`/api/workflow-status/${currentWorkflowId}`)
-                .then(res => res.json())
-                .then(data => {
-                    // If user just cleared, don't immediately re-add the same active workflow
-                    if (skipIdRef.current && currentWorkflowId === skipIdRef.current) {
-                        return;
-                    }
-                    if (data.query) {
-                        const newItem: WorkflowHistoryItem = {
-                            id: currentWorkflowId,
-                            query: data.query,
-                            timestamp: new Date().toISOString(),
-                            status: data.status
-                        };
-                        
-                        setHistory(prev => {
-                            const updated = [newItem, ...prev.filter(item => item.id !== currentWorkflowId)].slice(0, 10);
-                            localStorage.setItem('workflowHistory', JSON.stringify(updated));
-                            return updated;
-                        });
-                    }
-                })
-                .catch(() => {});
-        }
+        if (!currentWorkflowId || lastAddedIdRef.current === currentWorkflowId) return;
+        fetch(`/api/workflow-status/${currentWorkflowId}`)
+            .then(res => res.json())
+            .then(data => {
+                if (skipIdRef.current && currentWorkflowId === skipIdRef.current) {
+                    return;
+                }
+                if (data.query) {
+                    const newItem: WorkflowHistoryItem = {
+                        id: currentWorkflowId,
+                        query: data.query,
+                        timestamp: new Date().toISOString(),
+                        status: data.status
+                    };
+                    setHistory(prev => {
+                        const updated = [newItem, ...prev.filter(item => item.id !== currentWorkflowId)].slice(0, 10);
+                        localStorage.setItem('workflowHistory', JSON.stringify(updated));
+                        return updated;
+                    });
+                    lastAddedIdRef.current = currentWorkflowId;
+                }
+            })
+            .catch(() => {});
     }, [currentWorkflowId]);
 
     const handleClearHistory = () => {
@@ -97,12 +96,13 @@ const WorkflowHistory: React.FC<WorkflowHistoryProps> = ({
                             {isClearing ? 'Clearing…' : 'Clear history'}
                         </button>
                     </div>
-                    {/* Refresh statuses on open */}
-                    <AutoRefresher 
-                        items={history} 
-                        onRefresh={(updated) => setHistory(updated)} 
-                        disabled={!isOpen || isClearing}
-                    />
+                    {/* Refresh statuses once on open to avoid periodic polling spam */}
+                    {isOpen && history.length > 0 && (
+                        <OneTimeRefresher 
+                            items={history} 
+                            onRefresh={(updated) => setHistory(updated)} 
+                        />
+                    )}
                     {history.length === 0 ? (
                         <p className="text-brand-text-secondary text-sm">No previous workflows</p>
                     ) : (
@@ -138,20 +138,16 @@ const WorkflowHistory: React.FC<WorkflowHistoryProps> = ({
     );
 };
 
-// Lightweight refresher component: fetches latest statuses when panel opens
-const AutoRefresher: React.FC<{ items: WorkflowHistoryItem[]; onRefresh: (items: WorkflowHistoryItem[]) => void; disabled?: boolean }> = ({ items, onRefresh, disabled = false }) => {
+// One-time refresher: fetches latest statuses a single time when panel opens
+const OneTimeRefresher: React.FC<{ items: WorkflowHistoryItem[]; onRefresh: (items: WorkflowHistoryItem[]) => void }> = ({ items, onRefresh }) => {
     React.useEffect(() => {
-        let mounted = true;
-        if (disabled) {
-            return () => { mounted = false; };
-        }
+        let cancelled = false;
         const refresh = async () => {
             try {
                 const refreshed: WorkflowHistoryItem[] = await Promise.all(items.map(async (it) => {
                     try {
                         const res = await fetch(`/api/workflow-status/${it.id}`);
                         if (res.status === 404) {
-                            // Prune entries that no longer exist on the backend
                             return null as any;
                         }
                         const data = await res.json();
@@ -161,16 +157,15 @@ const AutoRefresher: React.FC<{ items: WorkflowHistoryItem[]; onRefresh: (items:
                     }
                 }));
                 const filtered = refreshed.filter(Boolean) as WorkflowHistoryItem[];
-                if (mounted) {
+                if (!cancelled) {
                     localStorage.setItem('workflowHistory', JSON.stringify(filtered));
                     onRefresh(filtered);
                 }
             } catch {}
         };
         refresh();
-        const t = setInterval(refresh, 15000);
-        return () => { mounted = false; clearInterval(t); };
-    }, [items, onRefresh, disabled]);
+        return () => { cancelled = true; };
+    }, [items, onRefresh]);
     return null;
 };
 

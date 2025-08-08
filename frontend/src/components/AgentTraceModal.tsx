@@ -450,7 +450,7 @@ const AgentTraceModal: React.FC<AgentTraceModalProps> = ({ node, onClose, eventH
                         </DetailSection>
                     )}
 
-                    {/* Tool Calls (retain for quick scan, now correlated and clean) */}
+                    {/* Tool Calls (single source of truth: derived from event history) */}
                     {toolCallsToShow.length > 0 && (
                         <DetailSection title="Tool Executions">
                             {toolCallsToShow.map((toolCall, index) => (
