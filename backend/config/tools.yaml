@@ -124,6 +124,85 @@ tools:
       - "get_competitor_analysis(ticker='AAPL')"
       - "get_competitor_analysis(ticker='GOOG', competitors=['MSFT', 'AMZN'])"
 
+  # Alpha Vantage Time Series & Indicators
+  get_time_series_daily:
+    name: "get_time_series_daily"
+    description: "Get daily time series (adjusted/raw) from Alpha Vantage"
+    category: "market_data"
+    function: "get_time_series_daily"
+    class: null
+    api_key_required: "alpha_vantage"
+    enabled: true
+    examples:
+      - "get_time_series_daily(ticker='VSCO', outputsize='compact', adjusted=true)"
+
+  get_time_series_intraday:
+    name: "get_time_series_intraday"
+    description: "Get intraday time series from Alpha Vantage"
+    category: "market_data"
+    function: "get_time_series_intraday"
+    class: null
+    api_key_required: "alpha_vantage"
+    enabled: true
+    examples:
+      - "get_time_series_intraday(ticker='VSCO', interval='5min', outputsize='compact')"
+
+  get_rsi:
+    name: "get_rsi"
+    description: "Get RSI indicator from Alpha Vantage"
+    category: "analysis"
+    function: "get_rsi"
+    class: null
+    api_key_required: "alpha_vantage"
+    enabled: true
+    examples:
+      - "get_rsi(ticker='VSCO', interval='daily', time_period=14, series_type='close')"
+
+  get_macd:
+    name: "get_macd"
+    description: "Get MACD indicator from Alpha Vantage"
+    category: "analysis"
+    function: "get_macd"
+    class: null
+    api_key_required: "alpha_vantage"
+    enabled: true
+    examples:
+      - "get_macd(ticker='VSCO', interval='daily', series_type='close')"
+
+  # Fundamental statements
+  get_income_statement:
+    name: "get_income_statement"
+    description: "Get income statement fundamentals from Alpha Vantage"
+    category: "analysis"
+    function: "get_income_statement"
+    class: null
+    api_key_required: "alpha_vantage"
+    enabled: true
+    examples:
+      - "get_income_statement(ticker='VSCO')"
+
+  get_balance_sheet:
+    name: "get_balance_sheet"
+    description: "Get balance sheet fundamentals from Alpha Vantage"
+    category: "analysis"
+    function: "get_balance_sheet"
+    class: null
+    api_key_required: "alpha_vantage"
+    enabled: true
+    examples:
+      - "get_balance_sheet(ticker='VSCO')"
+
+  get_cash_flow:
+    name: "get_cash_flow"
+    description: "Get cash flow fundamentals from Alpha Vantage"
+    category: "analysis"
+    function: "get_cash_flow"
+    class: null
+    api_key_required: "alpha_vantage"
+    enabled: true
+    examples:
+      - "get_cash_flow(ticker='VSCO')"
+
   # Demo/Mock Tools
   get_mock_news:
     name: "get_mock_news"

@@ -11,6 +11,8 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 import controlflow as cf
 import json
+import requests
+from backend.config.settings import get_settings
 
 # Global reference to tool instances (will be set by registry)
 _tool_instances = {}
@@ -54,10 +56,74 @@ def get_tool_function(tool_name: str):
         "detect_stock_ticker": detect_stock_ticker,
         "get_mock_news": get_mock_news,
         "get_mock_analyst_ratings": get_mock_analyst_ratings,
-        "get_mock_social_sentiment": get_mock_social_sentiment
+        "get_mock_social_sentiment": get_mock_social_sentiment,
+        # New Alpha Vantage tools
+        "get_time_series_daily": get_time_series_daily,
+        "get_time_series_intraday": get_time_series_intraday,
+        "get_rsi": get_rsi,
+        "get_macd": get_macd,
+        "get_income_statement": get_income_statement,
+        "get_balance_sheet": get_balance_sheet,
+        "get_cash_flow": get_cash_flow,
     }
     
     return tool_functions.get(tool_name)
+
+# ---- Alpha Vantage helpers ----
+def _av_request(params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Perform an Alpha Vantage request with centralized handling.
+    Returns parsed JSON or None on failure/limits.
+    """
+    try:
+        settings = get_settings()
+        api_key = settings.alpha_vantage_api_key
+        if not api_key:
+            return None
+        url = "https://www.alphavantage.co/query"
+        req_params = {**params, "apikey": api_key}
+        resp = requests.get(url, params=req_params, timeout=12)
+        data = resp.json()
+        # Check rate limit or error messages
+        if isinstance(data, dict) and (data.get("Note") or data.get("Error Message") or data.get("Information")):
+            return None
+        return data
+    except Exception:
+        return None
+
+def _mock_series(symbol: str) -> Dict[str, Any]:
+    now = datetime.now()
+    # Minimal synthetic series
+    series = []
+    for i in range(5):
+        ts = (now.replace(microsecond=0)).isoformat()
+        series.append({
+            "timestamp": ts,
+            "open": 20.0 + i,
+            "high": 20.5 + i,
+            "low": 19.5 + i,
+            "close": 20.2 + i,
+            "volume": 100000 + i * 1000,
+        })
+    return {
+        "symbol": symbol.upper(),
+        "series": series,
+        "_mock": True,
+        "note": "Mock time series (fallback)",
+        "timestamp": now.isoformat(),
+        "source": "mock_data",
+    }
+
+def _mock_indicator(symbol: str, name: str) -> Dict[str, Any]:
+    now = datetime.now().isoformat()
+    return {
+        "symbol": symbol.upper(),
+        "indicator": name,
+        "values": [{"date": now[:10], name: 50.0}],
+        "_mock": True,
+        "note": f"Mock {name} (fallback)",
+        "timestamp": now,
+        "source": "mock_data",
+    }
 
 @cf.tool
 def get_market_data(ticker: str) -> dict:
@@ -469,7 +535,8 @@ def analyze_cash_flow(ticker: str, period: str = "quarterly") -> dict:
         "financial_health": "excellent",
         "cash_flow_stability": "high",
         "timestamp": datetime.now().isoformat(),
-        "source": "mock_data"
+        "source": "mock_data",
+        "_mock": True,
     }
 
 @cf.tool
@@ -510,7 +577,8 @@ def get_competitor_analysis(ticker: str, competitors: List[str] = None) -> dict:
         "threats": ["New entrants", "Regulatory changes"],
         "competitive_position": "strong",
         "timestamp": datetime.now().isoformat(),
-        "source": "mock_data"
+        "source": "mock_data",
+        "_mock": True,
     } 
 
 # --- Showcase mock tools for demos ---
@@ -686,3 +754,181 @@ def detect_stock_ticker(query: str) -> dict:
         detect_stock_ticker("evaluate the electric vehicle company Tesla")
     """
     return _detect_ticker_with_ai(query) 
+
+# ---- New Alpha Vantage tool functions ----
+
+@cf.tool
+def get_time_series_daily(ticker: str, outputsize: str = "compact", adjusted: bool = True) -> dict:
+    """Get daily (adjusted or raw) time series for a ticker from Alpha Vantage.
+    Returns a normalized object with series list. Falls back to mock when rate-limited or key missing.
+    """
+    if not ticker or ticker.strip() == "":
+        return {"error": "Ticker symbol is required", "ticker": ticker}
+    function = "TIME_SERIES_DAILY_ADJUSTED" if adjusted else "TIME_SERIES_DAILY"
+    data = _av_request({"function": function, "symbol": ticker.upper(), "outputsize": outputsize})
+    if not data or not isinstance(data, dict):
+        mock = _mock_series(ticker)
+        return mock
+    # Parse
+    meta_key = next((k for k in data.keys() if "Meta Data" in k), None)
+    series_key = next((k for k in data.keys() if "Time Series" in k), None)
+    if not series_key:
+        return _mock_series(ticker)
+    raw = data.get(series_key, {})
+    series: List[Dict[str, Any]] = []
+    for date_str, values in raw.items():
+        entry = {
+            "date": date_str,
+            "open": float(values.get("1. open", 0) or 0),
+            "high": float(values.get("2. high", 0) or 0),
+            "low": float(values.get("3. low", 0) or 0),
+            "close": float(values.get("4. close", 0) or 0),
+            "adjusted_close": float(values.get("5. adjusted close", values.get("4. close", 0)) or 0),
+            "volume": int(values.get("6. volume", 0) or 0),
+        }
+        series.append(entry)
+    series.sort(key=lambda x: x["date"])  # ascending
+    return {
+        "symbol": ticker.upper(),
+        "meta": data.get(meta_key, {}),
+        "series": series,
+        "source": "alpha_vantage",
+        "timestamp": datetime.now().isoformat(),
+    }
+
+@cf.tool
+def get_time_series_intraday(ticker: str, interval: str = "5min", outputsize: str = "compact") -> dict:
+    """Get intraday time series for a ticker from Alpha Vantage."""
+    if not ticker or ticker.strip() == "":
+        return {"error": "Ticker symbol is required", "ticker": ticker}
+    data = _av_request({
+        "function": "TIME_SERIES_INTRADAY",
+        "symbol": ticker.upper(),
+        "interval": interval,
+        "outputsize": outputsize,
+        "adjusted": "true",
+    })
+    if not data or not isinstance(data, dict):
+        return _mock_series(ticker)
+    series_key = next((k for k in data.keys() if "Time Series" in k), None)
+    if not series_key:
+        return _mock_series(ticker)
+    raw = data.get(series_key, {})
+    series: List[Dict[str, Any]] = []
+    for ts, values in raw.items():
+        series.append({
+            "timestamp": ts,
+            "open": float(values.get("1. open", 0) or 0),
+            "high": float(values.get("2. high", 0) or 0),
+            "low": float(values.get("3. low", 0) or 0),
+            "close": float(values.get("4. close", 0) or 0),
+            "volume": int(values.get("5. volume", 0) or 0),
+        })
+    series.sort(key=lambda x: x["timestamp"])  # ascending
+    return {
+        "symbol": ticker.upper(),
+        "interval": interval,
+        "series": series,
+        "source": "alpha_vantage",
+        "timestamp": datetime.now().isoformat(),
+    }
+
+@cf.tool
+def get_rsi(ticker: str, interval: str = "daily", time_period: int = 14, series_type: str = "close") -> dict:
+    """Get RSI indicator."""
+    if not ticker or ticker.strip() == "":
+        return {"error": "Ticker symbol is required", "ticker": ticker}
+    data = _av_request({
+        "function": "RSI",
+        "symbol": ticker.upper(),
+        "interval": interval,
+        "time_period": time_period,
+        "series_type": series_type,
+    })
+    if not data or not isinstance(data, dict):
+        return _mock_indicator(ticker, "rsi")
+    series_key = next((k for k in data.keys() if "Technical Analysis: RSI" in k), None)
+    if not series_key:
+        return _mock_indicator(ticker, "rsi")
+    raw = data.get(series_key, {})
+    values = [{"date": d, "rsi": float(v.get("RSI", 0) or 0)} for d, v in raw.items()]
+    values.sort(key=lambda x: x["date"])  # ascending
+    return {
+        "symbol": ticker.upper(),
+        "indicator": "rsi",
+        "values": values,
+        "source": "alpha_vantage",
+        "timestamp": datetime.now().isoformat(),
+    }
+
+@cf.tool
+def get_macd(
+    ticker: str,
+    interval: str = "daily",
+    series_type: str = "close",
+    fastperiod: int = 12,
+    slowperiod: int = 26,
+    signalperiod: int = 9,
+) -> dict:
+    """Get MACD indicator."""
+    if not ticker or ticker.strip() == "":
+        return {"error": "Ticker symbol is required", "ticker": ticker}
+    data = _av_request({
+        "function": "MACD",
+        "symbol": ticker.upper(),
+        "interval": interval,
+        "series_type": series_type,
+        "fastperiod": fastperiod,
+        "slowperiod": slowperiod,
+        "signalperiod": signalperiod,
+    })
+    if not data or not isinstance(data, dict):
+        return _mock_indicator(ticker, "macd")
+    series_key = next((k for k in data.keys() if "Technical Analysis: MACD" in k), None)
+    if not series_key:
+        return _mock_indicator(ticker, "macd")
+    raw = data.get(series_key, {})
+    values = [{
+        "date": d,
+        "macd": float(v.get("MACD", 0) or 0),
+        "macd_signal": float(v.get("MACD_Signal", 0) or 0),
+        "macd_hist": float(v.get("MACD_Hist", 0) or 0),
+    } for d, v in raw.items()]
+    values.sort(key=lambda x: x["date"])  # ascending
+    return {
+        "symbol": ticker.upper(),
+        "indicator": "macd",
+        "values": values,
+        "source": "alpha_vantage",
+        "timestamp": datetime.now().isoformat(),
+    }
+
+@cf.tool
+def get_income_statement(ticker: str) -> dict:
+    """Get income statement fundamentals."""
+    if not ticker or ticker.strip() == "":
+        return {"error": "Ticker symbol is required", "ticker": ticker}
+    data = _av_request({"function": "INCOME_STATEMENT", "symbol": ticker.upper()})
+    if not data or not isinstance(data, dict) or not data.get("annualReports"):
+        return {"symbol": ticker.upper(), "annualReports": [], "quarterlyReports": [], "_mock": True, "source": "mock_data", "note": "Mock fundamentals (fallback)"}
+    return {**data, "symbol": ticker.upper(), "source": "alpha_vantage"}
+
+@cf.tool
+def get_balance_sheet(ticker: str) -> dict:
+    """Get balance sheet fundamentals."""
+    if not ticker or ticker.strip() == "":
+        return {"error": "Ticker symbol is required", "ticker": ticker}
+    data = _av_request({"function": "BALANCE_SHEET", "symbol": ticker.upper()})
+    if not data or not isinstance(data, dict) or not data.get("annualReports"):
+        return {"symbol": ticker.upper(), "annualReports": [], "quarterlyReports": [], "_mock": True, "source": "mock_data", "note": "Mock fundamentals (fallback)"}
+    return {**data, "symbol": ticker.upper(), "source": "alpha_vantage"}
+
+@cf.tool
+def get_cash_flow(ticker: str) -> dict:
+    """Get cash flow fundamentals."""
+    if not ticker or ticker.strip() == "":
+        return {"error": "Ticker symbol is required", "ticker": ticker}
+    data = _av_request({"function": "CASH_FLOW", "symbol": ticker.upper()})
+    if not data or not isinstance(data, dict) or not data.get("annualReports"):
+        return {"symbol": ticker.upper(), "annualReports": [], "quarterlyReports": [], "_mock": True, "source": "mock_data", "note": "Mock fundamentals (fallback)"}
+    return {**data, "symbol": ticker.upper(), "source": "alpha_vantage"}
