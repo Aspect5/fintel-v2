@@ -34,7 +34,15 @@ const KeyMetricsGrid: React.FC<KeyMetricsGridProps> = ({
           <div className="w-6 h-6 bg-blue-500/20 rounded-full flex items-center justify-center mr-2">
             <span className="text-blue-400 text-xs">🎯</span>
           </div>
-          <h4 className="text-sm font-semibold text-brand-text-primary">Confidence</h4>
+          <h4 className="text-sm font-semibold text-brand-text-primary flex items-center gap-2">
+            Confidence
+            <span
+              title="Derived from the synthesis agent's confidence (0–1) scaled to percent. Will be calibrated by data breadth, agent consensus, and risk. High ≥ 80, Moderate 60–79, Low < 60."
+              className="cursor-help text-brand-text-tertiary"
+            >
+              ⓘ
+            </span>
+          </h4>
         </div>
         <div className="text-center">
           <div className={`text-2xl font-bold mb-1 ${getConfidenceColor(confidenceLevel)}`}>

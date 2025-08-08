@@ -31,9 +31,10 @@ export interface WorkflowState {
   updateWorkflowStatus: (statusUpdate: Partial<FullWorkflowStatus>) => void;
   resetWorkflow: () => void;
   setPollingWorkflow: (workflowId: string) => void;
+  loadWorkflowSnapshot: (workflowId: string) => Promise<any>;
 }
 
-const initialState: Omit<WorkflowState, 'onNodesChange' | 'onEdgesChange' | 'startWorkflow' | 'updateWorkflowStatus' | 'resetWorkflow' | 'setPollingWorkflow'> = {
+const initialState: Omit<WorkflowState, 'onNodesChange' | 'onEdgesChange' | 'startWorkflow' | 'updateWorkflowStatus' | 'resetWorkflow' | 'setPollingWorkflow' | 'loadWorkflowSnapshot'> = {
   nodes: [],
   edges: [],
   status: 'idle' as const,
@@ -51,6 +52,7 @@ const initialState: Omit<WorkflowState, 'onNodesChange' | 'onEdgesChange' | 'sta
 };
 
 // Standalone layout function
+// Reoriented for horizontal flow: left-to-right lanes, vertical spacing between nodes
 const layoutNodes = (nodes: CustomNode[], edges: Edge[]): CustomNode[] => {
     if (!nodes || nodes.length === 0) return [];
     
@@ -92,8 +94,10 @@ const layoutNodes = (nodes: CustomNode[], edges: Edge[]): CustomNode[] => {
         });
     }
 
-    const levelSpacing = 300;
-    const nodeSpacing = 350;
+    // Horizontal orientation: levels become columns; space rows vertically
+    const levelSpacing = 350; // horizontal distance between columns
+    // Increased spacing to accommodate larger nodes with summaries/tool chips
+    const nodeSpacing = 280;  // vertical distance between nodes in the same column
 
     return nodes.map(node => {
         let nodeLevel = 0;
@@ -109,14 +113,13 @@ const layoutNodes = (nodes: CustomNode[], edges: Edge[]): CustomNode[] => {
         }
         
         const levelNodes = levels.get(nodeLevel) || [];
-        const levelWidth = levelNodes.length * nodeSpacing;
-        const startX = -levelWidth / 2;
-
+        // Left-to-right columns: x depends on level; y stacks nodes per column
+        const yOffset = -(levelNodes.length - 1) * (nodeSpacing / 2);
         return {
             ...node,
             position: {
-                x: startX + nodeIndex * nodeSpacing,
-                y: nodeLevel * levelSpacing,
+                x: nodeLevel * levelSpacing,
+                y: yOffset + nodeIndex * nodeSpacing,
             },
         };
     });
@@ -180,11 +183,16 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
               const updatedNodes = state.nodes.map(existingNode => {
                   const nodeUpdate = update.nodes!.find(n => n.id === existingNode.id);
                   if (nodeUpdate) {
+                      const mergedLiveDetails = (nodeUpdate.data as any)?.liveDetails
+                        ? { ...(existingNode.data as any)?.liveDetails, ...(nodeUpdate.data as any).liveDetails }
+                        : (existingNode.data as any)?.liveDetails;
+
                       return {
                           ...existingNode,
                           data: {
                               ...existingNode.data,
                               ...nodeUpdate.data,
+                              liveDetails: mergedLiveDetails,
                           },
                       };
                   }
@@ -199,4 +207,37 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
   },
 
   resetWorkflow: () => set(initialState),
+
+  loadWorkflowSnapshot: async (workflowId: string) => {
+    try {
+      const res = await fetch(`/api/workflow-status/${workflowId}`);
+      const data = await res.json();
+      const rawEdges: Edge[] = (data.edges || []).map((edge: any, index: number) => ({
+        id: `edge-${index}`,
+        source: edge.source,
+        target: edge.target,
+        type: edge.type || 'default',
+      }));
+      const laidOutNodes = layoutNodes((data.nodes || []) as CustomNode[], rawEdges);
+      set({
+        workflowId,
+        status: (data.status as any) || 'idle',
+        result: data.result ?? null,
+        query: data.query ?? null,
+        executionTime: data.execution_time ?? 0,
+        error: data.error ?? null,
+        trace: data.trace,
+        current_task: data.current_task,
+        agent_invocations: data.agent_invocations,
+        tool_calls: data.tool_calls,
+        enhanced_result: data.enhanced_result,
+        event_history: data.event_history,
+        nodes: laidOutNodes,
+        edges: rawEdges,
+      });
+      return data;
+    } catch (e) {
+      console.error('[WorkflowStore] Failed to load workflow snapshot', e);
+    }
+  },
 }));

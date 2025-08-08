@@ -116,13 +116,13 @@ const ToolCard: React.FC<{ tool: Tool }> = ({ tool }) => {
                 <div className="pl-8 space-y-4 border-l-2 border-brand-border ml-2">
                     {/* API Key Requirement */}
                     {tool.api_key_required && (
-                        <div>
-                            <h5 className="font-semibold text-brand-text-primary text-sm mb-2 flex items-center">
-                                <span className="w-2 h-2 bg-yellow-500 rounded-full mr-2"></span>
+                        <div className="rounded-md border border-yellow-600/40 bg-yellow-900/20 p-2">
+                            <h5 className="font-semibold text-yellow-300 text-sm mb-1 flex items-center">
+                                <span className="w-2 h-2 bg-yellow-400 rounded-full mr-2"></span>
                                 API Key Required
                             </h5>
-                            <p className="text-xs text-brand-text-secondary bg-yellow-50 p-2 rounded border border-yellow-200">
-                                This tool requires a <strong>{tool.api_key_required}</strong> API key to function.
+                            <p className="text-xs text-yellow-200">
+                                This tool requires a <strong className="text-yellow-100">{tool.api_key_required}</strong> API key to function.
                             </p>
                         </div>
                     )}
@@ -196,6 +196,21 @@ const SystemStatus: React.FC<{ health: RegistryHealth | null }> = ({ health }) =
         }
     };
 
+    // Build human-readable warnings derived from missing API keys
+    const derivedWarnings: string[] = [];
+    try {
+        const toolImpactWarnings = (health.validation.warnings || []).filter(w => w.includes('Missing API key'));
+        if (toolImpactWarnings.length > 0) {
+            derivedWarnings.push(...toolImpactWarnings);
+        } else if (health.api_keys) {
+            Object.entries(health.api_keys).forEach(([keyName, ok]) => {
+                if (!ok) {
+                    derivedWarnings.push(`Missing API key '${keyName}'. Some tools may be unavailable.`);
+                }
+            });
+        }
+    } catch {}
+
     return (
         <div className="mb-4 p-3 bg-brand-bg-secondary rounded-lg border border-brand-border">
             <div className="flex items-center justify-between mb-2">
@@ -223,7 +238,7 @@ const SystemStatus: React.FC<{ health: RegistryHealth | null }> = ({ health }) =
                 </div>
                 <div>
                     <span className="text-brand-text-secondary">Warnings:</span>
-                    <span className="ml-1 text-yellow-500">{health.validation.warnings.length}</span>
+                    <span className="ml-1 text-yellow-500">{health.validation.warnings.length + derivedWarnings.length}</span>
                 </div>
             </div>
             {health.validation.errors.length > 0 && (
@@ -234,6 +249,17 @@ const SystemStatus: React.FC<{ health: RegistryHealth | null }> = ({ health }) =
                     ))}
                     {health.validation.errors.length > 2 && (
                         <div className="text-red-500 italic">... and {health.validation.errors.length - 2} more</div>
+                    )}
+                </div>
+            )}
+            {(health.validation.warnings.length > 0 || derivedWarnings.length > 0) && (
+                <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
+                    <div className="font-medium text-yellow-700 mb-1">Warnings:</div>
+                    {[...health.validation.warnings, ...derivedWarnings].slice(0, 3).map((warn, index) => (
+                        <div key={index} className="text-yellow-700">• {warn}</div>
+                    ))}
+                    {[...health.validation.warnings, ...derivedWarnings].length > 3 && (
+                        <div className="text-yellow-700 italic">... and {([...health.validation.warnings, ...derivedWarnings].length - 3)} more</div>
                     )}
                 </div>
             )}

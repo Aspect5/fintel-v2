@@ -172,7 +172,7 @@ const WorkflowCanvasContent: React.FC<WorkflowCanvasProps> = ({
   onEdgesChange, 
   onNodeDoubleClick 
 }) => {
-  const { fitView } = useReactFlow();
+  const { fitView, getNodes } = useReactFlow();
 
   // Debug logging
   canvasLogger.debug('Rendering canvas', {
@@ -193,14 +193,18 @@ const WorkflowCanvasContent: React.FC<WorkflowCanvasProps> = ({
   useEffect(() => {
     try {
       if (nodes.length > 0) {
+        // If any node is large (e.g., height > 260), zoom out a bit more
+        const currentNodes = getNodes?.() || nodes;
+        const needsExtraPadding = currentNodes.some((n: any) => (n.measured?.height || 0) > 260);
+        const padding = needsExtraPadding ? 0.35 : 0.2;
         setTimeout(() => {
-          fitView({ padding: 0.2, duration: 800 });
+          fitView({ padding, duration: 800 });
         }, 100);
       }
     } catch (error) {
       canvasLogger.error('Error fitting view', { error });
     }
-  }, [nodes, fitView]);
+  }, [nodes, fitView, getNodes]);
 
   // Memoize edge types to prevent React Flow warnings
   const edgeTypes = useMemo(() => ({

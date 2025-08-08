@@ -135,7 +135,7 @@ export interface BasicNodeData {
   description?: string;
   agentName?: string;
   tools?: any[];
-  liveDetails?: any;
+  liveDetails?: LiveDetails | null;
 }
 
 export interface AgentNodeData extends BasicNodeData {
@@ -205,6 +205,19 @@ export interface WorkflowStatus extends Omit<PersistedWorkflowStatus, 'result'> 
     nodes?: CustomNode[];
     edges?: CustomEdge[];
     result?: any; // Keep result flexible here for various stages
+}
+
+// --- Live Details Types ---
+
+export interface LiveDetails {
+  agent_reasoning?: string;
+  tool_calls?: Array<{
+    tool_name: string;
+    tool_args?: any;
+  }>;
+  task_progress?: {
+    current_step: string;
+  };
 }
 
 // --- Global Type Declarations ---

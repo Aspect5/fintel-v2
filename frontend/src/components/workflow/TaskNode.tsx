@@ -10,7 +10,7 @@ import CodeBracketIcon from '../icons/CodeBracketIcon';
 import SparklesIcon from '../icons/SparklesIcon';
 
 const TaskNode: React.FC<NodeProps<CustomNodeData>> = ({ data }) => {
-  const { label, status, description, agentName, tools, liveDetails } = data;
+  const { label, status, description, agentName, tools, liveDetails, summary } = data as any;
 
   const getStatusIcon = () => {
     switch (status) {
@@ -55,11 +55,17 @@ const TaskNode: React.FC<NodeProps<CustomNodeData>> = ({ data }) => {
             <div>
               <span className="text-gray-300 font-semibold">Tools:</span>
               <div className="flex flex-wrap gap-1 mt-1">
-                {tools.map((tool, index) => (
+                {tools.map((tool: string, index: number) => (
                   <span key={index} className="bg-gray-700 text-gray-300 text-xs px-2 py-0.5 rounded-full">{tool}</span>
                 ))}
               </div>
             </div>
+          </div>
+        )}
+
+        {summary && (
+          <div className="text-xs text-gray-300 bg-gray-700/40 p-2 rounded border border-gray-600/40">
+            <span className="font-semibold text-gray-200">Summary:</span> {summary}
           </div>
         )}
       </div>
@@ -78,7 +84,7 @@ const TaskNode: React.FC<NodeProps<CustomNodeData>> = ({ data }) => {
                <div>
                  <strong className="text-gray-400">Recent Tool Calls:</strong>
                  <ul className="list-disc list-inside mt-1 space-y-1">
-                   {liveDetails.tool_calls.map((call, i) => (
+                   {liveDetails.tool_calls.map((call: any, i: number) => (
                      <li key={i} className="text-gray-500 font-mono text-xs truncate">
                        {call.tool_name}({JSON.stringify(call.tool_args || {})})
                      </li>

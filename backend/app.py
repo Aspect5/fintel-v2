@@ -286,8 +286,65 @@ def get_tools():
         
         return jsonify(tools_list)
     except Exception as e:
-        logger.error(f"Failed to get tool schemas: {e}", exc_info=True)
-        return jsonify({"error": "Failed to load tool schemas"}), 500
+        logger.error(f"Failed to load tools: {e}", exc_info=True)
+        return jsonify({"error": "Failed to load tools"}), 500
+
+
+@app.route('/api/suggest-workflow', methods=['POST'])
+def suggest_workflow():
+    """Suggest the most appropriate workflow based on the user's query using a lightweight LLM classification."""
+    try:
+        data = request.get_json() or {}
+        query = data.get('query')
+        if not query:
+            return jsonify({"error": "Query is required"}), 400
+
+        from backend.workflows.config_loader import get_workflow_config_loader
+        import controlflow as cf
+
+        config_loader = get_workflow_config_loader()
+        workflows = config_loader.config.get('workflows', {})
+        if not workflows:
+            return jsonify({"error": "No workflows available"}), 500
+
+        workflow_descriptions = "".join([
+            f"- {name}: {cfg.get('description', cfg.get('name', name))}" for name, cfg in workflows.items()
+        ])
+
+        prompt = f"""Based on the following user query, which of these workflows is the most appropriate?
+
+User Query: "{query}"
+
+Available Workflows:
+{workflow_descriptions}
+
+Respond with ONLY the name of the best workflow (e.g., 'quick_stock_analysis')."""
+
+        try:
+            result = cf.run(prompt, result_type=str, max_agent_turns=1)
+            # Normalize the response and strip any surrounding quotes
+            recommended_workflow = (result or "").strip().strip("'").strip('"')
+        except Exception as e:
+            logger.warning(f"LLM classification failed, using default. Error: {e}")
+            recommended_workflow = None
+
+        if recommended_workflow in workflows:
+            suggested_name = workflows[recommended_workflow].get('name', recommended_workflow)
+            return jsonify({
+                "recommended_workflow": recommended_workflow,
+                "suggestion_text": f"It looks like you're asking for a '{suggested_name}'. Shall I proceed with this analysis?"
+            })
+        else:
+            default_wf = config_loader.config.get('settings', {}).get('default_workflow', 'quick_stock_analysis')
+            default_name = workflows.get(default_wf, {}).get('name', 'Quick Stock Analysis')
+            return jsonify({
+                "recommended_workflow": default_wf,
+                "suggestion_text": f"I can run a '{default_name}' for you. Shall I proceed?"
+            })
+    except Exception as e:
+        logger.error(f"suggest_workflow error: {e}")
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route('/api/workflows', methods=['GET'])
 def get_workflows():
@@ -420,6 +477,7 @@ def run_workflow():
         query = data.get('query', '')
         provider = data.get('provider', 'openai')
         workflow_type = data.get('workflow_type', 'quick_stock_analysis')
+        ticker_override = data.get('ticker_override')
         
         if not query:
             return jsonify({"error": "Query is required"}), 400
@@ -512,7 +570,7 @@ def run_workflow():
                 status_callback({'status': 'running', 'current_task': 'Starting analysis...'})
                 
                 # Execute with workflow_id passed
-                result = workflow_instance.execute(query=query, provider=provider, workflow_id=workflow_id)
+                result = workflow_instance.execute(query=query, provider=provider, workflow_id=workflow_id, ticker_override=ticker_override)
                 
                 # Final update with complete results
                 final_update = {
@@ -667,6 +725,7 @@ def get_workflow_configs():
                     })
                 
                 workflows.append({
+                    'key': workflow_name,
                     'name': workflow_config.get('name', workflow_name),
                     'description': workflow_config.get('description', ''),
                     'agents': agents

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useStore } from '../stores/store';
 import SparklesIcon from './icons/SparklesIcon';
 import InformationCircleIcon from './icons/InformationCircleIcon';
 
@@ -13,6 +14,7 @@ interface AgentConfig {
 }
 
 interface WorkflowConfig {
+  key?: string;
   name: string;
   description: string;
   agents: AgentConfig[];
@@ -20,7 +22,8 @@ interface WorkflowConfig {
 
 const WorkflowConfigPanel: React.FC = () => {
   const [workflows, setWorkflows] = useState<WorkflowConfig[]>([]);
-  const [selectedWorkflow, setSelectedWorkflow] = useState<string>('quick_stock_analysis');
+  const { selectedWorkflow, setSelectedWorkflow } = useStore();
+  const [localSelected, setLocalSelected] = useState<string>(selectedWorkflow || 'quick_stock_analysis');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -42,7 +45,14 @@ const WorkflowConfigPanel: React.FC = () => {
     }
   };
 
-  const currentWorkflow = workflows.find(w => w.name === selectedWorkflow);
+  useEffect(() => {
+    // keep local selection in sync with global store
+    if (selectedWorkflow && selectedWorkflow !== localSelected) {
+      setLocalSelected(selectedWorkflow);
+    }
+  }, [selectedWorkflow]);
+
+  const currentWorkflow = workflows.find(w => (w.key || w.name) === localSelected);
 
   return (
     <div className="space-y-6">
@@ -59,15 +69,19 @@ const WorkflowConfigPanel: React.FC = () => {
             Choose Analysis Type
           </label>
           <div className="space-y-3">
-            {workflows.map((workflow) => (
+            {[...workflows, { key: 'custom', name: 'Custom', description: 'Build your own (coming soon)', agents: [] } as WorkflowConfig].map((workflow) => (
               <div
-                key={workflow.name}
+                key={(workflow.key || workflow.name)}
                 className={`relative p-4 rounded-lg border-2 cursor-pointer transition-all ${
-                  selectedWorkflow === workflow.name
+                  localSelected === (workflow.key || workflow.name)
                     ? 'border-brand-primary bg-brand-primary/10'
                     : 'border-brand-border bg-brand-bg hover:border-brand-primary/50 hover:bg-brand-bg-secondary'
                 }`}
-                onClick={() => setSelectedWorkflow(workflow.name)}
+                onClick={() => {
+                  const key = workflow.key || workflow.name;
+                  setLocalSelected(key);
+                  setSelectedWorkflow(key);
+                }}
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
@@ -78,7 +92,7 @@ const WorkflowConfigPanel: React.FC = () => {
                       {workflow.description}
                     </p>
                   </div>
-                  {selectedWorkflow === workflow.name && (
+                  {localSelected === (workflow.key || workflow.name) && (
                     <div className="w-5 h-5 bg-brand-primary rounded-full flex items-center justify-center ml-3">
                       <div className="w-2 h-2 bg-white rounded-full"></div>
                     </div>
@@ -91,7 +105,7 @@ const WorkflowConfigPanel: React.FC = () => {
       </div>
 
       {/* Current Workflow Details */}
-      {currentWorkflow && (
+      {currentWorkflow && (currentWorkflow.key || currentWorkflow.name) !== 'custom' && (
         <div className="bg-brand-bg-secondary border border-brand-border rounded-lg p-4">
           <h4 className="font-medium text-brand-text-primary mb-3">Selected Workflow Details</h4>
           
@@ -126,6 +140,13 @@ const WorkflowConfigPanel: React.FC = () => {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {currentWorkflow && (currentWorkflow.key || currentWorkflow.name) === 'custom' && (
+        <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-4">
+          <h4 className="font-medium text-yellow-200 mb-2">Custom Workflow</h4>
+          <p className="text-sm text-yellow-300">Build-your-own is not implemented yet. Choose another workflow above or proceed via chat for suggestions.</p>
         </div>
       )}
 

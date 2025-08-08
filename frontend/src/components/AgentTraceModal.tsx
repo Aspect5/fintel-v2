@@ -91,7 +91,16 @@ interface AgentTraceModalProps {
 const AgentTraceModal: React.FC<AgentTraceModalProps> = ({ node, onClose, eventHistory = [] }) => {
     if (!node) return null;
 
-    const { label, details, error, result, toolCalls = [] } = node.data as AgentNodeData;
+    const { label, details, error, result, toolCalls = [], taskId, status, summary, agentName } = node.data as AgentNodeData & { taskId?: string; status?: string; summary?: string; agentName?: string };
+
+    const pretty = (data: any) => {
+        try {
+            if (typeof data === 'string') return data;
+            return JSON.stringify(data, null, 2);
+        } catch {
+            return String(data);
+        }
+    };
 
     // Enhanced debugging to identify the duplication issue
     console.log('=== AgentTraceModal Debug Info ===');
@@ -104,6 +113,7 @@ const AgentTraceModal: React.FC<AgentTraceModalProps> = ({ node, onClose, eventH
     console.log('Are details and result the same?', details === result);
     console.log('Full node data:', node.data);
     console.log('Event History:', eventHistory);
+    console.log('TaskId from node:', taskId);
     console.log('===================================');
 
     // CRITICAL FIX: Ensure details and result are not the same
@@ -166,6 +176,26 @@ const AgentTraceModal: React.FC<AgentTraceModalProps> = ({ node, onClose, eventH
         }
     };
 
+    // Filter event history for this node: match by taskId if present, otherwise by agentName
+    const filteredEvents = Array.isArray(eventHistory)
+        ? eventHistory.filter((e) => {
+            const byTask = taskId && e.task_id === taskId;
+            const byAgent = agentName && e.agent_name === agentName;
+            return byTask || byAgent;
+          })
+        : [];
+
+    // Derive tool call list from filtered events if node doesn't provide explicit toolCalls
+    const derivedToolCalls = filteredEvents
+        .filter((e) => e.event_type === 'agent_tool_call')
+        .map((e) => ({
+            toolName: (e.tool_name as string) || 'unknown',
+            toolInput: e.tool_input,
+            toolOutput: e.tool_output,
+            toolOutputSummary: e.tool_output ? (typeof e.tool_output === 'string' ? e.tool_output : JSON.stringify(e.tool_output)) : ''
+        }));
+    const toolCallsToShow = (toolCalls && toolCalls.length > 0) ? toolCalls : derivedToolCalls;
+
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-brand-surface border border-brand-border rounded-lg shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
@@ -190,19 +220,24 @@ const AgentTraceModal: React.FC<AgentTraceModalProps> = ({ node, onClose, eventH
                                 <strong>Agent Name:</strong> {label}
                             </div>
                             <div>
-                                <strong>Status:</strong> {error ? 'Failed' : result ? 'Completed' : 'Running'}
+                                <strong>Status:</strong> {status ? status.charAt(0).toUpperCase() + status.slice(1) : (error ? 'Failed' : result ? 'Completed' : 'Running')}
                             </div>
                             <div className="md:col-span-2">
                                 <strong>Task Description:</strong> {safeDetails || getFallbackTaskDescription(label)}
                             </div>
+                            {summary && (
+                              <div className="md:col-span-2">
+                                <strong>Summary:</strong> {summary}
+                              </div>
+                            )}
                         </div>
                     </DetailSection>
 
                     {/* Event Timeline */}
-                    {eventHistory.length > 0 && (
+                    {filteredEvents.length > 0 && (
                         <DetailSection title="Execution Timeline">
                             <div className="space-y-3">
-                                {eventHistory.map((event, index) => (
+                                {filteredEvents.map((event, index) => (
                                     <div key={index} className="flex items-start space-x-3 p-3 bg-brand-bg/50 rounded-lg border border-brand-border">
                                         <div className={`text-lg ${getEventColor(event.event_type)}`}>
                                             {getEventIcon(event.event_type)}
@@ -265,9 +300,9 @@ const AgentTraceModal: React.FC<AgentTraceModalProps> = ({ node, onClose, eventH
                     )}
 
                     {/* Tool Calls */}
-                    {toolCalls.length > 0 && (
+                    {toolCallsToShow.length > 0 && (
                         <DetailSection title="Tool Executions">
-                            {toolCalls.map((toolCall, index) => (
+                            {toolCallsToShow.map((toolCall, index) => (
                                 <ToolCallDisplay key={index} toolCall={toolCall} />
                             ))}
                         </DetailSection>
@@ -278,7 +313,9 @@ const AgentTraceModal: React.FC<AgentTraceModalProps> = ({ node, onClose, eventH
                         <DetailSection title="Final Analysis">
                             <div className="bg-green-900/20 border border-green-700/50 rounded-lg p-4">
                                 <div className="text-green-300 font-medium mb-2">Analysis Result</div>
-                                <div className="text-white whitespace-pre-wrap">{result}</div>
+                                <pre className="text-white whitespace-pre-wrap text-xs overflow-x-auto">
+{pretty(result)}
+                                </pre>
                             </div>
                         </DetailSection>
                     )}

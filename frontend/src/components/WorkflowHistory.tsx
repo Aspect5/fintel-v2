@@ -18,6 +18,7 @@ const WorkflowHistory: React.FC<WorkflowHistoryProps> = ({
 }) => {
     const [history, setHistory] = React.useState<WorkflowHistoryItem[]>([]);
     const [isOpen, setIsOpen] = React.useState(false);
+    const [isClearing, setIsClearing] = React.useState(false);
     
     // Load history from localStorage
     React.useEffect(() => {
@@ -27,7 +28,7 @@ const WorkflowHistory: React.FC<WorkflowHistoryProps> = ({
         }
     }, []);
     
-    // Add new workflow to history
+    // Add or refresh workflow in history
     React.useEffect(() => {
         if (currentWorkflowId) {
             fetch(`/api/workflow-status/${currentWorkflowId}`)
@@ -51,6 +52,16 @@ const WorkflowHistory: React.FC<WorkflowHistoryProps> = ({
                 .catch(console.error);
         }
     }, [currentWorkflowId]);
+
+    const handleClearHistory = () => {
+        setIsClearing(true);
+        try {
+            localStorage.removeItem('workflowHistory');
+            setHistory([]);
+        } finally {
+            setIsClearing(false);
+        }
+    };
     
     return (
         <div className="absolute top-4 right-4 z-20">
@@ -67,6 +78,18 @@ const WorkflowHistory: React.FC<WorkflowHistoryProps> = ({
             {isOpen && (
                 <div className="absolute top-12 right-0 bg-brand-surface rounded-lg shadow-xl p-4 w-80 max-h-96 overflow-y-auto">
                     <h3 className="text-lg font-semibold mb-3">Recent Workflows</h3>
+                    <div className="flex justify-between items-center mb-3">
+                        <span className="text-xs text-brand-text-secondary">Stored locally</span>
+                        <button
+                            onClick={handleClearHistory}
+                            disabled={isClearing}
+                            className="text-xs text-brand-text-secondary hover:text-brand-text-primary underline disabled:opacity-50"
+                        >
+                            {isClearing ? 'Clearing…' : 'Clear history'}
+                        </button>
+                    </div>
+                    {/* Refresh statuses on open */}
+                    <AutoRefresher items={history} onRefresh={(updated) => setHistory(updated)} />
                     {history.length === 0 ? (
                         <p className="text-brand-text-secondary text-sm">No previous workflows</p>
                     ) : (
@@ -100,6 +123,34 @@ const WorkflowHistory: React.FC<WorkflowHistoryProps> = ({
             )}
         </div>
     );
+};
+
+// Lightweight refresher component: fetches latest statuses when panel opens
+const AutoRefresher: React.FC<{ items: WorkflowHistoryItem[]; onRefresh: (items: WorkflowHistoryItem[]) => void }> = ({ items, onRefresh }) => {
+    React.useEffect(() => {
+        let mounted = true;
+        const refresh = async () => {
+            try {
+                const refreshed: WorkflowHistoryItem[] = await Promise.all(items.map(async (it) => {
+                    try {
+                        const res = await fetch(`/api/workflow-status/${it.id}`);
+                        const data = await res.json();
+                        return { ...it, status: data.status as any };
+                    } catch {
+                        return it;
+                    }
+                }));
+                if (mounted) {
+                    localStorage.setItem('workflowHistory', JSON.stringify(refreshed));
+                    onRefresh(refreshed);
+                }
+            } catch {}
+        };
+        refresh();
+        const t = setInterval(refresh, 15000);
+        return () => { mounted = false; clearInterval(t); };
+    }, [items, onRefresh]);
+    return null;
 };
 
 export default WorkflowHistory;

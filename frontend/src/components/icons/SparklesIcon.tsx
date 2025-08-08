@@ -1,6 +1,7 @@
 
 import React from 'react';
 
+// Symmetrical grid-like icon to represent Workflows
 const SparklesIcon: React.FC<{ className?: string }> = ({ className = 'w-6 h-6' }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -10,11 +11,11 @@ const SparklesIcon: React.FC<{ className?: string }> = ({ className = 'w-6 h-6' 
     stroke="currentColor"
     strokeWidth={2}
   >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      d="M5 3v4M3 5h4M19 3v4M17 5h4M12 2v4M10 4h4M3 21v-4M5 19H1M19 21v-4M21 19h-4M12 22v-4M14 20h-4M5 12H1M12 5V1M19 12h4M12 19v4"
-    />
+    <rect x="3" y="3" width="6" height="6" rx="1" />
+    <rect x="15" y="3" width="6" height="6" rx="1" />
+    <rect x="3" y="15" width="6" height="6" rx="1" />
+    <rect x="15" y="15" width="6" height="6" rx="1" />
+    <path d="M9 6h6M12 9v6M9 18h6" />
   </svg>
 );
 

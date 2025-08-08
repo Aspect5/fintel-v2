@@ -97,6 +97,7 @@ const App: React.FC = () => {
     const [isReportModalVisible, setIsReportModalVisible] = useState(false);
     const [reportGenerated, setReportGenerated] = useState(false);
     const [isLogViewerVisible, setIsLogViewerVisible] = useState(false);
+    const [bannerInfo, setBannerInfo] = useState<{ type: string; loadedAt: string } | null>(null);
 
     // Global state from regular Zustand store
     const { setIsApiKeyModalOpen, chatMessages, addChatMessage } = useStore();
@@ -104,9 +105,10 @@ const App: React.FC = () => {
     // Global state from the new workflow-specific Zustand store
     const {
         nodes, edges, onNodesChange, onEdgesChange,
-        workflowId, setPollingWorkflow,
+        workflowId,
         status: workflowStatus, query: workflowQuery, executionTime,
-        event_history
+        event_history,
+        loadWorkflowSnapshot,
     } = useWorkflowStore();
 
     // This hook now manages polling and updates the store directly
@@ -281,20 +283,26 @@ const App: React.FC = () => {
         setIsLoading(workflowStatus === 'running' || workflowStatus === 'initializing');
     }, [workflowStatus]);
 
-    const handleSelectHistoricalWorkflow = (selectedWorkflowId: string) => {
-        // Use store action to set the workflow for polling
-        setPollingWorkflow(selectedWorkflowId);
+    const handleSelectHistoricalWorkflow = async (selectedWorkflowId: string) => {
+        const data = await loadWorkflowSnapshot(selectedWorkflowId);
+        const wfType = data?.workflow_type || 'unknown';
+        const loadedAt = new Date().toLocaleTimeString();
+        setBannerInfo({ type: wfType, loadedAt });
+        const msg = `Loaded ${wfType} (${loadedAt}).`;
+        useStore.getState().addChatMessage({ role: 'assistant', content: msg });
+        // Auto-hide banner after a few seconds
+        setTimeout(() => setBannerInfo(null), 4000);
     };
 
-    const handleNodeDoubleClick = (_event: React.MouseEvent, node: CustomNode) => {
-        if (node.id === 'enhanced_result' || node.data.status === 'completed') {
-            setIsReportModalVisible(true);
-            return;
-        }
-        if ('result' in node.data || 'error' in node.data || 'toolCalls' in node.data) {
-            setSelectedNode(node);
-        }
-    };
+  const handleNodeDoubleClick = (_event: React.MouseEvent, node: CustomNode) => {
+    // Output node opens report
+    if (node.id === 'output') {
+      setIsReportModalVisible(true);
+      return;
+    }
+    // For agent/task nodes, open the AgentTraceModal
+    setSelectedNode(node);
+  };
 
     return (
         <div className="flex h-screen bg-brand-bg text-white font-sans">
@@ -319,6 +327,11 @@ const App: React.FC = () => {
                         currentWorkflowId={workflowId}
                         onSelectWorkflow={handleSelectHistoricalWorkflow}
                     />
+                    {bannerInfo && (
+                        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-brand-surface/90 backdrop-blur px-3 py-1.5 rounded-full shadow border border-brand-border text-xs text-brand-text-primary z-20">
+                            Active: <span className="font-semibold">{bannerInfo.type}</span> • loaded at {bannerInfo.loadedAt}
+                        </div>
+                    )}
                     
                     {workflowStatus !== 'idle' && (
                         <div className="absolute top-4 left-4 bg-brand-surface p-4 rounded-lg shadow-lg max-w-md z-10">

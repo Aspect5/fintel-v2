@@ -143,6 +143,20 @@ class RegistryManager:
             key_name: bool(key_value and key_value.strip())
             for key_name, key_value in api_keys.items()
         }
+
+        # Derived warnings for missing keys affecting enabled tools
+        missing_key_to_tools: Dict[str, List[str]] = {}
+        for tool_name, tool_info in self.tool_registry._tools.items():
+            if not tool_info.enabled:
+                continue
+            required = tool_info.api_key_required
+            if required and not details["api_key_validation"].get(required, False):
+                missing_key_to_tools.setdefault(required, []).append(tool_name)
+        for key_name, tool_list in missing_key_to_tools.items():
+            if tool_list:
+                warnings.append(
+                    f"Missing API key '{key_name}' — affected tools: {sorted(tool_list)}"
+                )
         
         # System health summary
         details["system_health"] = {

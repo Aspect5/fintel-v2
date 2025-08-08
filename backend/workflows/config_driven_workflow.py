@@ -8,6 +8,8 @@ Uses proper ControlFlow patterns for task orchestration and dependency managemen
 
 import controlflow as cf
 import time
+import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Literal
 from pydantic import BaseModel, Field
@@ -76,6 +78,8 @@ class ConfigDrivenWorkflow(BaseWorkflow):
         self.execution_context = {}
         self.task_results = {}
         self.status_callbacks = []
+        self.tasks: Dict[str, cf.Task] = {}
+        self.task_statuses: Dict[str, str] = {}
         
         # Initialize workflow status for tracking
         self.workflow_status = {
@@ -191,24 +195,58 @@ class ConfigDrivenWorkflow(BaseWorkflow):
         except Exception as e:
             logger.warning(f"Could not retrieve tool calls: {e}")
         return []
+
+    def _get_tools_used_by_agent(self, agent_name: str) -> List[str]:
+        """Derive the list of tools actually used by a given agent so far.
+
+        Filters out ControlFlow completion tools (e.g., mark_task_*_successful).
+        """
+        try:
+            if not agent_name:
+                return []
+            if hasattr(self, 'event_handler') and self.event_handler and hasattr(self.event_handler, 'get_events_by_type'):
+                events = self.event_handler.get_events_by_type('agent_tool_call') or []
+                used = []
+                for e in events:
+                    if e.get('agent_name') != agent_name:
+                        continue
+                    tool_name = e.get('tool_name') or ''
+                    if not tool_name or tool_name.startswith('mark_task_'):
+                        # Skip completion tools
+                        continue
+                    used.append(tool_name)
+                # Deduplicate preserving order
+                seen = set()
+                ordered = []
+                for name in used:
+                    if name not in seen:
+                        seen.add(name)
+                        ordered.append(name)
+                return ordered
+        except Exception as e:
+            logger.warning(f"Could not derive tools for agent '{agent_name}': {e}")
+        return []
     
     def _extract_ticker_from_query(self, query: str) -> str:
-        """Extract ticker symbol using AI-powered detection"""
+        """Extract ticker symbol using AI-powered detection; raise if not found."""
         try:
             from ..tools.builtin_tools import _detect_ticker_with_ai
             
             detection_result = _detect_ticker_with_ai(query)
+            self.execution_context['ticker_detection'] = detection_result
             
-            if detection_result["status"] == "success" and detection_result["ticker"] != "UNKNOWN":
+            if detection_result.get("status") == "success" and detection_result.get("ticker") and detection_result.get("ticker") != "UNKNOWN":
                 logger.info(f"AI detected ticker: {detection_result['ticker']}")
-                return detection_result["ticker"]
+                return str(detection_result["ticker"])  # type: ignore[index]
             else:
-                logger.warning("AI ticker detection failed, using fallback")
-                return "AAPL"
+                logger.warning("AI ticker detection failed or returned UNKNOWN")
+                raise ValueError("TickerNotDetected: Could not detect a valid ticker from the query.")
                 
         except Exception as e:
             logger.error(f"Ticker detection error: {e}")
-            return "AAPL"
+            # Preserve error for UI to show why input is needed
+            self.execution_context['ticker_detection'] = {"status": "error", "error": str(e)}
+            raise
     
     def _should_include_agent_for_query(self, agent_config: Dict[str, Any], query: str) -> bool:
         """Determine if agent should be included based on query analysis"""
@@ -239,7 +277,23 @@ class ConfigDrivenWorkflow(BaseWorkflow):
                 'provider': provider
             })
             
-            ticker = self._extract_ticker_from_query(query)
+            # Allow explicit override from caller when user provides it
+            ticker_override = kwargs.get('ticker_override')
+            if ticker_override and isinstance(ticker_override, str) and ticker_override.strip():
+                ticker = ticker_override.strip().upper()
+                self.execution_context['ticker_detection'] = {
+                    'status': 'override',
+                    'ticker': ticker,
+                    'reason': 'User provided ticker override'
+                }
+            else:
+                try:
+                    ticker = self._extract_ticker_from_query(query)
+                except Exception:
+                    # Ask user for ticker; surface friendly message
+                    message = "I couldn't detect a ticker in your question. Please reply with a stock symbol, e.g., AAPL or MSFT."
+                    self._update_status({'status': 'failed', 'error': message})
+                    raise
             self.execution_context['ticker'] = ticker
             
             self._update_status({'status': 'creating_agents', 'ticker': ticker})
@@ -294,82 +348,247 @@ class ConfigDrivenWorkflow(BaseWorkflow):
     
     def _execute_workflow_tasks(self, query: str, ticker: str, agents: Dict[str, cf.Agent]) -> InvestmentAnalysis:
         """
-        Execute workflow tasks using ControlFlow task orchestration
+        Execute workflow tasks using a dynamically constructed ControlFlow DAG.
+        Honors optional 'dependencies' declared in the workflow configuration.
         """
         workflow_context = {"query": query, "ticker": ticker, "workflow_type": self.workflow_type}
-        
+
         from ..utils.monitoring import FintelEventHandler
         self.event_handler = FintelEventHandler()
-        
-        market_analysis_result = None
-        if 'market_analysis' in agents:
-            self._update_status({
-                'current_task': 'market_analysis',
-                'task_details': 'Analyzing market data and company fundamentals'
-            })
-            self.execution_context['market_analysis_start_time'] = datetime.now().isoformat()
-            market_analysis_result = cf.run(
-                f"Analyze market data for {ticker}",
-                instructions=f"Use get_market_data(ticker='{ticker}') and get_company_overview(ticker='{ticker}') to provide a market analysis.",
-                agents=[agents['market_analysis']],
-                result_type=MarketAnalysisResult,
+
+        agent_configs: List[Dict[str, Any]] = self.workflow_config.get('agents', [])
+
+        # 1) Create Task objects for all configured roles that exist in the agent mapping
+        tasks: Dict[str, cf.Task] = {}
+        role_to_result_type: Dict[str, Any] = {}
+
+        for agent_config in agent_configs:
+            role = agent_config.get('role')
+            if not role or role not in agents:
+                continue
+
+            # Map known roles to structured result models; default to str for intermediates
+            if role == 'market_analysis':
+                result_type = MarketAnalysisResult
+            elif role == 'risk_assessment':
+                result_type = RiskAssessmentResult
+            elif role == 'synthesis':
+                result_type = InvestmentAnalysis
+            else:
+                result_type = str
+
+            role_to_result_type[role] = result_type
+
+            prompt = f"Perform {role.replace('_', ' ')} for {ticker} based on the query: {query}"
+            # Build role-aware instructions that include upstream context keys and result schema hint
+            upstream_keys = agent_config.get('dependencies', []) or []
+            upstream_hint = f" Use prior results from: {', '.join(upstream_keys)}." if upstream_keys else ""
+            result_type_name = result_type.__name__ if hasattr(result_type, '__name__') else 'ResultModel'
+            tool_names = agent_config.get('tools', []) or []
+            tools_hint = f" Available tools: {', '.join(tool_names)}." if tool_names else ""
+            instructions = agent_config.get('instructions', '') or (
+                f"Complete the {role.replace('_', ' ')} task using available tools.{upstream_hint}{tools_hint} "
+                f"The current query is '{query}' for ticker {ticker}. "
+                f"Return output strictly as valid JSON matching the {result_type_name} schema."
+            )
+
+            tasks[role] = cf.Task(
+                objective=prompt,
+                instructions=instructions,
+                agents=[agents[role]],
                 context=workflow_context,
-                max_agent_turns=3
+                result_type=result_type,
+                name=f"task_{role}"
             )
-            self.task_results['market_analysis'] = market_analysis_result
-        
-        risk_assessment_result = None
-        if 'risk_assessment' in agents:
-            self._update_status({
-                'current_task': 'risk_assessment',
-                'task_details': 'Assessing investment risks and market volatility'
-            })
-            risk_context = workflow_context.copy()
-            if market_analysis_result:
-                risk_context['market_analysis'] = market_analysis_result
-            
-            risk_assessment_result = cf.run(
-                f"Assess investment risk for {ticker}",
-                instructions="Assess investment risk based on available data, including market analysis.",
-                agents=[agents['risk_assessment']],
-                result_type=RiskAssessmentResult,
-                context=risk_context,
-                max_agent_turns=2
-            )
-            self.task_results['risk_assessment'] = risk_assessment_result
-        
-        self._update_status({
-            'current_task': 'final_synthesis',
-            'task_details': 'Synthesizing analysis into a comprehensive recommendation'
-        })
-        synthesis_agent = self._select_synthesis_agent(agents)
-        synthesis_context = workflow_context.copy()
-        if market_analysis_result:
-            synthesis_context['market_analysis'] = market_analysis_result
-        if risk_assessment_result:
-            synthesis_context['risk_assessment'] = risk_assessment_result
-            
-        final_analysis = cf.run(
-            f"Create comprehensive investment analysis for {ticker}",
-            instructions="Create a final investment analysis based on all available data. Provide recommendation, confidence, insights, sentiment, and risk summary.",
-            agents=[synthesis_agent],
-            result_type=InvestmentAnalysis,
-            context=synthesis_context,
-            max_agent_turns=3
-        )
-        self.task_results['final_synthesis'] = final_analysis
-        
-        return final_analysis
-    
-    def _select_synthesis_agent(self, agents: Dict[str, cf.Agent]) -> cf.Agent:
-        """Select the best available agent for final synthesis"""
-        preferred_roles = ['sentiment_classification', 'recommendation', 'market_analysis']
-        for role in preferred_roles:
-            if role in agents:
-                return agents[role]
-        if agents:
-            return list(agents.values())[0]
-        raise ValueError("No agents available for synthesis")
+
+        # Expose tasks mapping on the instance for downstream status/graph building
+        self.tasks = tasks
+
+        # 2) Configure dependencies
+        any_explicit_dependencies = False
+        for agent_config in agent_configs:
+            role = agent_config.get('role')
+            if role not in tasks:
+                continue
+            dependencies = agent_config.get('dependencies', []) or []
+            if dependencies:
+                any_explicit_dependencies = True
+            for dep_role in dependencies:
+                if dep_role in tasks:
+                    try:
+                        # Use ControlFlow's official API for dependencies
+                        tasks[role].add_dependency(tasks[dep_role])
+                    except Exception as e:
+                        logger.warning(f"Failed to set dependency: {role} depends_on {dep_role}: {e}")
+                else:
+                    logger.warning(f"Invalid dependency '{dep_role}' for task '{role}'")
+
+        # If no dependencies are defined anywhere, fall back to a linear chain in config order
+        if not any_explicit_dependencies:
+            ordered_roles = [ac.get('role') for ac in agent_configs if ac.get('role') in tasks]
+            for i in range(1, len(ordered_roles)):
+                prev_role = ordered_roles[i - 1]
+                current_role = ordered_roles[i]
+                try:
+                    tasks[current_role].add_dependency(tasks[prev_role])
+                except Exception as e:
+                    logger.warning(f"Failed to set linear dependency: {current_role} depends_on {prev_role}: {e}")
+
+        # 3) Build levelized execution plan (parallel waves) using dependencies
+        roles_in_graph = [r for r in [ac.get('role') for ac in agent_configs] if r in tasks]
+        role_deps: Dict[str, set] = {r: set() for r in roles_in_graph}
+        for agent_config in agent_configs:
+            r = agent_config.get('role')
+            if r in role_deps:
+                for dep in (agent_config.get('dependencies', []) or []):
+                    if dep in tasks:
+                        role_deps[r].add(dep)
+
+        indegree: Dict[str, int] = {r: len(role_deps[r]) for r in roles_in_graph}
+        dependents: Dict[str, List[str]] = {r: [] for r in roles_in_graph}
+        for r, deps in role_deps.items():
+            for d in deps:
+                if d in dependents:
+                    dependents[d].append(r)
+
+        # Collect roles by levels
+        levels: List[List[str]] = []
+        ready = [r for r, deg in indegree.items() if deg == 0]
+        visited = set()
+        while ready:
+            current_level = [r for r in ready if r not in visited]
+            if not current_level:
+                break
+            levels.append(current_level)
+            for r in current_level:
+                visited.add(r)
+                for child in dependents.get(r, []):
+                    indegree[child] -= 1
+            ready = [r for r, deg in indegree.items() if deg == 0 and r not in visited]
+
+        # Fallback linear level if graph malformed
+        if not levels:
+            levels = [[r] for r in roles_in_graph]
+
+        # 4) Execute level by level (parallel per level)
+        final_result: Optional[InvestmentAnalysis] = None
+        for level_index, level_roles in enumerate(levels):
+            # Update status for the first role of the level
+            try:
+                display_role = level_roles[0]
+                self._update_status({'status': 'running', 'current_task': display_role, 'task_details': f"Executing {', '.join(level_roles)}..."})
+            except Exception:
+                pass
+
+            # Execute tasks in this level concurrently using threads
+            try:
+                with ThreadPoolExecutor(max_workers=max(1, len(level_roles))) as executor:
+                    future_to_role = {}
+                    for r in level_roles:
+                        if r in tasks:
+                            task_obj = tasks[r]
+                            # If any dependency failed, skip this task and mark SKIPPED
+                            deps = role_deps.get(r, set())
+                            if any(self.task_statuses.get(d) == 'failed' for d in deps):
+                                try:
+                                    task_obj.mark_skipped()
+                                except Exception:
+                                    pass
+                                self.task_statuses[r] = 'skipped'
+                                continue
+                            # Submit direct run of the task to ensure execution
+                            self.execution_context[f'{r}_start_time'] = datetime.now().isoformat()
+                            if hasattr(self, 'event_handler') and self.event_handler:
+                                future_to_role[executor.submit(task_obj.run, handlers=[self.event_handler])] = r
+                            else:
+                                future_to_role[executor.submit(task_obj.run)] = r
+                    for future in as_completed(future_to_role):
+                        r = future_to_role[future]
+                        try:
+                            res = future.result()
+                            if res is not None:
+                                self.task_results[r] = res
+                                self._log_task_result(r, res)
+                            # Record end time and status
+                            self.execution_context[f'{r}_end_time'] = datetime.now().isoformat()
+                            # Normalize ControlFlow status to UI labels
+                            try:
+                                raw = tasks[r].status.name.lower()
+                            except Exception:
+                                raw = 'successful' if r in self.task_results else 'failed'
+                            status_map = {
+                                'successful': 'completed',
+                                'failed': 'failed',
+                                'running': 'running',
+                                'skipped': 'skipped',
+                                'pending': 'pending',
+                            }
+                            self.task_statuses[r] = status_map.get(raw, raw)
+                        except Exception as e:
+                            logger.error(f"Task '{r}' failed during level {level_index+1} execution: {e}", exc_info=True)
+                            self.task_statuses[r] = 'failed'
+                            self.execution_context[f'{r}_end_time'] = datetime.now().isoformat()
+            except Exception as e:
+                logger.error(f"Level {level_index+1} thread execution failed: {e}", exc_info=True)
+
+            # Record results for all tasks in this level and inject into shared context
+            for r in level_roles:
+                try:
+                    task_obj = tasks[r]
+                    task_result_value = getattr(task_obj, 'result', None)
+                    if task_result_value is not None:
+                        self.task_results[r] = task_result_value
+                        self._log_task_result(r, task_result_value)
+                        # Make upstream results available to downstream tasks via shared context
+                        try:
+                            if hasattr(task_result_value, 'dict'):
+                                workflow_context[r] = task_result_value.dict()
+                            else:
+                                workflow_context[r] = str(task_result_value)
+                        except Exception:
+                            workflow_context[r] = str(task_result_value)
+                        if r == 'synthesis' and isinstance(task_result_value, InvestmentAnalysis):
+                            final_result = task_result_value
+                    # Ensure we have a status recorded for the role
+                    if r not in self.task_statuses:
+                        try:
+                            raw = task_obj.status.name.lower()
+                        except Exception:
+                            raw = 'pending'
+                        self.task_statuses[r] = {'successful': 'completed'}.get(raw, raw)
+                except Exception:
+                    continue
+
+        if final_result is None:
+            # Attempt to construct InvestmentAnalysis from upstream results if available
+            try:
+                market_summary = self.task_results.get('market_analysis')
+                risk_summary = self.task_results.get('risk_assessment')
+                final_result = InvestmentAnalysis(
+                    ticker=ticker,
+                    market_analysis=str(getattr(market_summary, 'analysis_summary', market_summary) or ''),
+                    sentiment='neutral',
+                    recommendation='No specific recommendation provided',
+                    confidence=0.5,
+                    key_insights=["Automated synthesis placeholder"],
+                    risk_assessment=str(getattr(risk_summary, 'risk_summary', risk_summary) or '')
+                )
+            except Exception as e:
+                logger.error(f"Failed to construct fallback InvestmentAnalysis: {e}")
+                # Return a minimal safe object rather than raising to avoid user-facing failures
+                final_result = InvestmentAnalysis(
+                    ticker=ticker,
+                    market_analysis='',
+                    sentiment='neutral',
+                    recommendation='No specific recommendation provided',
+                    confidence=0.5,
+                    key_insights=["Automated synthesis placeholder"],
+                    risk_assessment=''
+                )
+
+        # Ensure final result is recorded under 'synthesis' for downstream consumers
+        self.task_results['synthesis'] = final_result
+        return final_result
     
     def _build_execution_trace(self) -> Dict[str, Any]:
         """Build execution trace for debugging and monitoring"""
@@ -385,37 +604,79 @@ class ConfigDrivenWorkflow(BaseWorkflow):
     
     def _build_agent_invocations(self) -> List[Dict[str, Any]]:
         """Build agent invocation history for monitoring"""
+        configured_roles = [agent.get('role') for agent in self.workflow_config.get('agents', []) if agent.get('role')]
         return [
             {
-                'task': task_name,
-                'status': 'completed' if task_name in self.task_results else 'skipped',
+                'task': role,
+                'status': self.task_statuses.get(role, 'pending'),
                 'timestamp': datetime.now().isoformat()
             }
-            for task_name in ['market_analysis', 'risk_assessment', 'final_synthesis']
+            for role in configured_roles
         ]
     
     def _get_task_status(self, task_role: str, workflow_status: str, current_task: Optional[str]) -> str:
-        """Determine the status of a task based on workflow context."""
-        if task_role in self.task_results:
-            return 'completed'
+        """Determine status from real ControlFlow Task status when available."""
+        status = self.task_statuses.get(task_role)
+        if status:
+            # normalize to UI-friendly values
+            mapping = {
+                'successful': 'completed',
+                'failed': 'failed',
+                'running': 'running',
+                'skipped': 'skipped',
+                'pending': 'pending'
+            }
+            return mapping.get(status, status)
         if task_role == current_task:
             return 'running'
-        
-        # Check if task is upstream of the current running task
-        defined_tasks = [agent.get('role') for agent in self.workflow_config.get('agents', [])]
-        try:
-            if current_task and current_task in defined_tasks and task_role in defined_tasks:
-                current_task_index = defined_tasks.index(current_task)
-                task_index = defined_tasks.index(task_role)
-                if task_index < current_task_index:
-                    return 'completed' 
-        except ValueError:
-            pass
-
         return 'pending'
 
+    def _get_task_summary(self, role: str) -> Optional[str]:
+        """Derive a concise summary string for a task's result, if available."""
+        res = self.task_results.get(role)
+        try:
+            if isinstance(res, BaseModel):
+                if role == 'market_analysis' and hasattr(res, 'analysis_summary'):
+                    return getattr(res, 'analysis_summary')
+                if role == 'risk_assessment' and hasattr(res, 'risk_summary'):
+                    return getattr(res, 'risk_summary')
+                if role == 'synthesis':
+                    # Richer synthesis summary: recommendation + up to 2 insights + sentiment/confidence
+                    rec = getattr(res, 'recommendation', None) or ''
+                    insights = list(getattr(res, 'key_insights', []) or [])
+                    sentiment = getattr(res, 'sentiment', None)
+                    confidence = getattr(res, 'confidence', None)
+                    parts = []
+                    if rec:
+                        parts.append(str(rec))
+                    if insights:
+                        parts.append("; ".join(insights[:2]))
+                    tail_bits = []
+                    if sentiment:
+                        tail_bits.append(str(sentiment).title())
+                    if isinstance(confidence, (int, float)):
+                        tail_bits.append(f"{int(confidence*100)}%")
+                    if tail_bits:
+                        parts.append(", ".join(tail_bits))
+                    return " — ".join(parts) if parts else None
+            elif res is not None:
+                s = str(res)
+                return s[:200] + ('...' if len(s) > 200 else '')
+        except Exception:
+            pass
+        # If still running, surface latest agent message snippet as a provisional summary
+        if self.execution_context.get('current_task') == role and hasattr(self, 'event_handler') and self.event_handler:
+            try:
+                msgs = self.event_handler.get_events_by_type('agent_message')
+                if msgs:
+                    content = msgs[-1].get('message_content') or ''
+                    return (content or '')[:200]
+            except Exception:
+                pass
+        return None
+
     def _generate_workflow_graph(self) -> Dict[str, List[Dict[str, Any]]]:
-        """Dynamically generate workflow nodes and edges for frontend visualization."""
+        """Dynamically generate workflow nodes and edges for frontend visualization from config and dependencies."""
         nodes, edges = [], []
         agent_configs = self.workflow_config.get('agents', [])
         current_task = self.execution_context.get('current_task')
@@ -425,63 +686,121 @@ class ConfigDrivenWorkflow(BaseWorkflow):
             return {"nodes": [], "edges": []}
 
         node_width, x_pos, y_pos = 280, 0, 100
-        
-        # Input Node
+
+        # Input Node with ticker detection summary and tool
+        detection = self.execution_context.get('ticker_detection') or {}
+        summary_parts = []
+        try:
+            det_ticker = detection.get('ticker')
+            conf = detection.get('confidence')
+            if det_ticker and detection.get('status') in ('success', 'override'):
+                if isinstance(conf, (int, float)):
+                    summary_parts.append(f"Ticker detected: {det_ticker} ({int(conf*100)}%)")
+                else:
+                    summary_parts.append(f"Ticker detected: {det_ticker}")
+            elif detection:
+                summary_parts.append("No ticker detected; please provide a ticker symbol (e.g., AAPL)")
+        except Exception:
+            pass
+        input_summary = "; ".join(summary_parts) if summary_parts else None
         nodes.append({
             "id": "input", "type": "input", "position": {"x": x_pos, "y": y_pos},
-            "data": {"label": "User Query", "status": "completed", "description": self.execution_context.get('query', '')}
+            "data": {
+                "label": "User Query",
+                "status": "completed",
+                "description": self.execution_context.get('query', ''),
+                "summary": input_summary,
+                "tools": ["detect_stock_ticker"],
+                "detection": detection
+            }
         })
-        last_node_id = "input"
         x_pos += node_width
+
+        # Build mapping for dependencies
+        role_to_config = {ac.get('role'): ac for ac in agent_configs if ac.get('role')}
+        roles = list(role_to_config.keys())
 
         # Agent/Task Nodes
-        all_agent_roles = [ac.get('role') for ac in agent_configs if ac.get('role')]
-        
-        for agent_config in agent_configs:
-            role = agent_config.get('role')
-            if not role: continue
-
+        for idx, role in enumerate(roles):
             status = self._get_task_status(role, workflow_status, current_task)
-            
+            task_id = None
+            try:
+                if hasattr(self, 'tasks') and self.tasks and role in self.tasks:
+                    task_id = getattr(self.tasks[role], 'id', None)
+            except Exception:
+                task_id = None
+            # Determine tools to display: prefer actually used tools; fall back to configured capability list
+            agent_name_for_role = role_to_config[role].get('name', 'N/A')
+            used_tools = self._get_tools_used_by_agent(agent_name_for_role)
+            try:
+                configured_tool_objects = self.registry_manager.get_tools_for_agent(role)
+                configured_tools = [t.get('name', '') for t in configured_tool_objects]
+            except Exception:
+                configured_tools = []
+            tools_to_show = used_tools if used_tools else configured_tools
             nodes.append({
-                "id": f"task_{role}", "type": "task", "position": {"x": x_pos, "y": y_pos},
+                "id": f"task_{role}", "type": "task", "position": {"x": x_pos + idx * node_width, "y": y_pos},
                 "data": {
-                    "label": agent_config.get('label', role.replace('_', ' ').title()),
+                    "label": role_to_config[role].get('label', role.replace('_', ' ').title()),
                     "status": status,
-                    "description": agent_config.get('description', ''),
-                    "agentName": agent_config.get('name', 'N/A'),
-                    "tools": [t.get('name', '') for t in self.registry_manager.get_tools_for_agent(role)],
+                    "description": role_to_config[role].get('description', ''),
+                    "agentName": agent_name_for_role,
+                    "tools": tools_to_show,
                     "liveDetails": self._get_live_details_for_agent(role) if status == 'running' else None,
+                    "summary": self._get_task_summary(role),
+                    "taskId": task_id,
                 }
             })
-            edges.append({"id": f"edge_{last_node_id}_to_task_{role}", "source": last_node_id, "target": f"task_{role}", "type": "depends_on"})
-            last_node_id = f"task_{role}"
-            x_pos += node_width
 
-        # Synthesis Task (as a virtual node)
-        synthesis_status = self._get_task_status('final_synthesis', workflow_status, current_task)
-        nodes.append({
-            "id": "task_final_synthesis", "type": "task", "position": {"x": x_pos, "y": y_pos},
-            "data": {
-                "label": "Final Synthesis", "status": synthesis_status, "description": "Synthesizing all analyses into a final report.",
-                "liveDetails": self._get_live_details_for_agent('final_synthesis') if synthesis_status == 'running' else None,
-            }
-        })
-        edges.append({"id": f"edge_{last_node_id}_to_task_final_synthesis", "source": last_node_id, "target": "task_final_synthesis", "type": "depends_on"})
-        last_node_id = "task_final_synthesis"
-        x_pos += node_width
-        
+        # Helper to get node id
+        def node_id(role_name: str) -> str:
+            return f"task_{role_name}"
+
+        # Create edges based on dependencies; connect input to roles without deps
+        dependents = set()
+        for role in roles:
+            deps = role_to_config[role].get('dependencies', []) or []
+            if deps:
+                for dep in deps:
+                    if dep in roles:
+                        edges.append({
+                            "id": f"edge_{node_id(dep)}_to_{node_id(role)}",
+                            "source": node_id(dep),
+                            "target": node_id(role),
+                            "type": "depends_on"
+                        })
+                        dependents.add(role)
+            else:
+                edges.append({
+                    "id": f"edge_input_to_{node_id(role)}",
+                    "source": "input",
+                    "target": node_id(role),
+                    "type": "depends_on"
+                })
+
         # Output Node
         output_status = "completed" if workflow_status == "completed" else "pending"
-        result_data = self.task_results.get('final_synthesis')
+        # Determine terminal roles (no one depends on them)
+        terminal_roles = [r for r in roles if all(r not in (role_to_config.get(other, {}).get('dependencies', []) or []) for other in roles)]
+        if not terminal_roles and roles:
+            terminal_roles = [roles[-1]]
+        # Prefer synthesis for result data
+        final_role_for_result = 'synthesis' if 'synthesis' in roles else terminal_roles[0]
+        result_data = self.task_results.get(final_role_for_result)
+        if isinstance(result_data, BaseModel):
+            result_data = result_data.dict()
+
         nodes.append({
-            "id": "output", "type": "output", "position": {"x": x_pos, "y": y_pos},
-            "data": {
-                "label": "Final Report", "status": output_status, 
-                "result": result_data.dict() if isinstance(result_data, BaseModel) else result_data
-            }
+            "id": "output", "type": "output", "position": {"x": x_pos + (len(roles) + 1) * node_width, "y": y_pos},
+            "data": {"label": "Final Report", "status": output_status, "result": result_data}
         })
-        edges.append({"id": f"edge_{last_node_id}_to_output", "source": last_node_id, "target": "output", "type": "produces"})
+        for role in terminal_roles:
+            edges.append({
+                "id": f"edge_{node_id(role)}_to_output",
+                "source": node_id(role),
+                "target": "output",
+                "type": "produces"
+            })
 
         return {"nodes": nodes, "edges": edges}
 
@@ -504,13 +823,31 @@ class ConfigDrivenWorkflow(BaseWorkflow):
         
         # Count based on actual tasks executed or defined
         tasks_in_config = self.workflow_config.get('agents', [])
-        total_tasks = len(tasks_in_config) + 1 # Add 1 for synthesis
+        total_tasks = len(tasks_in_config) # Add 1 for synthesis
 
         return {
             'total_tasks': total_tasks,
             'completed_tasks': len(self.task_results),
             'execution_time': execution_time
         }
+
+    # --- Logging helpers ---
+    def _log_task_result(self, role: str, result: Any) -> None:
+        """Log a concise, safe preview of a task's result for diagnostics."""
+        try:
+            if hasattr(result, 'dict'):
+                payload = result.dict()
+            else:
+                payload = result
+            if isinstance(payload, (dict, list)):
+                preview = json.dumps(payload, default=str)
+            else:
+                preview = str(payload)
+            if len(preview) > 400:
+                preview = preview[:400] + '...'
+            logger.info(f"Task '{role}' completed. Result preview: {preview}")
+        except Exception as e:
+            logger.warning(f"Could not log result for task '{role}': {e}")
 
 def create_config_driven_workflow(workflow_type: str = "quick_stock_analysis") -> ConfigDrivenWorkflow:
     """

@@ -1,8 +1,13 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Notification, ChatMessage } from './frontend/src/types';
+import { Notification, ChatMessage } from '../types';
 
 export type ControlFlowProvider = 'openai' | 'google' | 'local';
+
+export interface WorkflowSuggestion {
+  workflow_type: string;
+  query: string;
+}
 
 export interface AppState {
   controlFlowProvider: ControlFlowProvider;
@@ -21,6 +26,14 @@ export interface AppState {
   chatMessages: ChatMessage[];
   addChatMessage: (message: ChatMessage) => void;
   clearChatMessages: () => void;
+
+  // Suggested workflow confirmation
+  workflowSuggestion: WorkflowSuggestion | null;
+  setWorkflowSuggestion: (suggestion: WorkflowSuggestion | null) => void;
+
+  // Selected workflow for Workflow tab synchronization
+  selectedWorkflow: string | null;
+  setSelectedWorkflow: (workflow: string | null) => void;
 }
 
 export const useStore = create<AppState>()(
@@ -40,6 +53,12 @@ export const useStore = create<AppState>()(
         chatMessages: [...state.chatMessages, message] 
       })),
       clearChatMessages: () => set({ chatMessages: [] }),
+
+      workflowSuggestion: null,
+      setWorkflowSuggestion: (suggestion) => set({ workflowSuggestion: suggestion }),
+
+      selectedWorkflow: 'quick_stock_analysis',
+      setSelectedWorkflow: (workflow) => set({ selectedWorkflow: workflow }),
     }),
     {
       name: 'fintel-app-storage',
@@ -47,6 +66,8 @@ export const useStore = create<AppState>()(
         controlFlowProvider: state.controlFlowProvider,
         customBaseUrl: state.customBaseUrl,
         chatMessages: state.chatMessages,
+        workflowSuggestion: state.workflowSuggestion,
+        selectedWorkflow: state.selectedWorkflow,
       }),
     }
   )

@@ -53,7 +53,10 @@ def get_tool_function(tool_name: str):
         "calculate_pe_ratio": calculate_pe_ratio,
         "analyze_cash_flow": analyze_cash_flow,
         "get_competitor_analysis": get_competitor_analysis,
-        "detect_stock_ticker": detect_stock_ticker
+        "detect_stock_ticker": detect_stock_ticker,
+        "get_mock_news": get_mock_news,
+        "get_mock_analyst_ratings": get_mock_analyst_ratings,
+        "get_mock_social_sentiment": get_mock_social_sentiment
     }
     
     return tool_functions.get(tool_name)
@@ -507,6 +510,59 @@ def get_competitor_analysis(ticker: str, competitors: List[str] = None) -> dict:
         "timestamp": datetime.now().isoformat(),
         "source": "mock_data"
     } 
+
+# --- Showcase mock tools for demos ---
+
+@cf.tool
+def get_mock_news(ticker: str, limit: int = 3) -> dict:
+    """Return recent mock headlines for the given ticker for demo purposes."""
+    if not ticker:
+        return {"status": "error", "error": "ticker required"}
+    headlines = [
+        f"{ticker.upper()} announces strategic partnership to accelerate growth",
+        f"Analysts weigh in on {ticker.upper()} quarterly results",
+        f"{ticker.upper()} expands into new market with innovative product launch",
+    ][: max(1, min(limit, 5))]
+    return {
+        "ticker": ticker.upper(),
+        "headlines": headlines,
+        "status": "success",
+        "_mock": True,
+        "timestamp": datetime.now().isoformat(),
+    }
+
+@cf.tool
+def get_mock_analyst_ratings(ticker: str) -> dict:
+    """Return mock analyst ratings breakdown for demo purposes."""
+    if not ticker:
+        return {"status": "error", "error": "ticker required"}
+    return {
+        "ticker": ticker.upper(),
+        "buy": 18,
+        "hold": 6,
+        "sell": 1,
+        "consensus": "buy",
+        "price_target": {"median": 200.0, "high": 240.0, "low": 165.0},
+        "status": "success",
+        "_mock": True,
+        "timestamp": datetime.now().isoformat(),
+    }
+
+@cf.tool
+def get_mock_social_sentiment(ticker: str) -> dict:
+    """Return mock social sentiment metrics for demo purposes."""
+    if not ticker:
+        return {"status": "error", "error": "ticker required"}
+    return {
+        "ticker": ticker.upper(),
+        "sentiment_score": 0.62,
+        "volume": 12450,
+        "trend": "rising",
+        "mentions": ["AI", "earnings", "guidance"],
+        "status": "success",
+        "_mock": True,
+        "timestamp": datetime.now().isoformat(),
+    }
 
 def _detect_ticker_with_ai(query: str) -> dict:
     """

@@ -19,10 +19,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
 }) => {
   const [query, setQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [awaitingWorkflowKey, setAwaitingWorkflowKey] = useState(false);
+  const [availableWorkflowKeys, setAvailableWorkflowKeys] = useState<string[] | null>(null);
   const hasAddedResult = useRef(false);
   
   // Get state and actions from the stores
-  const { controlFlowProvider, clearChatMessages } = useStore();
+  const { controlFlowProvider, clearChatMessages, workflowSuggestion, setWorkflowSuggestion, setSelectedWorkflow } = useStore() as any;
   const { 
       workflowId, 
       status: workflowStatus, 
@@ -42,26 +44,28 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
     e.preventDefault();
     if (!query.trim()) return;
     
-    setIsLoading(true);
+    // Keep input enabled during suggestion flow
+    setIsLoading(false);
     hasAddedResult.current = false;
     
     const userMessage: ChatMessage = { role: 'user', content: query };
     onAddMessage(userMessage);
     
     try {
-      const response = await fetch('/api/run-workflow', {
+      // Step 1: Suggest workflow
+      const response = await fetch('/api/suggest-workflow', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: query.trim(),
-          provider: controlFlowProvider
-        })
+        body: JSON.stringify({ query: query.trim() })
       });
-      
+
       if (response.ok) {
         const data = await response.json();
-        // Start the workflow via the store
-        startWorkflow(data.workflow_id, query, data.workflow_status);
+        onAddMessage({ role: 'assistant', content: data.suggestion_text });
+        setWorkflowSuggestion({ workflow_type: data.recommended_workflow, query });
+        setIsLoading(false);
+        // Sync suggested workflow into Workflow tab
+        setSelectedWorkflow(data.recommended_workflow);
       } else {
         const errorData = await response.json();
         throw new Error(errorData.error || `HTTP ${response.status}`);
@@ -70,7 +74,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
       console.error('Failed to start workflow:', error);
       const errorMessage: ChatMessage = {
         role: 'assistant',
-        content: `Error: ${error instanceof Error ? error.message : 'Failed to start analysis'}`
+        content: `Error: ${error instanceof Error ? error.message : 'Failed to suggest workflow'}`
       };
       onAddMessage(errorMessage);
       setIsLoading(false);
@@ -79,10 +83,95 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
     setQuery('');
   };
 
+  const handleConfirmWorkflow = async () => {
+    if (!workflowSuggestion) return;
+    setIsLoading(true);
+    onAddMessage({ role: 'user', content: 'Yes, proceed.' });
+    try {
+      const response = await fetch('/api/run-workflow', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: workflowSuggestion.query,
+          provider: controlFlowProvider,
+          workflow_type: workflowSuggestion.workflow_type,
+        })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        startWorkflow(data.workflow_id, workflowSuggestion.query, data.workflow_status);
+        // Lock in the selected workflow in the panel for consistency
+        setSelectedWorkflow(workflowSuggestion.workflow_type);
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP ${response.status}`);
+      }
+    } catch (error) {
+      const errorMessage: ChatMessage = {
+        role: 'assistant',
+        content: `Error: ${error instanceof Error ? error.message : 'Failed to start analysis'}`
+      };
+      onAddMessage(errorMessage);
+    } finally {
+      setWorkflowSuggestion(null);
+    }
+  };
+
+  const handleDeclineWorkflow = async () => {
+    // User clicked No; present options
+    setWorkflowSuggestion(null);
+    setIsLoading(false);
+    onAddMessage({ role: 'assistant', content: 'Would you like to build your own workflow or use one of the following?' });
+    try {
+      const resp = await fetch('/api/workflows');
+      const workflows = await resp.json();
+      const list = workflows.map((w: any) => `- ${w.type}: ${w.name}`).join('\n');
+      onAddMessage({ role: 'assistant', content: `Available Workflows:\n${list}` });
+      onAddMessage({ role: 'assistant', content: 'Reply with a workflow key (e.g., quick_stock_analysis) or say "build my own".' });
+      // Show placeholder selection in the panel
+      setSelectedWorkflow('custom');
+      setAvailableWorkflowKeys(workflows.map((w: any) => w.type));
+      setAwaitingWorkflowKey(true);
+    } catch (e) {
+      onAddMessage({ role: 'assistant', content: 'Failed to load workflows. Please try again.' });
+    }
+  };
+
+  // Interpret a simple reply after options are shown
+  useEffect(() => {
+    const last = chatMessages[chatMessages.length - 1];
+    if (!last || last.role !== 'user') return;
+    const msg = last.content.trim().toLowerCase();
+    if (awaitingWorkflowKey && (msg === 'build my own' || msg === 'build your own' || msg === 'build my own workflow')) {
+      onAddMessage({ role: 'assistant', content: 'Sorry, that feature has not been implemented yet.' });
+      setSelectedWorkflow('custom');
+      setAwaitingWorkflowKey(false);
+      return;
+    }
+    // Only accept workflow keys when explicitly awaiting one and it exists in available keys
+    if (awaitingWorkflowKey && availableWorkflowKeys) {
+      const workflowKeyMatch = msg.match(/^[a-z_]+$/);
+      if (workflowKeyMatch) {
+        const workflowKey = workflowKeyMatch[0];
+        if (availableWorkflowKeys.includes(workflowKey)) {
+          setWorkflowSuggestion({ workflow_type: workflowKey, query });
+          onAddMessage({ role: 'assistant', content: `Got it. I can run '${workflowKey}'. Shall I proceed?` });
+          setSelectedWorkflow(workflowKey);
+          setAwaitingWorkflowKey(false);
+        } else {
+          onAddMessage({ role: 'assistant', content: `I don't recognize '${workflowKey}'. Please choose one of: ${availableWorkflowKeys.join(', ')}.` });
+        }
+      }
+    }
+  }, [chatMessages]);
+
   const handleClearChat = () => {
     clearChatMessages();
     resetWorkflow();
     hasAddedResult.current = false;
+    setWorkflowSuggestion(null);
+    setIsLoading(false);
+    setQuery('');
   };
 
   // Update result when workflow completes
@@ -186,6 +275,13 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
         </div>
       )}
 
+      {workflowSuggestion && (
+        <div className="p-3 border-t border-brand-border bg-brand-surface flex justify-end space-x-2">
+          <button onClick={handleConfirmWorkflow} className="px-3 py-1 bg-green-600 text-white rounded">Yes</button>
+          <button onClick={handleDeclineWorkflow} className="px-3 py-1 bg-red-600 text-white rounded">No</button>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="p-4 border-t border-brand-border">
         <div className="flex gap-2">
           <input
@@ -194,11 +290,11 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
             onChange={(e) => setQuery(e.target.value)}
             placeholder="e.g., 'Should I invest in AAPL?'"
             className="flex-1 px-3 py-2 bg-brand-surface border-brand-border rounded"
-            disabled={isLoading}
+            disabled={isLoading || !!workflowSuggestion || awaitingWorkflowKey}
           />
           <button
             type="submit"
-            disabled={isLoading || !query.trim()}
+            disabled={isLoading || !!workflowSuggestion || awaitingWorkflowKey || !query.trim()}
             className="px-4 py-2 bg-brand-primary text-white rounded hover:bg-brand-secondary disabled:opacity-50"
           >
             {isLoading ? <SpinnerIcon /> : 'Analyze'}

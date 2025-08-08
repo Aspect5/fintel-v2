@@ -16,17 +16,28 @@ workflows:
         role: "market_analysis"
         required: true
         fallback: "FinancialAnalyst"
-        tools: ["get_market_data", "get_company_overview"]
+        tools: [
+          "get_market_data",
+          "get_company_overview",
+          "get_mock_news",
+          "get_mock_analyst_ratings",
+          "get_mock_social_sentiment"
+        ]
       - name: "RiskAssessment"
         role: "risk_assessment"
         required: true
         fallback: "FinancialAnalyst"
-        tools: ["get_market_data"]
+        tools: [
+          "get_market_data",
+          "get_mock_analyst_ratings",
+          "get_mock_social_sentiment"
+        ]
       - name: "Summarizer"
-        role: "recommendation"
+        role: "synthesis"
         required: true
         fallback: "FinancialAnalyst"
         tools: []
+        dependencies: ["market_analysis", "risk_assessment"]
 
   # WORKFLOW 2: Deep dive into a company's competitive landscape.
   competitor_deep_dive:
@@ -45,6 +56,7 @@ workflows:
         role: "strategic_summary"
         required: true
         tools: []
+        dependencies: ["primary_company_analysis", "competitor_comparison"]
 
   # WORKFLOW 3: High-level analysis of broad economic trends.
   macroeconomic_outlook:
@@ -64,6 +76,7 @@ workflows:
         role: "economic_summary"
         required: true
         tools: []
+        dependencies: ["economic_data_analysis", "macro_risk_assessment"]
 
 # --- Global Settings ---
 settings:

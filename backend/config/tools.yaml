@@ -124,6 +124,40 @@ tools:
       - "get_competitor_analysis(ticker='AAPL')"
       - "get_competitor_analysis(ticker='GOOG', competitors=['MSFT', 'AMZN'])"
 
+  # Demo/Mock Tools
+  get_mock_news:
+    name: "get_mock_news"
+    description: "Return recent mock headlines for a ticker (demo)"
+    category: "analysis"
+    function: "get_mock_news"
+    class: null
+    api_key_required: null
+    enabled: true
+    examples:
+      - "get_mock_news(ticker='AAPL', limit=3)"
+
+  get_mock_analyst_ratings:
+    name: "get_mock_analyst_ratings"
+    description: "Return mock analyst ratings (demo)"
+    category: "analysis"
+    function: "get_mock_analyst_ratings"
+    class: null
+    api_key_required: null
+    enabled: true
+    examples:
+      - "get_mock_analyst_ratings(ticker='AAPL')"
+
+  get_mock_social_sentiment:
+    name: "get_mock_social_sentiment"
+    description: "Return mock social sentiment metrics (demo)"
+    category: "analysis"
+    function: "get_mock_social_sentiment"
+    class: null
+    api_key_required: null
+    enabled: true
+    examples:
+      - "get_mock_social_sentiment(ticker='AAPL')"
+
 # Tool Categories
 categories:
   market_data:
