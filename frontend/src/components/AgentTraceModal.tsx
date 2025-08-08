@@ -371,9 +371,10 @@ const AgentTraceModal: React.FC<AgentTraceModalProps> = ({ node, onClose, eventH
                                                     if (!out) return false;
                                                     const obj = typeof out === 'string' ? JSON.parse(out) : out;
                                                     if (obj && typeof obj === 'object') {
-                                                        if (obj._mock === true) return true;
-                                                        const note = obj.note || obj.notes || '';
+                                                        if ((obj as any)._mock === true) return true;
+                                                        const note = (obj as any).note || (obj as any).notes || '';
                                                         if (typeof note === 'string' && note.toLowerCase().includes('mock')) return true;
+                                                        if ((obj as any).source && String((obj as any).source).toLowerCase().includes('mock')) return true;
                                                     }
                                                 } catch {}
                                                 return false;
@@ -413,9 +414,10 @@ const AgentTraceModal: React.FC<AgentTraceModalProps> = ({ node, onClose, eventH
                                                                     if (!out) return false;
                                                                     const obj = typeof out === 'string' ? JSON.parse(out) : out;
                                                                     if (obj && typeof obj === 'object') {
-                                                                        if (obj._mock === true) return true;
-                                                                        const note = obj.note || obj.notes || '';
+                                                                        if ((obj as any)._mock === true) return true;
+                                                                        const note = (obj as any).note || (obj as any).notes || '';
                                                                         if (typeof note === 'string' && note.toLowerCase().includes('mock')) return true;
+                                                                        if ((obj as any).source && String((obj as any).source).toLowerCase().includes('mock')) return true;
                                                                     }
                                                                 } catch {}
                                                                 return false;

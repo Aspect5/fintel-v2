@@ -60,7 +60,8 @@ class MarketDataTool(BaseTool):
                     "change": quote.get("09. change", "N/A"),
                     "change_percent": quote.get("10. change percent", "N/A"),
                     "volume": quote.get("06. volume", "N/A"),
-                    "status": "success"
+                    "status": "success",
+                    "source": "alpha_vantage"
                 }
             else:
                 # No data available, return mock
@@ -136,7 +137,8 @@ class CompanyOverviewTool(BaseTool):
                     "pe_ratio": data.get("PERatio", "N/A"),
                     "dividend_yield": data.get("DividendYield", "N/A"),
                     "description": data.get("Description", "N/A")[:300] + "..." if data.get("Description") else "N/A",
-                    "status": "success"
+                    "status": "success",
+                    "source": "alpha_vantage"
                 }
             else:
                 # No data available, return mock

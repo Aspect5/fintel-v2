@@ -598,7 +598,8 @@ class ConfigDrivenWorkflow(BaseWorkflow):
 
                 # Convergence: strong consensus vs mixed
                 if positives > negatives:
-                    recommendation = 'Buy'
+                    # Favor Buy only when positive sentiment is strong and risk is low
+                    recommendation = 'Hold' if derived_risk_sentiment == 'negative' else 'Buy'
                     sentiment_overall = 'positive'
                 elif negatives > positives:
                     recommendation = 'Sell'

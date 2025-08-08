@@ -416,7 +416,7 @@ def calculate_pe_ratio(ticker: str, current_price: float = None) -> dict:
             "timestamp": datetime.now().isoformat()
         }
     
-    # Mock implementation - in real system, this would fetch actual data
+    # In absence of a direct Alpha Vantage endpoint here, return labeled mock to avoid LIVE mislabeling
     pe_ratio = 25.5
     industry_average = 22.0
     analysis = "Slightly overvalued compared to industry" if pe_ratio > industry_average else "Undervalued compared to industry"
@@ -429,6 +429,7 @@ def calculate_pe_ratio(ticker: str, current_price: float = None) -> dict:
         "valuation_status": "overvalued" if pe_ratio > industry_average else "undervalued",
         "timestamp": datetime.now().isoformat(),
         "source": "mock_data",
+        "_mock": True,
         **({"inputs": {"current_price": current_price}} if current_price is not None else {})
     }
 
