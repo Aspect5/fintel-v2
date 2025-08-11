@@ -44,8 +44,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
     e.preventDefault();
     if (!query.trim()) return;
     
-    // Keep input enabled during suggestion flow
-    setIsLoading(false);
+    // Show loading while determining workflow suggestion
+    setIsLoading(true);
     hasAddedResult.current = false;
     
     const userMessage: ChatMessage = { role: 'user', content: query };

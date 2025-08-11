@@ -1,7 +1,8 @@
 import React from 'react';
 import { Report } from '../types';
 import XCircleIcon from './icons/XCircleIcon';
-import ReportDisplay from './ReportDisplay';
+import InvestmentReport from '@/components/InvestmentReport';
+import DownloadButton from './DownloadButton';
 
 interface ReportModalProps {
   report: Report | null;
@@ -35,17 +36,22 @@ const ReportModal: React.FC<ReportModalProps> = ({ report, onClose, isVisible, q
               Comprehensive analysis completed successfully
             </p>
           </div>
-          <button 
-            onClick={onClose} 
-            className="text-brand-text-secondary hover:text-brand-text-primary transition-colors p-2 rounded-lg hover:bg-brand-bg"
-            aria-label="Close report"
-          >
-            <XCircleIcon className="w-8 h-8" />
-          </button>
+          <div className="flex items-center gap-2">
+            {query && (
+              <DownloadButton report={report} query={query} />
+            )}
+            <button 
+              onClick={onClose} 
+              className="text-brand-text-secondary hover:text-brand-text-primary transition-colors p-2 rounded-lg hover:bg-brand-bg"
+              aria-label="Close report"
+            >
+              <XCircleIcon className="w-8 h-8" />
+            </button>
+          </div>
         </header>
         
         <div className="flex-1 overflow-y-auto p-6">
-          <ReportDisplay report={report} query={query} />
+          <InvestmentReport report={report} />
         </div>
       </div>
       

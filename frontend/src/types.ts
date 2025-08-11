@@ -33,7 +33,7 @@ export interface ToolCallRequest {
 
 export interface ToolCallResult {
   toolName: string;
-  toolInput: string;
+  toolInput: any;
   toolOutput: any;
   toolOutputSummary: string;
 }

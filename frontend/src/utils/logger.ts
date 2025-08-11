@@ -29,13 +29,14 @@ class Logger {
   private logFileName = 'fintel-frontend.log';
 
   constructor() {
-    // Try to enable file logging if we're in a browser environment that supports it
+    // File logging is disabled by default to avoid noisy downloads.
+    // Enable explicitly by setting window.__ENABLE_FRONTEND_FILE_LOGGING__ = true
     this.setupFileLogging();
   }
 
   private setupFileLogging(): void {
-    // Check if we're in a browser environment that supports the File System Access API
-    if (typeof window !== 'undefined' && 'showSaveFilePicker' in window) {
+    // Only enable if explicitly opted in via global flag
+    if (typeof window !== 'undefined' && (window as any).__ENABLE_FRONTEND_FILE_LOGGING__ && 'showSaveFilePicker' in window) {
       this.isFileLoggingEnabled = true;
     }
   }

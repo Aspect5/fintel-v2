@@ -30,7 +30,7 @@ from flask_cors import CORS
 from backend.config.settings import get_settings
 from backend.providers.factory import ProviderFactory
 from backend.registry import get_registry_manager
-from backend.utils.logging import setup_logging
+from backend.utils.logging import setup_logging, get_recent_logs
 from backend.utils.errors import FintelError
 from backend.utils.monitoring import workflow_monitor
 
@@ -402,6 +402,25 @@ def get_workflow_metrics():
             )[:10]  # Last 10 workflows
         ]
     })
+
+@app.route('/api/logs', methods=['GET'])
+def get_logs():
+    """Expose recent backend logs for the frontend Log Viewer.
+    Optional query params: level (0-4), component (substring), limit (int)
+    """
+    try:
+        level_str = request.args.get('level')
+        level = int(level_str) if level_str is not None else None
+        component = request.args.get('component')
+        limit = int(request.args.get('limit', '500'))
+        logs = get_recent_logs(level, component, limit)
+        return jsonify({
+            'logs': logs,
+            'count': len(logs)
+        })
+    except Exception as e:
+        logger.error(f"Failed to fetch logs: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.errorhandler(FintelError)
 def handle_fintel_error(error):

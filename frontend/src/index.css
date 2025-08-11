@@ -118,3 +118,22 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--brand-text-tertiary);
 }
+
+/* Explicit responsive grid for Agent Analysis to avoid purge/scanner issues */
+@layer utilities {
+  .report-agent-grid {
+    display: grid;
+    grid-template-columns: repeat(1, minmax(0, 1fr));
+    gap: 0.75rem; /* matches gap-3 */
+  }
+  @media (min-width: 640px) {
+    .report-agent-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @media (min-width: 768px) {
+    .report-agent-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+}

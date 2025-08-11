@@ -4,6 +4,13 @@ export default {
     "./frontend/index.html",
     "./frontend/**/*.{js,ts,jsx,tsx}",
   ],
+  // Ensure critical responsive utilities are always emitted even if scanner misses them
+  safelist: [
+    'grid-cols-3',
+    'sm:grid-cols-2',
+    'md:grid-cols-3',
+    'xl:grid-cols-3',
+  ],
   theme: {
     extend: {
       colors: {

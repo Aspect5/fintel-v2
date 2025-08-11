@@ -17,18 +17,45 @@ const LogViewer: React.FC<LogViewerProps> = ({ isVisible, onClose }) => {
   useEffect(() => {
     if (!isVisible) return;
 
-    const updateLogs = () => {
-      setLogs(logger.getLogBuffer());
+    let cancelled = false;
+
+    const updateLogs = async () => {
+      try {
+        // Fetch backend logs and merge with frontend buffer
+        const params = new URLSearchParams();
+        params.set('level', String(filterLevel));
+        if (filterComponent) params.set('component', filterComponent);
+        params.set('limit', '500');
+        const resp = await fetch(`/api/logs?${params.toString()}`);
+        let backendLogs: any[] = [];
+        if (resp.ok) {
+          const data = await resp.json();
+          backendLogs = Array.isArray(data.logs) ? data.logs : [];
+        }
+        const frontendLogs = logger.getLogBuffer();
+        const merged = [
+          ...backendLogs.map((b) => ({
+            timestamp: b.timestamp,
+            level: b.level,
+            component: `backend:${b.component}`,
+            message: b.message,
+            data: undefined,
+            error: b.error ? { message: b.error } : undefined,
+          } as LogEntry)),
+          ...frontendLogs,
+        ];
+        if (!cancelled) setLogs(merged);
+      } catch {
+        // Fallback to frontend-only logs
+        if (!cancelled) setLogs(logger.getLogBuffer());
+      }
     };
 
-    // Update logs immediately
+    // Initial load
     updateLogs();
-
-    // Set up interval to update logs
-    const interval = setInterval(updateLogs, 1000);
-
-    return () => clearInterval(interval);
-  }, [isVisible]);
+    const interval = setInterval(updateLogs, 1500);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [isVisible, filterLevel, filterComponent]);
 
   useEffect(() => {
     if (autoScroll && logContainerRef.current) {
@@ -107,7 +134,12 @@ const LogViewer: React.FC<LogViewerProps> = ({ isVisible, onClose }) => {
             <label className="text-white text-sm">Level:</label>
             <select
               value={filterLevel}
-              onChange={(e) => setFilterLevel(Number(e.target.value))}
+              onChange={(e) => {
+                const next = Number(e.target.value) as LogLevel;
+                setFilterLevel(next);
+                // Synchronize global logger level so buffer receives messages at or above selected level
+                logger.setLogLevel(next);
+              }}
               className="bg-brand-surface border border-brand-border text-white rounded px-2 py-1 text-sm"
             >
               <option value={LogLevel.DEBUG}>DEBUG</option>

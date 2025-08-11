@@ -1,8 +1,7 @@
 // components/AgentTraceModal.tsx - Updated to handle missing data
 import React from 'react';
-import { AgentNodeData, CustomNode, ToolCallResult } from '../types';
+import { AgentNodeData, CustomNode } from '../types';
 import XCircleIcon from './icons/XCircleIcon';
-import CodeBracketIcon from './icons/CodeBracketIcon';
 
 const DetailSection: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
     <section className="mb-6">
@@ -13,13 +12,7 @@ const DetailSection: React.FC<{ title: string; children: React.ReactNode }> = ({
     </section>
 );
 
-const getSummaryStyling = (summary: string): { badge: string; badgeText: string; content: string } => {
-    if (summary.startsWith('[LIVE]')) return { badge: 'bg-green-500/20 text-green-400', badgeText: 'LIVE', content: summary.replace('[LIVE] ', '') };
-    if (summary.startsWith('[MOCK]')) return { badge: 'bg-yellow-500/20 text-yellow-400', badgeText: 'MOCK', content: summary.replace('[MOCK] ', '') };
-    if (summary.startsWith('[SYNTHETIC]')) return { badge: 'bg-blue-500/20 text-blue-400', badgeText: 'SYNTHETIC', content: summary.replace('[SYNTHETIC] ', '') };
-    if (summary.startsWith('[INTERNAL MOCK]')) return { badge: 'bg-purple-500/20 text-purple-400', badgeText: 'INTERNAL MOCK', content: summary.replace('[INTERNAL MOCK] ', '') };
-    return { badge: 'bg-brand-border text-brand-text-secondary', badgeText: 'INFO', content: summary };
-};
+// Helper kept for potential future badge logic; currently unused
 
 const detectFormat = (data: any): string => {
     try {
@@ -46,77 +39,7 @@ const detectFormat = (data: any): string => {
     }
 };
 
-const ToolCallDisplay: React.FC<{ toolCall: ToolCallResult }> = ({ toolCall }) => {
-    const prettyPrintJson = (data: any) => {
-        try {
-            const obj = typeof data === 'string' ? JSON.parse(data) : data;
-            return JSON.stringify(obj, null, 2);
-        } catch (e) {
-            return String(data);
-        }
-    };
-
-    const { badge, badgeText, content } = getSummaryStyling(toolCall.toolOutputSummary || '');
-    // Derive LIVE/MOCK badge from tool output
-    const isMock = (() => {
-        try {
-            const out = toolCall.toolOutput;
-            if (!out) return false;
-            const obj = typeof out === 'string' ? JSON.parse(out) : out;
-            if (obj && typeof obj === 'object') {
-                if ((obj as any)._mock === true) return true;
-                const note = (obj as any).note || (obj as any).notes || '';
-                if (typeof note === 'string' && note.toLowerCase().includes('mock')) return true;
-            }
-        } catch {}
-        return false;
-    })();
-
-    return (
-                <div className={`border rounded-lg p-4 mb-4 ${content.toLowerCase().startsWith('error') ? 'bg-red-500/10 border-red-500/40' : 'bg-brand-bg border-brand-border'}`}>
-            <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center">
-                    <CodeBracketIcon className="w-5 h-5 text-brand-primary mr-2" />
-                    <h5 className="font-bold text-brand-primary">{toolCall.toolName}</h5>
-                </div>
-                <div className="flex items-center gap-2">
-                    <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${isMock ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
-                        {isMock ? 'MOCK' : 'LIVE'}
-                    </span>
-                    <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${badge}`}>
-                        {badgeText}
-                    </span>
-                </div>
-            </div>
-
-            <div className="mb-4">
-                 <h6 className="font-semibold text-brand-text-secondary text-xs uppercase mb-1">Execution Summary</h6>
-                  <p className={`text-sm p-2 rounded ${content.toLowerCase().startsWith('error') ? 'bg-red-500/20 text-red-300 border border-red-500/40' : 'bg-black/30 text-brand-text-primary'}`}>{content}</p>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                    <div className="flex items-center justify-between mb-1">
-                        <h6 className="font-semibold text-brand-text-secondary text-xs uppercase">Parameters</h6>
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-brand-border text-brand-text-secondary">{detectFormat(toolCall.toolInput)}</span>
-                    </div>
-                    <pre className="bg-black/30 p-2 rounded text-xs text-brand-text-primary overflow-x-auto">
-                        <code>{prettyPrintJson(toolCall.toolInput)}</code>
-                    </pre>
-                </div>
-                <div>
-                    <div className="flex items-center justify-between mb-1">
-                        <h6 className="font-semibold text-brand-text-secondary text-xs uppercase">Full Output</h6>
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-brand-border text-brand-text-secondary">{detectFormat(toolCall.toolOutput)}</span>
-                    </div>
-                    <pre className={`${(typeof toolCall.toolOutput === 'string' && toolCall.toolOutput.toLowerCase().startsWith('error')) ? 'bg-red-500/20 text-red-300 border border-red-500/40' : 'bg-black/30 text-brand-text-primary'} p-2 rounded text-xs overflow-x-auto`}>
-                        <code>{prettyPrintJson(toolCall.toolOutput)}</code>
-                    </pre>
-                </div>
-            </div>
-        </div>
-    );
-};
+// (Helper removed from render path)
 
 interface AgentTraceModalProps {
     node: CustomNode | null;
@@ -141,7 +64,7 @@ interface AgentTraceModalProps {
 const AgentTraceModal: React.FC<AgentTraceModalProps> = ({ node, onClose, eventHistory = [] }) => {
     if (!node) return null;
 
-    const { label, details, error, result, toolCalls = [], taskId, status, summary, agentName } = node.data as AgentNodeData & { taskId?: string; status?: string; summary?: string; agentName?: string };
+  const { label, details, error, result, /* toolCalls = [], */ taskId, status, summary, agentName } = node.data as AgentNodeData & { taskId?: string; status?: string; summary?: string; agentName?: string };
 
     const pretty = (data: any) => {
         try {
@@ -241,15 +164,16 @@ const AgentTraceModal: React.FC<AgentTraceModalProps> = ({ node, onClose, eventH
         : [];
 
     // Derive tool call list from filtered events if node doesn't provide explicit toolCalls
-    const derivedToolCalls = filteredEvents
-        .filter((e) => e.event_type === 'agent_tool_call' && !(e as any).is_internal_controlflow_tool)
-        .map((e) => ({
-            toolName: (e.tool_name as string) || 'unknown',
-            toolInput: e.tool_input,
-            toolOutput: e.tool_output,
-            toolOutputSummary: e.tool_output ? (typeof e.tool_output === 'string' ? e.tool_output : JSON.stringify(e.tool_output)) : 'No output'
-        }));
-    const toolCallsToShow = (toolCalls && toolCalls.length > 0) ? toolCalls : derivedToolCalls;
+    // const derivedToolCalls = filteredEvents
+    //     .filter((e) => e.event_type === 'agent_tool_call' && !(e as any).is_internal_controlflow_tool)
+    //     .map((e) => ({
+    //         toolName: (e.tool_name as string) || 'unknown',
+    //         toolInput: e.tool_input,
+    //         toolOutput: e.tool_output,
+    //         toolOutputSummary: e.tool_output ? (typeof e.tool_output === 'string' ? e.tool_output : JSON.stringify(e.tool_output)) : 'No output'
+    //     }));
+    // Previously used to render a separate Tool Executions section; now unused after merge
+    // const toolCallsToShow = (toolCalls && toolCalls.length > 0) ? toolCalls : derivedToolCalls;
 
     // Collect inputs received by the agent (messages and tool inputs)
     const agentInputEvents = filteredEvents.filter((e) => e.event_type === 'agent_message' || e.event_type === 'agent_tool_call');
@@ -330,7 +254,7 @@ const AgentTraceModal: React.FC<AgentTraceModalProps> = ({ node, onClose, eventH
                         )}
                     </DetailSection>
 
-                    {/* Execution Timeline (merged view) */}
+                    {/* Execution Timeline (merged view; includes tool executions inline) */}
                     {filteredEvents.length > 0 && (
                         <DetailSection title="Execution Timeline">
                             <div className="space-y-3">
@@ -354,7 +278,7 @@ const AgentTraceModal: React.FC<AgentTraceModalProps> = ({ node, onClose, eventH
                                                     <strong>Reasoning:</strong> {event.message_content || 'No textual reasoning (tool-only step)'}
                                                 </div>
                                             )}
-                                            {/* Tool Call */}
+                                            {/* Tool Call (with details inline) */}
                                             {event.event_type === 'agent_tool_call' && event.tool_name && (
                                                 <div className="text-sm text-brand-text-secondary">
                                     <div className="flex items-center gap-2">
@@ -452,14 +376,7 @@ const AgentTraceModal: React.FC<AgentTraceModalProps> = ({ node, onClose, eventH
                         </DetailSection>
                     )}
 
-                    {/* Tool Calls (single source of truth: derived from event history) */}
-                    {toolCallsToShow.length > 0 && (
-                        <DetailSection title="Tool Executions">
-                            {toolCallsToShow.map((toolCall, index) => (
-                                <ToolCallDisplay key={index} toolCall={toolCall} />
-                            ))}
-                        </DetailSection>
-                    )}
+                    {/* Tool Executions block removed to avoid duplication; tool calls are shown inline above */}
 
                     {/* Final Result */}
                     {result && (

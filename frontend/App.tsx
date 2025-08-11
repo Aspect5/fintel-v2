@@ -7,6 +7,7 @@ import WorkflowCanvas from './src/components/WorkflowCanvas';
 import { ApiKeyModal } from './src/components/ApiKeyModal';
 import AgentTraceModal from './src/components/AgentTraceModal';
 import ReportModal from './src/components/ReportModal';
+import { buildReportFromWorkflowState } from './src/utils/reportBuilder';
 import Notification from './src/components/Notification';
 import { useWorkflowStatus } from './src/hooks/useWorkflowStatus';
 import WorkflowHistory from './src/components/WorkflowHistory';
@@ -129,192 +130,8 @@ const App: React.FC = () => {
         const workflowData = useWorkflowStore.getState();
         if (workflowData.status === 'completed' && !reportGenerated) {
             if (DEBUG) console.log('[App] Workflow completed. Generating report...');
-            
-            // Look for enhanced result in multiple places - first try enhanced_result, then result
-            let enhancedResult: EnhancedResult | null = null;
-            if (workflowData.enhanced_result) {
-                enhancedResult = workflowData.enhanced_result as EnhancedResult;
-            } else if (typeof workflowData.result === 'object' && workflowData.result !== null) {
-                enhancedResult = workflowData.result as EnhancedResult;
-            }
-            
-            const { result, agent_invocations, provider, query } = enhancedResult || {};
-            
-            // Use agent_invocations from the store if not in enhanced_result
-            const agentInvocationsToUse = agent_invocations || workflowData.agent_invocations || [];
-            
-            let reportContent = "Analysis completed successfully.";
-            if (typeof result === 'string') {
-                reportContent = result;
-            } else if (typeof result === 'object' && result !== null) {
-                // Try to extract the most meaningful content for the executive summary
-                const resultObj = result as any;
-                if (resultObj.recommendation) {
-                    reportContent = resultObj.recommendation;
-                } else if (resultObj.market_analysis) {
-                    reportContent = resultObj.market_analysis;
-                } else if (resultObj.content) {
-                    reportContent = resultObj.content;
-                } else if (resultObj.sentiment && resultObj.confidence) {
-                    // Create a summary from sentiment and confidence
-                    reportContent = `Analysis indicates a ${resultObj.sentiment} sentiment with ${Math.round(resultObj.confidence * 100)}% confidence.`;
-                    if (resultObj.key_insights && Array.isArray(resultObj.key_insights)) {
-                        reportContent += ` Key insights: ${resultObj.key_insights.slice(0, 2).join(', ')}.`;
-                    }
-                } else {
-                    reportContent = JSON.stringify(result, null, 2);
-                }
-            }
-            
-            // Build helper maps for robust event-task linking (computed fresh per completion)
-            const roleToTaskId: Record<string, string> = (() => {
-                const mapping: Record<string, string> = {};
-                try {
-                    const currentNodes = useWorkflowStore.getState().nodes || [];
-                    (currentNodes as any[]).forEach((n: any) => {
-                        if (n?.id?.startsWith?.('task_')) {
-                            const role = String(n.id).replace('task_', '');
-                            const tid = n?.data?.taskId;
-                            if (role && tid) mapping[role] = tid;
-                        }
-                    });
-                } catch {}
-                return mapping;
-            })();
-
-            const allEvents = (workflowData.event_history || []) as any[];
-            const isAgentToolCall = (e: any) => e?.event_type === 'agent_tool_call' && !e?.is_internal_controlflow_tool;
-
-            // Extract agent findings from the trace data if available
-            let agentFindings: AgentFinding[] = [];
-            
-            if (workflowData.trace?.task_results) {
-                // Use the rich trace data from the backend
-                const taskResults = workflowData.trace.task_results;
-                agentFindings = Object.entries(taskResults).map(([taskName, taskResult]: [string, any]) => {
-                    // Map task names to agent names
-                    const agentNameMap: { [key: string]: string } = {
-                        'market_analysis': 'Market Analyst',
-                        'risk_assessment': 'Risk Assessor', 
-                        'final_synthesis': 'Investment Advisor',
-                        'recommendation': 'Investment Advisor'
-                    };
-                    
-                    const agentName = agentNameMap[taskName] || taskName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                    
-                    // Extract analysis content from the task result
-                    let summary = 'Analysis completed';
-                    let details: string[] = [];
-                    
-                    if (typeof taskResult === 'object' && taskResult !== null) {
-                        if (taskResult.analysis_summary) {
-                            summary = taskResult.analysis_summary;
-                        } else if (taskResult.risk_summary) {
-                            summary = taskResult.risk_summary;
-                        } else if (taskResult.recommendation) {
-                            summary = taskResult.recommendation;
-                        } else if (taskResult.market_analysis) {
-                            summary = taskResult.market_analysis;
-                        }
-                        
-                        // Extract key insights or risk factors as details
-                        if (taskResult.key_insights) {
-                            details = taskResult.key_insights;
-                        } else if (taskResult.risk_factors) {
-                            details = taskResult.risk_factors;
-                        }
-                    }
-                    
-                    // Extract actual tool calls from event_history for this task/agent (exclude internal tools)
-                    let toolCalls: any[] = [];
-                    try {
-                        const expectedTaskId = roleToTaskId[taskName];
-                        const calls = allEvents.filter((e: any) => {
-                            if (!isAgentToolCall(e)) return false;
-                            const byTaskId = expectedTaskId && e?.task_id && e.task_id === expectedTaskId;
-                            const byAgentRole = e?.agent_role && e.agent_role === taskName;
-                            const byAgentName = e?.agent_name && e.agent_name === agentName;
-                            return Boolean(byTaskId || byAgentRole || byAgentName);
-                        });
-                        toolCalls = calls.map((e: any) => {
-                            const output = e.tool_output;
-                            let summary = '';
-                            try {
-                                if (output === null || output === undefined) {
-                                    summary = 'No output';
-                                } else if (typeof output === 'string') {
-                                    summary = output.slice(0, 140);
-                                } else {
-                                    summary = JSON.stringify(output).slice(0, 140);
-                                }
-                            } catch {
-                                summary = `Executed ${e.tool_name}`;
-                            }
-                            return {
-                                toolName: e.tool_name,
-                                toolInput: e.tool_input,
-                                toolOutput: output,
-                                toolOutputSummary: summary
-                            };
-                        });
-                    } catch {}
-                    
-                    return {
-                        agentName,
-                        specialization: taskName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-                        summary,
-                        details,
-                        toolCalls,
-                    };
-                });
-            } else {
-                // Fallback to the old mapping logic
-                agentFindings = agentInvocationsToUse.map((inv: any) => ({
-                    agentName: inv.agent || inv.agentName || 'Unknown Agent',
-                    specialization: inv.specialization || 'Financial Analysis',
-                    summary: inv.task || inv.naturalLanguageTask || 'Analysis completed',
-                    details: inv.details || [],
-                    toolCalls: inv.tool_calls || inv.toolCalls || [],
-                }));
-            }
-            
-            const crossAgentInsights = generateCrossAgentInsights(agentFindings, provider || '');
-
-            // Data Quality notes derived strictly from event_history agent_tool_call (excluding internal)
-            const toolEvents = allEvents.filter(isAgentToolCall);
-            const uniqueTools = Array.from(new Set(toolEvents.map((e: any) => e.tool_name).filter(Boolean)));
-            const dataQualityNotes = uniqueTools.length > 0
-                ? `Tools used: ${toolEvents.length} calls across ${uniqueTools.length} unique tools (${uniqueTools.join(', ')}).`
-                : `No external tools were invoked.`;
-
-            const report: Report = {
-                executiveSummary: reportContent,
-                agentFindings,
-                failedAgents: [],
-                crossAgentInsights,
-                actionableRecommendations: extractActionableRecommendations(reportContent),
-                riskAssessment: extractRiskAssessment(reportContent),
-                confidenceLevel: extractConfidenceLevel(reportContent),
-                dataQualityNotes,
-                executionTrace: {
-                    fintelQueryAnalysis: query || workflowData.query || "",
-                    agentInvocations: agentInvocationsToUse,
-                },
-                result: result || workflowData.result,
-            };
-
-            if (DEBUG) {
-                console.log('[App] Generated report:', {
-                    agentFindingsCount: agentFindings.length,
-                    hasResult: !!result,
-                    hasEnhancedResult: !!workflowData.enhanced_result,
-                    hasAgentInvocations: !!agentInvocationsToUse.length,
-                    hasTrace: !!workflowData.trace,
-                    traceTaskResults: workflowData.trace?.task_results ? Object.keys(workflowData.trace.task_results) : [],
-                    agentFindings: agentFindings.map(f => ({ name: f.agentName, summary: f.summary.substring(0, 50) + '...' }))
-                });
-            }
-
+            const report = buildReportFromWorkflowState(workflowData as any);
+            if (DEBUG) console.log('[App] Generated report via builder:', report);
             setCurrentReport(report);
             setReportGenerated(true);
             setIsReportModalVisible(true);
@@ -528,6 +345,9 @@ const App: React.FC = () => {
                                 }`}>
                                     {workflowStatus}
                                 </span>
+                                {workflowStatus === 'running' || workflowStatus === 'initializing' ? (
+                                    <span className="inline-block w-4 h-4 border-2 border-brand-primary border-t-transparent rounded-full animate-spin" aria-label="loading" />
+                                ) : null}
                             </div>
                             {executionTime > 0 && (
                                 <div className="text-sm text-brand-text-secondary mt-1">
