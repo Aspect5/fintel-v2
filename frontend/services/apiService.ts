@@ -1,8 +1,8 @@
 import { Report } from '../src/types';
-import { ControlFlowProvider } from '../../store';
+import { ControlFlowProvider } from '@/stores/store';
 import { parseReportContent } from '../src/utils/reportParser';
 
-const API_BASE_URL = 'http://127.0.0.1:5001/api';
+const API_BASE_URL = '/api';
 
 interface RunWorkflowPayload {
     task: string;
