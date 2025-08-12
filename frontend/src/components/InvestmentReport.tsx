@@ -5,6 +5,8 @@ import KeyMetricsGrid from './KeyMetricsGrid';
 import ExpandableText from './ExpandableText';
 import RetryAnalysisCard from './report/RetryAnalysisCard';
 import { parseEnhancedResult, normalizeRecommendation, toTitleCase } from '@/utils/reportUtils';
+import AlphaIntelligenceCard from '@/components/report/AlphaIntelligenceCard';
+import BacktestSummaryCard from '@/components/report/BacktestSummaryCard';
 
 interface ReportDisplayProps {
   report: Report | null;
@@ -121,6 +123,12 @@ const InvestmentReport: React.FC<ReportDisplayProps> = ({ report, isLoading = fa
                           {enhanced.sentiment?.charAt(0).toUpperCase() + enhanced.sentiment?.slice(1)}
                         </span>
                       </div>
+                      {typeof enhanced.confidence === 'number' && (
+                        <div className="flex items-center justify-between p-3 bg-brand-bg rounded-lg">
+                          <span className="text-brand-text-secondary">Model Confidence</span>
+                          <span className="font-bold text-white">{Math.round((enhanced.confidence || 0) * 100)}%</span>
+                        </div>
+                      )}
                     </div>
                     <div className="space-y-4">
                       {enhanced.recommendation && (
@@ -169,6 +177,16 @@ const InvestmentReport: React.FC<ReportDisplayProps> = ({ report, isLoading = fa
                 );
               })()}
             </section>
+          )}
+
+          {/* Alpha Intelligence Panel from tool outputs */}
+          {report.agentFindings && report.agentFindings.length > 0 && (
+            <AlphaIntelligenceCard findings={report.agentFindings} />
+          )}
+
+          {/* Backtest summary if available */}
+          {report.agentFindings && report.agentFindings.length > 0 && (
+            <BacktestSummaryCard findings={report.agentFindings} />
           )}
 
           {report.retryAnalysis && (

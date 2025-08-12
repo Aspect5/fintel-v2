@@ -79,15 +79,18 @@ export function buildReportFromWorkflowState(workflowData: any): Report {
     }
   }
 
-  // Build helper map: role -> taskId
+  // Build helper maps: role -> taskId, role -> configuredAgentName
   const roleToTaskId: Record<string, string> = {};
+  const roleToAgentName: Record<string, string> = {};
   try {
     const currentNodes = (workflowData?.nodes || []) as any[];
     currentNodes.forEach((n: any) => {
       if (n?.id?.startsWith?.('task_')) {
         const role = String(n.id).replace('task_', '');
         const tid = n?.data?.taskId;
+        const configuredAgentName = n?.data?.agentName;
         if (role && tid) roleToTaskId[role] = tid;
+        if (role && configuredAgentName) roleToAgentName[role] = String(configuredAgentName);
       }
     });
   } catch {}
@@ -97,6 +100,8 @@ export function buildReportFromWorkflowState(workflowData: any): Report {
     e?.event_type === 'agent_tool_call' &&
     !e?.is_internal_controlflow_tool &&
     !(typeof e?.tool_name === 'string' && e.tool_name.startsWith('mark_task_'));
+  const isToolResult = (e: any) => e?.event_type === 'tool_result';
+  const normalizeLoose = (s: any) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 
   // Build agent findings from trace if available
   let agentFindings: AgentFinding[] = [];
@@ -148,21 +153,53 @@ export function buildReportFromWorkflowState(workflowData: any): Report {
       try {
         const expectedTaskId = roleToTaskId[taskName];
         const normalizedRole = normalizeName(taskName);
-        const normalizedAgentName = normalizeName(agentName);
+        // const normalizedAgentName = normalizeName(agentName);
 
-        const calls = allEvents.filter((e: any) => {
+        // Primary: agent_tool_call events
+        let calls = allEvents.filter((e: any) => {
           if (!isAgentToolCall(e)) return false;
           const byTaskId = Boolean(expectedTaskId && e?.task_id && e.task_id === expectedTaskId);
           const byAgentRole = Boolean(e?.agent_role && normalizeName(e.agent_role) === normalizedRole);
-          const byAgentName = Boolean(e?.agent_name && normalizeName(e.agent_name) === normalizedAgentName);
-          return byTaskId || byAgentRole || byAgentName;
+          const byTaskName = Boolean(e?.task_name && normalizeName(String(e.task_name).replace(/^task_/, '')) === normalizedRole);
+          // Loose name match to handle 'MarketAnalyst' vs display 'Market Analyst'; prefer configured agent name if available
+          const configuredNameForRole = roleToAgentName[taskName];
+          const displayNameLoose = Boolean(e?.agent_name && normalizeLoose(e.agent_name) === normalizeLoose(agentName));
+          const configuredNameLoose = Boolean(
+            e?.agent_name && configuredNameForRole && normalizeLoose(e.agent_name) === normalizeLoose(configuredNameForRole)
+          );
+          const byAgentNameLoose = displayNameLoose || configuredNameLoose;
+          return byTaskId || byAgentRole || byTaskName || byAgentNameLoose;
         });
+
         toolCalls = calls.map((e: any) => ({
           toolName: e.tool_name,
           toolInput: e.tool_input,
           toolOutput: e.tool_output,
           toolOutputSummary: stringifyBrief(e.tool_output),
         }));
+
+        // Fallback: if no agent_tool_call captured, infer from tool_result events correlated by task/role/name
+        if (toolCalls.length === 0) {
+          const resultEvents = allEvents.filter((e: any) => {
+            if (!isToolResult(e)) return false;
+            const byTaskId = Boolean(expectedTaskId && e?.task_id && e.task_id === expectedTaskId);
+            const byAgentRole = Boolean(e?.agent_role && normalizeName(e.agent_role) === normalizedRole);
+            const byTaskName = Boolean(e?.task_name && normalizeName(String(e.task_name).replace(/^task_/, '')) === normalizedRole);
+            const configuredNameForRole = roleToAgentName[taskName];
+            const displayNameLoose = Boolean(e?.agent_name && normalizeLoose(e.agent_name) === normalizeLoose(agentName));
+            const configuredNameLoose = Boolean(
+              e?.agent_name && configuredNameForRole && normalizeLoose(e.agent_name) === normalizeLoose(configuredNameForRole)
+            );
+            const byAgentNameLoose = displayNameLoose || configuredNameLoose;
+            return byTaskId || byAgentRole || byTaskName || byAgentNameLoose;
+          });
+          toolCalls = resultEvents.map((e: any) => ({
+            toolName: e.tool_name,
+            toolInput: undefined,
+            toolOutput: e.result,
+            toolOutputSummary: stringifyBrief(e.result),
+          }));
+        }
       } catch {}
 
       return {

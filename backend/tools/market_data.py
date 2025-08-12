@@ -3,6 +3,7 @@ import requests
 from typing import Dict, Any
 from .base import BaseTool
 from .mock_data import MOCK_MARKET_DATA, MOCK_COMPANY_OVERVIEW
+from backend.utils.http_client import alpha_vantage_request
 
 class MarketDataTool(BaseTool):
     """Tool for fetching market data from Alpha Vantage"""
@@ -32,26 +33,19 @@ class MarketDataTool(BaseTool):
             }
         
         try:
-            url = "https://www.alphavantage.co/query"
             params = {
                 "function": "GLOBAL_QUOTE",
                 "symbol": ticker,
-                "apikey": self.api_key
             }
-            
-            response = requests.get(url, params=params, timeout=10)
-            data = response.json()
-            
+            data = alpha_vantage_request(params)
             self.record_execution()
-            
-            if "Note" in data:
-                # API limit reached, return mock data
+            if not data:
                 mock_data = MOCK_MARKET_DATA.get(ticker, MOCK_MARKET_DATA["DEFAULT"]).copy()
                 mock_data["symbol"] = ticker
-                mock_data["note"] = "API limit reached - using mock data"
+                mock_data["note"] = "API unavailable/limited - using mock data"
                 mock_data["_mock"] = True
                 return mock_data
-            
+
             if "Global Quote" in data and data["Global Quote"]:
                 quote = data["Global Quote"]
                 return {
@@ -63,16 +57,14 @@ class MarketDataTool(BaseTool):
                     "status": "success",
                     "source": "alpha_vantage"
                 }
-            else:
-                # No data available, return mock
-                mock_data = MOCK_MARKET_DATA.get(ticker, MOCK_MARKET_DATA["DEFAULT"]).copy()
-                mock_data["symbol"] = ticker
-                mock_data["note"] = "No live data available - using mock data"
-                mock_data["_mock"] = True
-                return mock_data
-                
+            # No data available, use mock
+            mock_data = MOCK_MARKET_DATA.get(ticker, MOCK_MARKET_DATA["DEFAULT"]).copy()
+            mock_data["symbol"] = ticker
+            mock_data["note"] = "No live data available - using mock data"
+            mock_data["_mock"] = True
+            return mock_data
+
         except Exception as e:
-            # On any error, return mock data
             mock_data = MOCK_MARKET_DATA.get(ticker, MOCK_MARKET_DATA["DEFAULT"]).copy()
             mock_data["symbol"] = ticker
             mock_data["note"] = f"Error occurred - using mock data: {str(e)}"
@@ -107,26 +99,19 @@ class CompanyOverviewTool(BaseTool):
             }
         
         try:
-            url = "https://www.alphavantage.co/query"
             params = {
                 "function": "OVERVIEW",
                 "symbol": ticker,
-                "apikey": self.api_key
             }
-            
-            response = requests.get(url, params=params, timeout=10)
-            data = response.json()
-            
+            data = alpha_vantage_request(params)
             self.record_execution()
-            
-            if "Note" in data:
-                # API limit reached, return mock data
+            if not data:
                 mock_data = MOCK_COMPANY_OVERVIEW.get(ticker, MOCK_COMPANY_OVERVIEW["DEFAULT"]).copy()
                 mock_data["symbol"] = ticker
-                mock_data["note"] = "API limit reached - using mock data"
+                mock_data["note"] = "API unavailable/limited - using mock data"
                 mock_data["_mock"] = True
                 return mock_data
-            
+
             if "Symbol" in data and data["Symbol"]:
                 return {
                     "symbol": data.get("Symbol", ticker),
@@ -140,16 +125,13 @@ class CompanyOverviewTool(BaseTool):
                     "status": "success",
                     "source": "alpha_vantage"
                 }
-            else:
-                # No data available, return mock
-                mock_data = MOCK_COMPANY_OVERVIEW.get(ticker, MOCK_COMPANY_OVERVIEW["DEFAULT"]).copy()
-                mock_data["symbol"] = ticker
-                mock_data["note"] = "No live data available - using mock data"
-                mock_data["_mock"] = True
-                return mock_data
-                
+            mock_data = MOCK_COMPANY_OVERVIEW.get(ticker, MOCK_COMPANY_OVERVIEW["DEFAULT"]).copy()
+            mock_data["symbol"] = ticker
+            mock_data["note"] = "No live data available - using mock data"
+            mock_data["_mock"] = True
+            return mock_data
+
         except Exception as e:
-            # On any error, return mock data
             mock_data = MOCK_COMPANY_OVERVIEW.get(ticker, MOCK_COMPANY_OVERVIEW["DEFAULT"]).copy()
             mock_data["symbol"] = ticker
             mock_data["note"] = f"Error occurred - using mock data: {str(e)}"

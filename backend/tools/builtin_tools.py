@@ -13,6 +13,13 @@ import controlflow as cf
 import json
 import requests
 from backend.config.settings import get_settings
+from backend.utils.http_client import alpha_vantage_request
+from backend.tools.feature_builder import compute_features_from_data
+from backend.tools.model_inference import (
+    train_baseline_model,
+    predict_proba_from_features,
+)
+from backend.tools.backtesting import walk_forward_backtest_from_series
 
 # Global reference to tool instances (will be set by registry)
 _tool_instances = {}
@@ -65,30 +72,25 @@ def get_tool_function(tool_name: str):
         "get_income_statement": get_income_statement,
         "get_balance_sheet": get_balance_sheet,
         "get_cash_flow": get_cash_flow,
+        # Alpha Intelligence tools
+        "get_news_sentiment": get_news_sentiment,
+        "get_earnings_transcript": get_earnings_transcript,
+        "get_top_gainers_losers": get_top_gainers_losers,
+        "get_insider_transactions": get_insider_transactions,
+        "get_alpha_analytics": get_alpha_analytics,
+        "build_features": build_features,
+        "train_baseline_model": train_model,
+        "predict_from_features": predict_from_features,
+        "backtest_baseline": backtest_baseline,
     }
     
     return tool_functions.get(tool_name)
 
 # ---- Alpha Vantage helpers ----
 def _av_request(params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Perform an Alpha Vantage request with centralized handling.
-    Returns parsed JSON or None on failure/limits.
-    """
-    try:
-        settings = get_settings()
-        api_key = settings.alpha_vantage_api_key
-        if not api_key:
-            return None
-        url = "https://www.alphavantage.co/query"
-        req_params = {**params, "apikey": api_key}
-        resp = requests.get(url, params=req_params, timeout=12)
-        data = resp.json()
-        # Check rate limit or error messages
-        if isinstance(data, dict) and (data.get("Note") or data.get("Error Message") or data.get("Information")):
-            return None
-        return data
-    except Exception:
-        return None
+    """Perform an Alpha Vantage request via shared client (caching/backoff/rate-limit)."""
+    settings = get_settings()
+    return alpha_vantage_request(params, cache_ttl_seconds=settings.alpha_vantage_cache_ttl)
 
 def _mock_series(symbol: str) -> Dict[str, Any]:
     now = datetime.now()
@@ -123,6 +125,251 @@ def _mock_indicator(symbol: str, name: str) -> Dict[str, Any]:
         "note": f"Mock {name} (fallback)",
         "timestamp": now,
         "source": "mock_data",
+    }
+# ---- Feature builder tool ----
+
+@cf.tool
+def build_features(
+    ticker: str,
+    time_series_daily: dict,
+    news: Optional[dict] = None,
+    insiders: Optional[dict] = None,
+    fundamentals_income: Optional[dict] = None,
+    fundamentals_balance: Optional[dict] = None,
+    fundamentals_cash: Optional[dict] = None,
+    gainers_losers: Optional[dict] = None,
+    lookback_days: int = 90,
+) -> dict:
+    """Compose engineered features from various inputs for a ticker.
+
+    Inputs are expected to be outputs from existing tools (daily series, news, etc.).
+    """
+    if not ticker:
+        return {"error": "ticker is required", "ticker": ticker}
+    try:
+        result = compute_features_from_data(
+            ticker=ticker,
+            time_series_daily=time_series_daily or {},
+            news=news or {},
+            insiders=insiders or {},
+            fundamentals_income=fundamentals_income or {},
+            fundamentals_balance=fundamentals_balance or {},
+            fundamentals_cash=fundamentals_cash or {},
+            gainers_losers=gainers_losers or {},
+            lookback_days=lookback_days,
+        )
+        return result
+    except Exception as e:
+        return {"error": f"failed_to_build_features: {e}", "ticker": ticker}
+
+
+@cf.tool
+def train_model(records: List[dict], calibrate: bool = True) -> dict:
+    """Train the baseline model given labeled records: [{features: {}, label: 0/1}, ...]."""
+    try:
+        return train_baseline_model(records, calibrate=calibrate)
+    except Exception as e:
+        return {"error": f"failed_to_train_model: {e}"}
+
+
+@cf.tool
+def predict_from_features(features: dict) -> dict:
+    """Predict probability of upward move from a single feature dict."""
+    try:
+        return predict_proba_from_features(features)
+    except Exception as e:
+        return {"error": f"failed_to_predict: {e}"}
+
+
+@cf.tool
+def backtest_baseline(
+    ticker: str,
+    daily_series: dict,
+    horizon_days: int = 10,
+    min_train_size: int = 150,
+    step: int = 5,
+) -> dict:
+    """Walk-forward backtest using price-based features and baseline model.
+
+    daily_series: expected shape similar to get_time_series_daily output { series: [...] }.
+    """
+    try:
+        series = (daily_series or {}).get("series") or []
+        return walk_forward_backtest_from_series(
+            ticker=ticker,
+            series=series,
+            horizon_days=horizon_days,
+            min_train_size=min_train_size,
+            step=step,
+        )
+    except Exception as e:
+        return {"error": f"failed_to_backtest: {e}"}
+
+
+# ---- Alpha Intelligence tools ----
+
+@cf.tool
+def get_news_sentiment(
+    ticker: Optional[str] = None,
+    limit: int = 50,
+    sort: str = "LATEST",
+    time_from: Optional[str] = None,
+    time_to: Optional[str] = None,
+    topics: Optional[str] = None,
+) -> dict:
+    """
+    Get news and sentiment for a ticker via Alpha Vantage Alpha Intelligence.
+
+    Args:
+        ticker: Optional stock ticker (e.g., AAPL). If omitted, gets broad market news.
+        limit: Max number of articles (Alpha Vantage default caps may apply).
+        sort: Sort order (e.g., LATEST).
+        time_from: ISO-like string (YYYYMMDDTHHMM) if supported by AV.
+        time_to: ISO-like string (YYYYMMDDTHHMM) if supported by AV.
+        topics: Optional topics filter (comma-separated) if supported.
+    """
+    params: Dict[str, Any] = {"function": "NEWS_SENTIMENT", "limit": limit, "sort": sort}
+    if ticker:
+        params["tickers"] = ticker.upper()
+    if time_from:
+        params["time_from"] = time_from
+    if time_to:
+        params["time_to"] = time_to
+    if topics:
+        params["topics"] = topics
+
+    data = _av_request(params)
+    if not data or not isinstance(data, dict):
+        return {
+            "ticker": (ticker or "MARKET").upper() if ticker else None,
+            "articles": [],
+            "status": "unavailable",
+            "source": "alpha_vantage",
+        }
+
+    feed = data.get("feed") or data.get("items") or []
+    articles: List[Dict[str, Any]] = []
+    for item in feed:
+        if not isinstance(item, dict):
+            continue
+        article = {
+            "title": item.get("title"),
+            "url": item.get("url"),
+            "summary": item.get("summary") or item.get("summary_text"),
+            "time_published": item.get("time_published") or item.get("published_at"),
+            "source": item.get("source") or item.get("source_domain"),
+            "overall_sentiment_score": item.get("overall_sentiment_score") or item.get("sentiment_score"),
+            "overall_sentiment_label": item.get("overall_sentiment_label") or item.get("sentiment_label"),
+            "relevance_score": item.get("relevance_score"),
+            "ticker_sentiment": item.get("ticker_sentiment"),
+        }
+        articles.append(article)
+
+    return {
+        "ticker": (ticker or "MARKET").upper() if ticker else None,
+        "articles": articles,
+        "raw_meta": {k: v for k, v in data.items() if k != "feed"},
+        "status": "success",
+        "source": "alpha_vantage",
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
+@cf.tool
+def get_earnings_transcript(ticker: str, quarter: int, year: int) -> dict:
+    """
+    Get earnings call transcript for a given ticker/quarter/year.
+    """
+    if not ticker or not quarter or not year:
+        return {"error": "ticker, quarter, and year are required", "ticker": ticker}
+    params = {
+        "function": "EARNINGS_CALL_TRANSCRIPT",
+        "symbol": ticker.upper(),
+        "quarter": int(quarter),
+        "year": int(year),
+    }
+    data = _av_request(params)
+    if not data or not isinstance(data, dict):
+        return {
+            "ticker": ticker.upper(),
+            "quarter": quarter,
+            "year": year,
+            "transcript": None,
+            "status": "unavailable",
+            "source": "alpha_vantage",
+        }
+    # Normalize
+    transcript = data.get("transcript") or data.get("content") or data.get("script") or data.get("text")
+    speakers = data.get("speakers") or data.get("participants")
+    return {
+        "ticker": ticker.upper(),
+        "quarter": quarter,
+        "year": year,
+        "transcript": transcript,
+        "speakers": speakers,
+        "raw": data,
+        "status": "success",
+        "source": "alpha_vantage",
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
+@cf.tool
+def get_top_gainers_losers() -> dict:
+    """Get top gainers, top losers, and most actively traded from Alpha Vantage."""
+    data = _av_request({"function": "TOP_GAINERS_LOSERS"})
+    if not data or not isinstance(data, dict):
+        return {"gainers": [], "losers": [], "most_active": [], "status": "unavailable", "source": "alpha_vantage"}
+    return {
+        "gainers": data.get("top_gainers") or data.get("gainers") or [],
+        "losers": data.get("top_losers") or data.get("losers") or [],
+        "most_active": data.get("most_actively_traded") or data.get("most_active") or [],
+        "status": "success",
+        "source": "alpha_vantage",
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
+@cf.tool
+def get_insider_transactions(ticker: str, limit: int = 100) -> dict:
+    """Get recent insider transactions for a ticker."""
+    if not ticker:
+        return {"error": "ticker is required", "ticker": ticker}
+    params = {"function": "INSIDER_TRANSACTIONS", "symbol": ticker.upper(), "limit": limit}
+    data = _av_request(params)
+    if not data or not isinstance(data, dict):
+        return {"ticker": ticker.upper(), "transactions": [], "status": "unavailable", "source": "alpha_vantage"}
+    tx = data.get("transactions") or data.get("data") or data.get("items") or []
+    return {
+        "ticker": ticker.upper(),
+        "transactions": tx,
+        "status": "success",
+        "source": "alpha_vantage",
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
+@cf.tool
+def get_alpha_analytics(ticker: str, window: str = "fixed", horizon: str = "30d") -> dict:
+    """Get Alpha Vantage analytics (fixed/sliding window) for a ticker."""
+    if not ticker:
+        return {"error": "ticker is required", "ticker": ticker}
+    params = {
+        "function": "ANALYTICS",
+        "symbol": ticker.upper(),
+        "time_window": window,
+        "horizon": horizon,
+    }
+    data = _av_request(params)
+    if not data or not isinstance(data, dict):
+        return {"ticker": ticker.upper(), "analytics": None, "status": "unavailable", "source": "alpha_vantage"}
+    # Return as-is under normalized key; structure may vary by window/horizon
+    return {
+        "ticker": ticker.upper(),
+        "analytics": data,
+        "status": "success",
+        "source": "alpha_vantage",
+        "timestamp": datetime.now().isoformat(),
     }
 
 @cf.tool

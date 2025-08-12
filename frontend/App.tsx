@@ -13,7 +13,7 @@ import { useWorkflowStatus } from './src/hooks/useWorkflowStatus';
 import WorkflowHistory from './src/components/WorkflowHistory';
 import LogViewer from './src/components/LogViewer';
 import {
-  CustomNode, Report, AgentFinding, EnhancedResult,
+  CustomNode, Report,
 } from './src/types';
 
 // Suppress ResizeObserver loop error
@@ -28,54 +28,7 @@ console.error = (...args) => {
 // Debug flag to gate noisy logs
 const DEBUG = import.meta.env.MODE === 'development' && (window as any).__DEBUG__;
 
-// Helper functions (assuming they are still needed, otherwise can be removed)
-const generateCrossAgentInsights = (agentFindings: any[], provider: string): string => {
-    if (agentFindings.length === 0) return `Analysis completed using ${provider}.`;
-    const agentNames = agentFindings.map(f => f.agentName);
-    const insights = [`Analysis completed using ${agentNames.join(' and ')} with ${provider}.`];
-    const hasConsensus = agentFindings.every(f => f.summary.toLowerCase().includes('positive'));
-    if (hasConsensus) {
-        insights.push("All agents identified positive trends, indicating strong consensus.");
-    } else {
-        insights.push("Agents provided mixed perspectives, suggesting balanced analysis.");
-    }
-    return insights.join(' ');
-};
-const extractActionableRecommendations = (content: string): string[] => {
-    const recommendations: string[] = [];
-    const lines = content.split('\n');
-    const startIndex = lines.findIndex(line => line.includes('Action Items') || line.includes('📋'));
-    if (startIndex === -1) return ['Review analysis details'];
-    for (let i = startIndex + 1; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (line.startsWith('-') || line.startsWith('•')) {
-            recommendations.push(line.substring(1).trim().replace(/\*\*/g, ''));
-        } else if (line.startsWith('#')) {
-            break;
-        }
-    }
-    return recommendations.length > 0 ? recommendations : ['Review analysis details'];
-};
-
-const extractRiskAssessment = (content: string): string => {
-    const lines = content.split('\n');
-    const startIndex = lines.findIndex(line => line.includes('Risk Assessment') || line.includes('⚠️'));
-    if (startIndex === -1) return "Standard market risks apply";
-    const riskLines: string[] = [];
-    for (let i = startIndex + 1; i < lines.length; i++) {
-        if (lines[i].trim().startsWith('#')) break;
-        if (lines[i].trim()) riskLines.push(lines[i].trim());
-    }
-    return riskLines.join(' ').substring(0, 200) + '...';
-};
-
-const extractConfidenceLevel = (content: string): number => {
-    const match = content.match(/confidence.*?(\d+)/i);
-    return match ? Math.min(Math.max(parseInt(match[1], 10) / 10, 0), 1) : 0.85;
-};
-
-// Deprecated: superseded by event_history-derived data quality notes
-// const generateDataQualityNotes = (...) => {}
+// Deprecated helpers removed in favor of centralized reportBuilder
 
 
 const App: React.FC = () => {
@@ -158,130 +111,9 @@ const App: React.FC = () => {
         // Auto-hide banner after a few seconds
         setTimeout(() => setBannerInfo(null), 4000);
 
-    // Reconstruct a report from the loaded snapshot so the final report opens from history
+    // Reconstruct a report from the loaded snapshot using centralized builder
     try {
-        // Resolve enhanced result
-        const enhanced = (data?.enhanced_result as EnhancedResult) || (typeof data?.result === 'object' ? (data.result as EnhancedResult) : null);
-        const { result, agent_invocations, provider, query } = enhanced || {};
-
-        // Build role->taskId map from nodes
-        const roleToTaskId: Record<string, string> = {};
-        try {
-            const nodesList = (data?.nodes || []) as any[];
-            nodesList.forEach((n: any) => {
-                if (n?.id?.startsWith?.('task_')) {
-                    const role = String(n.id).replace('task_', '');
-                    const tid = n?.data?.taskId;
-                    if (role && tid) roleToTaskId[role] = tid;
-                }
-            });
-        } catch {}
-
-        const allEvents = (data?.event_history || []) as any[];
-        const isAgentToolCall = (e: any) => e?.event_type === 'agent_tool_call' && !e?.is_internal_controlflow_tool;
-
-        // Executive summary/content
-        let reportContent = 'Analysis completed successfully.';
-        if (typeof result === 'string') {
-            reportContent = result;
-        } else if (typeof result === 'object' && result !== null) {
-            const resultObj = result as any;
-            if (resultObj.recommendation) {
-                reportContent = resultObj.recommendation;
-            } else if (resultObj.market_analysis) {
-                reportContent = resultObj.market_analysis;
-            } else if (resultObj.content) {
-                reportContent = resultObj.content;
-            } else if (resultObj.sentiment && resultObj.confidence) {
-                reportContent = `Analysis indicates a ${resultObj.sentiment} sentiment with ${Math.round(resultObj.confidence * 100)}% confidence.`;
-                if (resultObj.key_insights && Array.isArray(resultObj.key_insights)) {
-                    reportContent += ` Key insights: ${resultObj.key_insights.slice(0, 2).join(', ')}.`;
-                }
-            } else {
-                reportContent = JSON.stringify(result, null, 2);
-            }
-        }
-
-        // Agent findings from snapshot trace + event history
-        let agentFindings: AgentFinding[] = [];
-        if (data?.trace?.task_results) {
-            const taskResults = data.trace.task_results;
-            agentFindings = Object.entries(taskResults).map(([taskName, taskResult]: [string, any]) => {
-                const agentNameMap: { [key: string]: string } = {
-                    'market_analysis': 'Market Analyst',
-                    'risk_assessment': 'Risk Assessor',
-                    'final_synthesis': 'Investment Advisor',
-                    'recommendation': 'Investment Advisor'
-                };
-                const agentName = agentNameMap[taskName] || taskName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                let summary = 'Analysis completed';
-                let details: string[] = [];
-                if (typeof taskResult === 'object' && taskResult !== null) {
-                    if (taskResult.analysis_summary) summary = taskResult.analysis_summary;
-                    else if (taskResult.risk_summary) summary = taskResult.risk_summary;
-                    else if (taskResult.recommendation) summary = taskResult.recommendation;
-                    else if (taskResult.market_analysis) summary = taskResult.market_analysis;
-                    if (taskResult.key_insights) details = taskResult.key_insights;
-                    else if (taskResult.risk_factors) details = taskResult.risk_factors;
-                }
-                // Tool calls for this task/agent
-                let toolCalls: any[] = [];
-                try {
-                    const expectedTaskId = roleToTaskId[taskName];
-                    const calls = allEvents.filter((e: any) => {
-                        if (!isAgentToolCall(e)) return false;
-                        const byTaskId = expectedTaskId && e?.task_id && e.task_id === expectedTaskId;
-                        const byAgentRole = e?.agent_role && e.agent_role === taskName;
-                        const byAgentName = e?.agent_name && e.agent_name === agentName;
-                        return Boolean(byTaskId || byAgentRole || byAgentName);
-                    });
-                    toolCalls = calls.map((e: any) => {
-                        const output = e.tool_output;
-                        let summary = '';
-                        try {
-                            if (output === null || output === undefined) summary = 'No output';
-                            else if (typeof output === 'string') summary = output.slice(0, 140);
-                            else summary = JSON.stringify(output).slice(0, 140);
-                        } catch {
-                            summary = `Executed ${e.tool_name}`;
-                        }
-                        return { toolName: e.tool_name, toolInput: e.tool_input, toolOutput: output, toolOutputSummary: summary };
-                    });
-                } catch {}
-                return { agentName, specialization: taskName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()), summary, details, toolCalls };
-            });
-        } else if (Array.isArray(agent_invocations)) {
-            agentFindings = agent_invocations.map((inv: any) => ({
-                agentName: inv.agent || inv.agentName || 'Unknown Agent',
-                specialization: inv.specialization || 'Financial Analysis',
-                summary: inv.task || inv.naturalLanguageTask || 'Analysis completed',
-                details: inv.details || [],
-                toolCalls: inv.tool_calls || inv.toolCalls || [],
-            }));
-        }
-
-        const crossAgentInsights = generateCrossAgentInsights(agentFindings, provider || '');
-        const toolEvents = allEvents.filter(isAgentToolCall);
-        const uniqueTools = Array.from(new Set(toolEvents.map((e: any) => e.tool_name).filter(Boolean)));
-        const dataQualityNotes = uniqueTools.length > 0
-            ? `Tools used: ${toolEvents.length} calls across ${uniqueTools.length} unique tools (${uniqueTools.join(', ')}).`
-            : `No external tools were invoked.`;
-
-        const report: Report = {
-            executiveSummary: reportContent,
-            agentFindings,
-            failedAgents: [],
-            crossAgentInsights,
-            actionableRecommendations: extractActionableRecommendations(reportContent),
-            riskAssessment: extractRiskAssessment(reportContent),
-            confidenceLevel: extractConfidenceLevel(reportContent),
-            dataQualityNotes,
-            executionTrace: {
-                fintelQueryAnalysis: query || data.query || '',
-                agentInvocations: agent_invocations || [],
-            },
-            result: result || data.result,
-        };
+        const report = buildReportFromWorkflowState(data);
         setCurrentReport(report);
     } catch (e) {
         if (DEBUG) console.warn('[App] Failed to reconstruct report from history snapshot', e);

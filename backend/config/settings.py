@@ -59,6 +59,12 @@ class Settings:
         # Rate Limiting
         self.api_rate_limit = int(os.getenv("API_RATE_LIMIT", "60"))
         self.cache_ttl = int(os.getenv("CACHE_TTL", "300"))
+        # Provider-specific rate limits (per minute)
+        self.alpha_vantage_per_minute = int(os.getenv("ALPHA_VANTAGE_PER_MINUTE", "5"))
+        self.fred_per_minute = int(os.getenv("FRED_PER_MINUTE", "60"))
+        # Optional provider-specific cache TTL overrides (seconds)
+        self.alpha_vantage_cache_ttl = int(os.getenv("ALPHA_VANTAGE_CACHE_TTL", str(self.cache_ttl)))
+        self.fred_cache_ttl = int(os.getenv("FRED_CACHE_TTL", str(self.cache_ttl)))
         
         # ControlFlow Settings
         self.enable_experimental_tui = False

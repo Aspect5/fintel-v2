@@ -38,13 +38,21 @@ class WorkflowMetrics:
         return time.time() - self.start_time
 
 class FintelEventHandler(Handler):
-    """Custom event handler for structured observability"""
+    """Custom event handler for structured observability
+
+    Captures all ControlFlow events with rich, stable identifiers so the
+    frontend can correlate tool calls/results and attribute them to tasks/agents
+    without relying on brittle string matches.
+    """
     
-    def __init__(self):
+    def __init__(self, workflow_id: Optional[str] = None):
         super().__init__()
+        self.workflow_id: Optional[str] = workflow_id
         self.events: List[Dict[str, Any]] = []
         # Optional fast-lookup map: (agent_name, tool_call_id) -> index in self.events
         self._open_tool_calls: Dict[str, int] = {}
+        # Monotonic index for ordering
+        self._event_index: int = 0
     
     def _get_current_task_context(self):
         """Safely retrieve current task context for correlating events."""
@@ -61,11 +69,15 @@ class FintelEventHandler(Handler):
     
     def on_task_start(self, event: TaskStart):
         """Log task start events"""
+        self._event_index += 1
         log_data = {
             "event_type": "task_start",
             "task_id": str(event.task.id),
             "task_objective": event.task.objective,
             "timestamp": datetime.now().isoformat(),
+            "workflow_id": self.workflow_id,
+            "event_index": self._event_index,
+            "event_version": 1,
         }
         logger.info(f"TASK START: {json.dumps(log_data, indent=2)}")
         self.events.append(log_data)
@@ -80,23 +92,32 @@ class FintelEventHandler(Handler):
             agent_role = task_name.replace('task_', '', 1)
         # Try to get agent display name if available
         agent_display_name = None
+        agent_id = None
         try:
-            agent_display_name = getattr(getattr(event.task, 'agent', None), 'name', None)
+            agent_obj = getattr(event.task, 'agent', None)
+            agent_display_name = getattr(agent_obj, 'name', None)
+            agent_id = getattr(agent_obj, 'id', None)
             if not agent_display_name and hasattr(event.task, 'agents'):
                 agents = getattr(event.task, 'agents', [])
                 if agents:
                     agent_display_name = getattr(agents[0], 'name', None)
+                    agent_id = getattr(agents[0], 'id', None)
         except Exception:
             agent_display_name = None
+        self._event_index += 1
         log_data = {
             "event_type": "task_success",
             "task_id": str(event.task.id),
             "task_name": task_name,
             "agent_role": agent_role,
             "agent_name": agent_display_name,
+            "agent_id": str(agent_id) if agent_id is not None else None,
             "result": result_str[:250] + "..." if len(result_str) > 250 else result_str,
             "timestamp": datetime.now().isoformat()
         }
+        log_data["workflow_id"] = self.workflow_id
+        log_data["event_index"] = self._event_index
+        log_data["event_version"] = 1
         logger.info(f"TASK SUCCESS: {json.dumps(log_data, indent=2)}")
         self.events.append(log_data)
 
@@ -109,23 +130,32 @@ class FintelEventHandler(Handler):
             agent_role = task_name.replace('task_', '', 1)
         # Try to get agent display name if available
         agent_display_name = None
+        agent_id = None
         try:
-            agent_display_name = getattr(getattr(event.task, 'agent', None), 'name', None)
+            agent_obj = getattr(event.task, 'agent', None)
+            agent_display_name = getattr(agent_obj, 'name', None)
+            agent_id = getattr(agent_obj, 'id', None)
             if not agent_display_name and hasattr(event.task, 'agents'):
                 agents = getattr(event.task, 'agents', [])
                 if agents:
                     agent_display_name = getattr(agents[0], 'name', None)
+                    agent_id = getattr(agents[0], 'id', None)
         except Exception:
             agent_display_name = None
+        self._event_index += 1
         log_data = {
             "event_type": "task_failure",
             "task_id": str(event.task.id),
             "task_name": task_name,
             "agent_role": agent_role,
             "agent_name": agent_display_name,
+            "agent_id": str(agent_id) if agent_id is not None else None,
             "error": str(event.reason),
             "timestamp": datetime.now().isoformat()
         }
+        log_data["workflow_id"] = self.workflow_id
+        log_data["event_index"] = self._event_index
+        log_data["event_version"] = 1
         logger.error(f"TASK FAILURE: {json.dumps(log_data, indent=2)}")
         self.events.append(log_data)
         
@@ -153,9 +183,11 @@ class FintelEventHandler(Handler):
                     break
 
         task_id, task_name, agent_role = self._get_current_task_context()
+        self._event_index += 1
         log_data = {
             "event_type": "agent_message",
             "agent_name": event.agent.name,
+            "agent_id": str(getattr(event.agent, 'id', None)) if hasattr(event.agent, 'id') else None,
             "message_content": content,
             "tool_calls": msg.get('tool_calls'),
             "timestamp": datetime.now().isoformat(),
@@ -163,6 +195,9 @@ class FintelEventHandler(Handler):
             "task_name": task_name,
             "agent_role": agent_role,
         }
+        log_data["workflow_id"] = self.workflow_id
+        log_data["event_index"] = self._event_index
+        log_data["event_version"] = 1
         logger.info(f"AGENT MESSAGE: {json.dumps(log_data, indent=2)}")
         self.events.append(log_data)
         
@@ -192,10 +227,20 @@ class FintelEventHandler(Handler):
         is_internal = isinstance(tool_name, str) and tool_name.startswith('mark_task_')
 
         task_id, task_name, agent_role = self._get_current_task_context()
+        # Ensure we always have a tool_call_id for airtight correlation
+        if not tool_call_id:
+            try:
+                import uuid
+                tool_call_id = str(uuid.uuid4())
+            except Exception:
+                tool_call_id = None
+
+        self._event_index += 1
         log_data = {
             "event_type": "agent_tool_call",
             "agent_name": agent_name,
             "agent_display_name": agent_name,
+            "agent_id": str(getattr(event.agent, 'id', None)) if hasattr(event.agent, 'id') else None,
             "tool_name": tool_name,
             "tool_input": tool_input,
             "tool_output": None,  # Will be filled by tool_result event
@@ -209,6 +254,9 @@ class FintelEventHandler(Handler):
             self._open_tool_calls[f"{agent_name}::{tool_call_id}"] = len(self.events)
         # Flag ControlFlow internal helpers but do not rename
         log_data["is_internal_controlflow_tool"] = bool(is_internal)
+        log_data["workflow_id"] = self.workflow_id
+        log_data["event_index"] = self._event_index
+        log_data["event_version"] = 1
         logger.info(f"AGENT TOOL CALL: {json.dumps(log_data, indent=2)}")
         self.events.append(log_data)
 
@@ -255,6 +303,7 @@ class FintelEventHandler(Handler):
                     pass
         
         task_id, task_name, agent_role = self._get_current_task_context()
+        self._event_index += 1
         log_data = {
             "event_type": "tool_result", 
             "tool_name": tool_name,
@@ -272,6 +321,9 @@ class FintelEventHandler(Handler):
             log_data["agent_name"] = agent_name
         # Flag ControlFlow internal helpers but do not rename
         log_data["is_internal_controlflow_tool"] = bool(isinstance(tool_name, str) and tool_name.startswith('mark_task_'))
+        log_data["workflow_id"] = self.workflow_id
+        log_data["event_index"] = self._event_index
+        log_data["event_version"] = 1
 
         logger.info(f"TOOL RESULT: {json.dumps(log_data, indent=2)}")
         self.events.append(log_data)
@@ -284,7 +336,7 @@ class FintelEventHandler(Handler):
                 correlated_index = self._open_tool_calls.pop(key, None)
             if correlated_index is None:
                 # Fallback: reverse-scan events for last agent_tool_call with same tool_name, same agent if available, and empty output
-                for idx in range(len(self.events) - 1, -1, -1):
+                for idx in range(len(self.events) - 2, -1, -1):  # -2 to skip the just-appended tool_result
                     ev = self.events[idx]
                     if ev.get('event_type') != 'agent_tool_call':
                         continue
@@ -299,6 +351,12 @@ class FintelEventHandler(Handler):
                 # Update the original tool call event with the output
                 self.events[correlated_index]['tool_output'] = result_str
                 self.events[correlated_index]['tool_result_timestamp'] = log_data['timestamp']
+                # Also enrich the tool_result with missing context from the tool_call for downstream correlation
+                for key in ('agent_name', 'task_id', 'task_name', 'agent_role'):
+                    if not log_data.get(key) and self.events[correlated_index].get(key):
+                        log_data[key] = self.events[correlated_index].get(key)
+                # Reflect enrichment in the stored copy
+                self.events[-1] = log_data
         except Exception as e:
             logger.warning(f"Failed to correlate tool_result with agent_tool_call: {e}")
     

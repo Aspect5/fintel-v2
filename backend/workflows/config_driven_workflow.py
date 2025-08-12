@@ -304,7 +304,7 @@ class ConfigDrivenWorkflow(BaseWorkflow):
                 'available_agents': list(agents.keys())
             })
             
-            result = self._execute_workflow_tasks(query, ticker, agents)
+            result = self._execute_workflow_tasks(query, ticker, agents, workflow_id=workflow_id)
             
             execution_time = (datetime.now() - start_time).total_seconds()
             
@@ -313,6 +313,10 @@ class ConfigDrivenWorkflow(BaseWorkflow):
                 'execution_time': execution_time,
                 'result_summary': f"Analysis completed for {ticker}"
             })
+            try:
+                self._validate_event_integrity()
+            except Exception:
+                pass
             
             return BaseWorkflowResult(
                 success=True,
@@ -333,6 +337,10 @@ class ConfigDrivenWorkflow(BaseWorkflow):
                 'error': error_message,
                 'execution_time': execution_time
             })
+            try:
+                self._validate_event_integrity()
+            except Exception:
+                pass
             
             return BaseWorkflowResult(
                 success=False,
@@ -344,7 +352,7 @@ class ConfigDrivenWorkflow(BaseWorkflow):
                 error=error_message
             )
     
-    def _execute_workflow_tasks(self, query: str, ticker: str, agents: Dict[str, cf.Agent]) -> InvestmentAnalysis:
+    def _execute_workflow_tasks(self, query: str, ticker: str, agents: Dict[str, cf.Agent], workflow_id: str) -> InvestmentAnalysis:
         """
         Execute workflow tasks using a dynamically constructed ControlFlow DAG.
         Honors optional 'dependencies' declared in the workflow configuration.
@@ -352,7 +360,7 @@ class ConfigDrivenWorkflow(BaseWorkflow):
         workflow_context = {"query": query, "ticker": ticker, "workflow_type": self.workflow_type}
 
         from ..utils.monitoring import FintelEventHandler
-        self.event_handler = FintelEventHandler()
+        self.event_handler = FintelEventHandler(workflow_id=workflow_id)
 
         agent_configs: List[Dict[str, Any]] = self.workflow_config.get('agents', [])
 
@@ -654,6 +662,40 @@ class ConfigDrivenWorkflow(BaseWorkflow):
         # Ensure final result is recorded under 'synthesis' for downstream consumers
         self.task_results['synthesis'] = final_result
         return final_result
+
+    def _validate_event_integrity(self) -> None:
+        """Validate event correlation integrity for debugging and best practices."""
+        try:
+            if not hasattr(self, 'event_handler') or not self.event_handler:
+                return
+            events = getattr(self.event_handler, 'events', []) or []
+            call_keys = set()
+            result_keys = set()
+
+            for ev in events:
+                et = ev.get('event_type')
+                if et == 'agent_tool_call':
+                    agent = ev.get('agent_name')
+                    tcid = ev.get('tool_call_id')
+                    if agent and tcid:
+                        call_keys.add((agent, str(tcid)))
+                elif et == 'tool_result':
+                    agent = ev.get('agent_name')
+                    tcid = ev.get('tool_call_id')
+                    if agent and tcid:
+                        result_keys.add((agent, str(tcid)))
+
+            unmatched_results = [rk for rk in result_keys if rk not in call_keys]
+            missing_ids = [ev for ev in events if ev.get('event_type') == 'tool_result' and not ev.get('tool_call_id')]
+
+            from ..utils.logging import setup_logging
+            _logger = setup_logging()
+            if unmatched_results:
+                _logger.warning(f"Event integrity: {len(unmatched_results)} tool_result events without matching agent_tool_call by (agent, tool_call_id)")
+            if missing_ids:
+                _logger.warning(f"Event integrity: {len(missing_ids)} tool_result events missing tool_call_id")
+        except Exception:
+            pass
     
     def _build_execution_trace(self) -> Dict[str, Any]:
         """Build execution trace for debugging and monitoring"""

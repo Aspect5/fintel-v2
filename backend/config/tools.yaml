@@ -211,7 +211,7 @@ tools:
     function: "get_mock_news"
     class: null
     api_key_required: null
-    enabled: true
+    enabled: false
     examples:
       - "get_mock_news(ticker='AAPL', limit=3)"
 
@@ -222,7 +222,7 @@ tools:
     function: "get_mock_analyst_ratings"
     class: null
     api_key_required: null
-    enabled: true
+    enabled: false
     examples:
       - "get_mock_analyst_ratings(ticker='AAPL')"
 
@@ -233,9 +233,109 @@ tools:
     function: "get_mock_social_sentiment"
     class: null
     api_key_required: null
-    enabled: true
+    enabled: false
     examples:
       - "get_mock_social_sentiment(ticker='AAPL')"
+
+  # Alpha Intelligence tools
+  get_news_sentiment:
+    name: "get_news_sentiment"
+    description: "Fetch news and sentiment from Alpha Vantage Alpha Intelligence"
+    category: "analysis"
+    function: "get_news_sentiment"
+    class: null
+    api_key_required: "alpha_vantage"
+    enabled: true
+    examples:
+      - "get_news_sentiment(ticker='AAPL', limit=50)"
+
+  get_earnings_transcript:
+    name: "get_earnings_transcript"
+    description: "Fetch earnings call transcript for a specific quarter/year"
+    category: "analysis"
+    function: "get_earnings_transcript"
+    class: null
+    api_key_required: "alpha_vantage"
+    enabled: true
+    examples:
+      - "get_earnings_transcript(ticker='AAPL', quarter=3, year=2024)"
+
+  get_top_gainers_losers:
+    name: "get_top_gainers_losers"
+    description: "Fetch top gainers, losers, and most active tickers"
+    category: "market_data"
+    function: "get_top_gainers_losers"
+    class: null
+    api_key_required: "alpha_vantage"
+    enabled: true
+    examples:
+      - "get_top_gainers_losers()"
+
+  get_insider_transactions:
+    name: "get_insider_transactions"
+    description: "Fetch recent insider transactions for a ticker"
+    category: "analysis"
+    function: "get_insider_transactions"
+    class: null
+    api_key_required: "alpha_vantage"
+    enabled: true
+    examples:
+      - "get_insider_transactions(ticker='AAPL', limit=50)"
+
+  get_alpha_analytics:
+    name: "get_alpha_analytics"
+    description: "Fetch Alpha Vantage analytics (fixed/sliding window) for a ticker"
+    category: "analysis"
+    function: "get_alpha_analytics"
+    class: null
+    api_key_required: "alpha_vantage"
+    enabled: true
+    examples:
+      - "get_alpha_analytics(ticker='AAPL', window='fixed', horizon='30d')"
+
+  build_features:
+    name: "build_features"
+    description: "Compose engineered features from time series, news, insiders, fundamentals, and breadth"
+    category: "analysis"
+    function: "build_features"
+    class: null
+    api_key_required: null
+    enabled: true
+    examples:
+      - "build_features(ticker='AAPL', time_series_daily={...}, news={...}, insiders={...})"
+
+  train_model:
+    name: "train_model"
+    description: "Train the baseline classification model on labeled records"
+    category: "analysis"
+    function: "train_model"
+    class: null
+    api_key_required: null
+    enabled: true
+    examples:
+      - "train_model(records=[{features: {ret_1d: 0.01, ...}, label: 1}], calibrate=true)"
+
+  predict_from_features:
+    name: "predict_from_features"
+    description: "Predict probability of upward move from engineered features"
+    category: "analysis"
+    function: "predict_from_features"
+    class: null
+    api_key_required: null
+    enabled: true
+    examples:
+      - "predict_from_features(features={ret_1d: 0.01, ...})"
+
+  backtest_baseline:
+    name: "backtest_baseline"
+    description: "Walk-forward backtest with baseline model using price-derived features"
+    category: "analysis"
+    function: "backtest_baseline"
+    class: null
+    api_key_required: null
+    enabled: true
+    examples:
+      - "backtest_baseline(ticker='AAPL', daily_series={...}, horizon_days=10)"
 
 # Tool Categories
 categories:
