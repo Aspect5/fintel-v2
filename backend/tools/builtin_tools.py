@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
 """
-Built-in Tools Module - Single Source of Truth
+Built-in Tools Module - Implementation Layer
 
-This module contains all the built-in tool functions following ControlFlow best practices.
+This module contains the Python implementations of tools following ControlFlow best practices.
 Each function is decorated with @cf.tool and has clear type annotations and docstrings.
-This serves as the single source of truth for all tools in the system.
+
+Important: The single source of truth (SSoT) for the tool catalog, agent wiring, and workflows
+lives in the configuration files under `backend/config/` (tools.yaml, agents.yaml, workflow_config.yaml).
+This module is the implementation source of truth only. The registry resolves which tools are
+available/enabled from configuration and maps names to the callables defined here.
 """
 
 from typing import Dict, Any, Optional, List
 from datetime import datetime
+import sys
 import controlflow as cf
 import json
 import requests
@@ -48,43 +53,37 @@ def get_tool_instances() -> Dict[str, Any]:
         return {}
 
 def get_tool_function(tool_name: str):
-    """Get a tool function by name"""
-    # Map tool names to functions
-    tool_functions = {
-        "get_market_data": get_market_data,
-        "get_company_overview": get_company_overview,
-        "get_economic_data_from_fred": get_economic_data_from_fred,
-        "process_financial_data": process_financial_data,
-        "misleading_data_validator": misleading_data_validator,
-        "process_strict_json": process_strict_json,
-        "calculate_pe_ratio": calculate_pe_ratio,
-        "analyze_cash_flow": analyze_cash_flow,
-        "get_competitor_analysis": get_competitor_analysis,
-        "detect_stock_ticker": detect_stock_ticker,
-        "get_mock_news": get_mock_news,
-        "get_mock_analyst_ratings": get_mock_analyst_ratings,
-        "get_mock_social_sentiment": get_mock_social_sentiment,
-        # New Alpha Vantage tools
-        "get_time_series_daily": get_time_series_daily,
-        "get_time_series_intraday": get_time_series_intraday,
-        "get_rsi": get_rsi,
-        "get_macd": get_macd,
-        "get_income_statement": get_income_statement,
-        "get_balance_sheet": get_balance_sheet,
-        "get_cash_flow": get_cash_flow,
-        # Alpha Intelligence tools
-        "get_news_sentiment": get_news_sentiment,
-        "get_earnings_transcript": get_earnings_transcript,
-        "get_top_gainers_losers": get_top_gainers_losers,
-        "get_insider_transactions": get_insider_transactions,
-        "get_alpha_analytics": get_alpha_analytics,
-        "build_features": build_features,
-        "train_baseline_model": train_model,
-        "predict_from_features": predict_from_features,
-        "backtest_baseline": backtest_baseline,
+    """Resolve a tool by its name from configuration.
+
+    Returns either a ControlFlow Tool object (preferred) or a plain callable if present.
+    Also supports simple aliasing for backwards compatibility.
+    """
+    module = sys.modules.get(__name__)
+    if module is not None:
+        obj = getattr(module, tool_name, None)
+        if obj is not None:
+            return obj
+
+    # Minimal alias fallback to avoid manual list maintenance
+    alias_map = {
+        "train_baseline_model": "train_model",
     }
-    
-    return tool_functions.get(tool_name)
+    alias_name = alias_map.get(tool_name)
+    if alias_name:
+        if module is not None:
+            obj = getattr(module, alias_name, None)
+            if obj is not None:
+                return obj
+
+    return None
+
+
+def _resolve_instance(instances: Dict[str, Any], keys: List[str]) -> Optional[Any]:
+    """Return first matching instance for the provided keys."""
+    for key in keys:
+        if key in instances:
+            return instances[key]
+    return None
 
 # ---- Alpha Vantage helpers ----
 def _av_request(params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -317,13 +316,42 @@ def get_earnings_transcript(ticker: str, quarter: int, year: int) -> dict:
 @cf.tool
 def get_top_gainers_losers() -> dict:
     """Get top gainers, top losers, and most actively traded from Alpha Vantage."""
+    def _mock_breadth() -> dict:
+        now = datetime.now().isoformat()
+        gainers = [
+            {"ticker": "AAPL", "change_percent": "+2.3%"},
+            {"ticker": "MSFT", "change_percent": "+1.8%"},
+            {"ticker": "NVDA", "change_percent": "+3.1%"},
+        ]
+        losers = [
+            {"ticker": "TSLA", "change_percent": "-1.2%"},
+            {"ticker": "AMZN", "change_percent": "-0.7%"},
+        ]
+        return {
+            "gainers": gainers,
+            "losers": losers,
+            "most_active": [
+                {"ticker": "AAPL"}, {"ticker": "NVDA"}, {"ticker": "TSLA"}
+            ],
+            "breadth_g_minus_l": len(gainers) - len(losers),
+            "status": "success",
+            "_mock": True,
+            "source": "mock_data",
+            "timestamp": now,
+        }
+
     data = _av_request({"function": "TOP_GAINERS_LOSERS"})
     if not data or not isinstance(data, dict):
-        return {"gainers": [], "losers": [], "most_active": [], "status": "unavailable", "source": "alpha_vantage"}
+        return _mock_breadth()
+    gainers = data.get("top_gainers") or data.get("gainers") or []
+    losers = data.get("top_losers") or data.get("losers") or []
+    most_active = data.get("most_actively_traded") or data.get("most_active") or []
+    breadth = (len(gainers) if isinstance(gainers, list) else 0) - (len(losers) if isinstance(losers, list) else 0)
     return {
-        "gainers": data.get("top_gainers") or data.get("gainers") or [],
-        "losers": data.get("top_losers") or data.get("losers") or [],
-        "most_active": data.get("most_actively_traded") or data.get("most_active") or [],
+        "gainers": gainers,
+        "losers": losers,
+        "most_active": most_active,
+        "breadth_g_minus_l": breadth,
         "status": "success",
         "source": "alpha_vantage",
         "timestamp": datetime.now().isoformat(),
@@ -400,9 +428,14 @@ def get_market_data(ticker: str) -> dict:
     # Get tool instances with fallback
     instances = get_tool_instances()
     
-    if 'market_data' in instances:
+    instance = _resolve_instance(instances, [
+        "get_market_data",
+        "market_data",
+        "MarketDataTool",
+    ])
+    if instance is not None:
         try:
-            return instances['market_data'].execute(ticker=ticker.upper())
+            return instance.execute(ticker=ticker.upper())
         except Exception as e:
             return {"error": f"Market data tool execution failed: {e}", "ticker": ticker}
     
@@ -446,9 +479,14 @@ def get_company_overview(ticker: str) -> dict:
     # Get tool instances with fallback
     instances = get_tool_instances()
     
-    if 'company_overview' in instances:
+    instance = _resolve_instance(instances, [
+        "get_company_overview",
+        "company_overview",
+        "CompanyOverviewTool",
+    ])
+    if instance is not None:
         try:
-            return instances['company_overview'].execute(ticker=ticker.upper())
+            return instance.execute(ticker=ticker.upper())
         except Exception as e:
             return {"error": f"Company overview tool execution failed: {e}", "ticker": ticker}
     
@@ -495,9 +533,14 @@ def get_economic_data_from_fred(series_id: str, limit: int = 10) -> dict:
     # Get tool instances with fallback
     instances = get_tool_instances()
     
-    if 'economic_data' in instances:
+    instance = _resolve_instance(instances, [
+        "get_economic_data_from_fred",
+        "economic_data",
+        "EconomicDataTool",
+    ])
+    if instance is not None:
         try:
-            return instances['economic_data'].execute(series_id=series_id.upper(), limit=limit)
+            return instance.execute(series_id=series_id.upper(), limit=limit)
         except Exception as e:
             return {"error": f"Economic data tool execution failed: {e}", "series_id": series_id}
     

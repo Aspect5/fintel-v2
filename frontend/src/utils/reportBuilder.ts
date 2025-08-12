@@ -82,6 +82,7 @@ export function buildReportFromWorkflowState(workflowData: any): Report {
   // Build helper maps: role -> taskId, role -> configuredAgentName
   const roleToTaskId: Record<string, string> = {};
   const roleToAgentName: Record<string, string> = {};
+  const roleToNodeSummary: Record<string, string> = {};
   try {
     const currentNodes = (workflowData?.nodes || []) as any[];
     currentNodes.forEach((n: any) => {
@@ -89,8 +90,12 @@ export function buildReportFromWorkflowState(workflowData: any): Report {
         const role = String(n.id).replace('task_', '');
         const tid = n?.data?.taskId;
         const configuredAgentName = n?.data?.agentName;
+        const nodeSummary = n?.data?.summary;
         if (role && tid) roleToTaskId[role] = tid;
         if (role && configuredAgentName) roleToAgentName[role] = String(configuredAgentName);
+        if (role && typeof nodeSummary === 'string' && nodeSummary.trim().length > 0) {
+          roleToNodeSummary[role] = nodeSummary.trim();
+        }
       }
     });
   } catch {}
@@ -146,6 +151,12 @@ export function buildReportFromWorkflowState(workflowData: any): Report {
         }
         if (Array.isArray(taskResult.key_insights)) details = taskResult.key_insights;
         else if (Array.isArray(taskResult.risk_factors)) details = taskResult.risk_factors;
+      }
+
+      // Override summary from live node data when available (ensures economic_data_analysis is concise)
+      const nodeSummaryOverride = roleToNodeSummary[taskName];
+      if (typeof nodeSummaryOverride === 'string' && nodeSummaryOverride.trim().length > 0) {
+        summary = nodeSummaryOverride;
       }
 
       // Derive tool calls for this task/agent from event history using robust correlation
@@ -229,6 +240,29 @@ export function buildReportFromWorkflowState(workflowData: any): Report {
     ? `Tools used: ${toolEvents.length} calls across ${uniqueTools.length} unique tools (${uniqueTools.join(', ')}).`
     : 'No external tools were invoked.';
 
+  // Extract daily time series for charting from tool results if present
+  let dailySeries: Array<{ date: string; value: number }> = [];
+  try {
+    const tsResults = allEvents
+      .filter((e: any) => isToolResult(e) && String(e.tool_name || '').toLowerCase() === 'get_time_series_daily')
+      .map((e: any) => {
+        try {
+          return typeof e.result === 'string' ? JSON.parse(e.result) : e.result;
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+    if (tsResults.length > 0) {
+      const latest = tsResults[tsResults.length - 1] as any;
+      const series = Array.isArray(latest?.series) ? latest.series : [];
+      dailySeries = series.map((p: any) => ({
+        date: String(p.date || p.timestamp || ''),
+        value: typeof p.adjusted_close === 'number' ? p.adjusted_close : Number(p.close || 0)
+      })).filter((p: any) => p.date && !Number.isNaN(p.value));
+    }
+  } catch {}
+
   // Parse structured report sections from content for consistency
   const parsed = parseReportContent(reportContent);
 
@@ -247,6 +281,17 @@ export function buildReportFromWorkflowState(workflowData: any): Report {
     },
     result: result || workflowData?.result,
   };
+
+  // Attach chart-friendly series back onto result for UI consumption
+  try {
+    const base: any = report.result || {};
+    if (dailySeries.length > 0) {
+      if (typeof base === 'object' && base !== null) {
+        base.daily_series = dailySeries;
+      }
+      report.result = base;
+    }
+  } catch {}
 
   return report;
 }

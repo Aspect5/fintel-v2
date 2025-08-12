@@ -136,6 +136,7 @@ export interface BasicNodeData {
   agentName?: string;
   tools?: any[];
   liveDetails?: LiveDetails | null;
+  usedTools?: Array<{ name: string; mock: boolean }>;
 }
 
 export interface AgentNodeData extends BasicNodeData {

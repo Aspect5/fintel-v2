@@ -5,8 +5,8 @@ from enum import Enum
 from dataclasses import dataclass
 import yaml
 from pathlib import Path
-from .market_data import MarketDataTool, CompanyOverviewTool
-from .economic_data import EconomicDataTool
+import importlib
+from typing import Type
 from backend.config.settings import get_settings
 
 class ToolCategory(Enum):
@@ -82,15 +82,56 @@ class UnifiedToolRegistry:
             # Validate API keys
             api_key_status = self._validate_api_keys()
             
-            # Get settings for API keys
+            # Dynamically instantiate tool classes based on config.class to keep wiring in YAML
             settings = get_settings()
-            
-            # Create tool instances for external APIs
-            self._tool_instances['market_data'] = MarketDataTool(api_key=settings.alpha_vantage_api_key)
-            self._tool_instances['company_overview'] = CompanyOverviewTool(api_key=settings.alpha_vantage_api_key)
-            self._tool_instances['economic_data'] = EconomicDataTool(api_key=settings.fred_api_key)
-            
-            # Set tool instances for builtin_tools module
+            tools_cfg = self._config.get('tools', {})
+
+            for tool_id, tool_config in tools_cfg.items():
+                class_name = tool_config.get('class')
+                if not class_name:
+                    continue
+
+                # Build a set of possible module paths under backend.tools
+                candidate_modules = [
+                    'backend.tools.market_data',
+                    'backend.tools.economic_data',
+                    'backend.tools',
+                ]
+                tool_class: Optional[Type] = None
+                for module_path in candidate_modules:
+                    try:
+                        module = importlib.import_module(module_path)
+                        if hasattr(module, class_name):
+                            tool_class = getattr(module, class_name)
+                            break
+                    except Exception:
+                        continue
+
+                if tool_class is None:
+                    continue
+
+                # Provide API key if required
+                api_key_required = tool_config.get('api_key_required')
+                api_key_value = None
+                if api_key_required == 'alpha_vantage':
+                    api_key_value = settings.alpha_vantage_api_key
+                elif api_key_required == 'fred':
+                    api_key_value = settings.fred_api_key
+                elif api_key_required == 'openai':
+                    api_key_value = settings.openai_api_key
+                elif api_key_required == 'google':
+                    api_key_value = settings.google_api_key
+
+                try:
+                    instance = tool_class(api_key=api_key_value) if api_key_value is not None else tool_class()
+                    # Store under multiple keys for flexible lookup
+                    self._tool_instances[tool_id] = instance
+                    self._tool_instances[tool_config.get('name', tool_id)] = instance
+                    self._tool_instances[class_name] = instance
+                except Exception:
+                    continue
+
+            # Set tool instances for builtin_tools module (tool functions use this)
             from .builtin_tools import set_tool_instances
             set_tool_instances(self._tool_instances)
             
@@ -166,9 +207,19 @@ class UnifiedToolRegistry:
     
     def _validate_tool_availability(self):
         """Validate that all registered tools are properly configured"""
+        def _is_valid_tool(obj: Any) -> bool:
+            if callable(obj):
+                return True
+            # Accept ControlFlow Tool objects
+            try:
+                from controlflow.tools.tools import Tool as CF_Tool  # type: ignore
+                return isinstance(obj, CF_Tool)
+            except Exception:
+                return False
+
         for tool_id, tool_info in self._tools.items():
-            # Check if function is callable
-            if not callable(tool_info.function):
+            # Check if function is a valid callable or a ControlFlow Tool
+            if not _is_valid_tool(tool_info.function):
                 self._validation_errors.append(f"Tool {tool_id} function is not callable")
             
             # Check if required API keys are available

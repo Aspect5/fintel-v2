@@ -19,9 +19,16 @@ workflows:
         tools: [
           "get_market_data",
           "get_company_overview",
-          "get_mock_news",
-          "get_mock_analyst_ratings",
-          "get_mock_social_sentiment"
+          "get_time_series_daily",
+          "get_time_series_intraday",
+          "get_rsi",
+          "get_macd",
+          "get_income_statement",
+          "get_balance_sheet",
+          "get_cash_flow",
+          "get_news_sentiment",
+          "get_insider_transactions",
+          "get_alpha_analytics"
         ]
       - name: "RiskAssessment"
         role: "risk_assessment"
@@ -29,15 +36,29 @@ workflows:
         fallback: "FinancialAnalyst"
         tools: [
           "get_market_data",
-          "get_mock_analyst_ratings",
-          "get_mock_social_sentiment"
+          "get_company_overview",
+          "get_news_sentiment"
+        ]
+      - name: "NewsSentimentAnalyst"
+        role: "news_sentiment"
+        required: false
+        tools: [
+          "get_news_sentiment",
+          "get_insider_transactions",
+          "get_top_gainers_losers"
+        ]
+      - name: "EconomicAnalyst"
+        role: "economic_data_analysis"
+        required: false
+        tools: [
+          "get_economic_data_from_fred"
         ]
       - name: "Summarizer"
         role: "synthesis"
         required: true
         fallback: "FinancialAnalyst"
         tools: []
-        dependencies: ["market_analysis", "risk_assessment"]
+        dependencies: ["market_analysis", "news_sentiment", "risk_assessment", "economic_data_analysis"]
 
   # WORKFLOW 2: Deep dive into a company's competitive landscape.
   competitor_deep_dive:

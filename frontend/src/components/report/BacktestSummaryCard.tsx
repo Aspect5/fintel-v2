@@ -1,6 +1,8 @@
 import React from 'react';
 import { AgentFinding } from '@/types';
 
+// TODO: In future, attach a mini chart component for any time-series results
+
 function tryParseJSON(value: any): any | null {
   if (!value) return null;
   if (typeof value === 'object') return value;

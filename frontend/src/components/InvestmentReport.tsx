@@ -7,6 +7,7 @@ import RetryAnalysisCard from './report/RetryAnalysisCard';
 import { parseEnhancedResult, normalizeRecommendation, toTitleCase } from '@/utils/reportUtils';
 import AlphaIntelligenceCard from '@/components/report/AlphaIntelligenceCard';
 import BacktestSummaryCard from '@/components/report/BacktestSummaryCard';
+import StockPriceChart from '@/components/StockPriceChart';
 
 interface ReportDisplayProps {
   report: Report | null;
@@ -127,6 +128,13 @@ const InvestmentReport: React.FC<ReportDisplayProps> = ({ report, isLoading = fa
                         <div className="flex items-center justify-between p-3 bg-brand-bg rounded-lg">
                           <span className="text-brand-text-secondary">Model Confidence</span>
                           <span className="font-bold text-white">{Math.round((enhanced.confidence || 0) * 100)}%</span>
+                        </div>
+                      )}
+                      {/* Inline mini chart when daily series present in context */}
+                      {Array.isArray((enhanced as any).daily_series) && (enhanced as any).daily_series.length > 0 && (
+                        <div className="mt-2">
+                          <h4 className="text-sm font-semibold text-brand-text-primary mb-2">Price (recent)</h4>
+                          <StockPriceChart series={(enhanced as any).daily_series} />
                         </div>
                       )}
                     </div>

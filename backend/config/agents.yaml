@@ -74,7 +74,6 @@ agents:
       - "predict_from_features"
       - "backtest_baseline"
       - "get_economic_data_from_fred"
-      - "misleading_data_validator"
     capabilities:
       - "market_analysis"
       - "economic_analysis"
@@ -143,7 +142,6 @@ agents:
       - "get_cash_flow"
       - "get_news_sentiment"
       - "get_top_gainers_losers"
-      - "misleading_data_validator"
     capabilities:
       - "market_analysis"
       - "ticker_detection"
@@ -201,7 +199,6 @@ agents:
       3. Inflation and monetary policy
     tools: 
       - "get_economic_data_from_fred"
-      - "misleading_data_validator"
     capabilities:
       - "economic_analysis"
       - "macroeconomic_indicators"
@@ -261,7 +258,6 @@ agents:
     tools: 
       - "get_market_data"
       - "get_company_overview"
-      - "misleading_data_validator"
     capabilities:
       - "risk_assessment"
       - "volatility_analysis"
@@ -312,5 +308,25 @@ agents:
       - "synthesis"
       - "summarization"
       - "executive_communication"
+    required: false
+    enabled: true
+
+  NewsSentimentAnalyst:
+    name: "NewsSentimentAnalyst"
+    instructions: |
+      You are a specialized news and sentiment analyst using Alpha Vantage Alpha Intelligence.
+      - Fetch recent news and sentiment for the target ticker using get_news_sentiment(limit=50, sort="LATEST").
+      - Retrieve insider transactions using get_insider_transactions(limit=100) and summarize net activity.
+      - Retrieve top gainers and losers using get_top_gainers_losers() and report breadth.
+      - Provide a concise 1–2 sentence summary focusing on sentiment skew (bullish/neutral/bearish) and notable items.
+      - Do not invent data; only use tool outputs.
+    tools:
+      - "get_news_sentiment"
+      - "get_insider_transactions"
+      - "get_top_gainers_losers"
+    capabilities:
+      - "news_sentiment"
+      - "insider_activity"
+      - "market_breadth"
     required: false
     enabled: true

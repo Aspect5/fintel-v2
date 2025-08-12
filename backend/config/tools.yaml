@@ -83,7 +83,7 @@ tools:
     function: "misleading_data_validator"
     class: null
     api_key_required: null
-    enabled: true
+    enabled: false
     examples:
       - "misleading_data_validator(data={'ticker': 'AAPL', 'price': 185.50})"
     

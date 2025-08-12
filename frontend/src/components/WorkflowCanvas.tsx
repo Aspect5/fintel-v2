@@ -17,6 +17,7 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { createLogger } from '../utils/logger';
+import { NODE_MIN_WIDTH, NODE_MAX_WIDTH, LARGE_NODE_HEIGHT_THRESHOLD } from '../constants/workflowLayout';
 
 const canvasLogger = createLogger('WorkflowCanvas');
 
@@ -89,7 +90,10 @@ const CustomNode: React.FC<NodeProps> = ({ data }) => {
   };
 
   return (
-    <div className={`relative p-4 bg-brand-surface border-2 rounded-lg shadow-lg min-w-[200px] max-w-[280px] ${getBorderColor()} transition-all duration-300 cursor-pointer hover:shadow-xl hover:scale-105 group`}>
+    <div
+      className={`relative p-4 bg-brand-surface border-2 rounded-lg shadow-lg ${getBorderColor()} transition-all duration-300 cursor-pointer hover:shadow-xl hover:scale-105 group`}
+      style={{ minWidth: NODE_MIN_WIDTH, maxWidth: NODE_MAX_WIDTH }}
+    >
       <Handle 
         type="target" 
         position={Position.Left} 
@@ -172,7 +176,7 @@ const WorkflowCanvasContent: React.FC<WorkflowCanvasProps> = ({
   onEdgesChange, 
   onNodeDoubleClick 
 }) => {
-  const { fitView, getNodes } = useReactFlow();
+  const { fitView, getNodes, setViewport } = useReactFlow();
 
   // Debug logging
   canvasLogger.debug('Rendering canvas', {
@@ -193,12 +197,15 @@ const WorkflowCanvasContent: React.FC<WorkflowCanvasProps> = ({
   useEffect(() => {
     try {
       if (nodes.length > 0) {
-        // If any node is large (e.g., height > 260), zoom out a bit more
         const currentNodes = getNodes?.() || nodes;
-        const needsExtraPadding = currentNodes.some((n: any) => (n.measured?.height || 0) > 260);
-        const padding = needsExtraPadding ? 0.35 : 0.2;
+        const needsExtraPadding = currentNodes.some((n: any) => ((n.measured?.height || 0) > LARGE_NODE_HEIGHT_THRESHOLD) || ((n.measured?.width || 0) > NODE_MIN_WIDTH));
+        const padding = needsExtraPadding ? 0.38 : 0.25;
         setTimeout(() => {
           fitView({ padding, duration: 800 });
+          // Nudge initial zoom slightly to reduce cramped feel for wider nodes
+          if (needsExtraPadding) {
+            try { setViewport({ x: 0, y: 0, zoom: 0.9 }, { duration: 0 }); } catch (e) {}
+          }
         }, 100);
       }
     } catch (error) {

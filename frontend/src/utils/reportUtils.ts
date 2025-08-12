@@ -33,6 +33,7 @@ export function parseEnhancedResult(result: any):
       marketAnalysis?: string;
       recommendation?: string;
       riskAssessment?: string;
+      daily_series?: Array<{ date: string; value: number }>;
     }
   | null {
   try {
@@ -52,6 +53,7 @@ export function parseEnhancedResult(result: any):
       marketAnalysis: candidate.market_analysis || candidate.analysis,
       recommendation: candidate.recommendation,
       riskAssessment: candidate.risk_assessment || candidate.risk,
+      daily_series: candidate.daily_series,
     };
   } catch {
     return null;

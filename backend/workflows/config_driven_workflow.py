@@ -224,6 +224,137 @@ class ConfigDrivenWorkflow(BaseWorkflow):
         except Exception as e:
             logger.warning(f"Could not derive tools for agent '{agent_name}': {e}")
         return []
+
+    def _detect_mock_from_result_str(self, result_str: Optional[str]) -> bool:
+        """Detect whether a tool result appears to be mock.
+
+        Looks for either "_mock": true or source: "mock_data" markers, tolerant of both
+        JSON and Python-dict-like string representations.
+        """
+        try:
+            if not result_str:
+                return False
+            lowered = result_str.lower()
+            return (
+                '"_mock": true' in lowered
+                or "'_mock': true" in lowered
+                or '"source": "mock_data"' in lowered
+                or "'source': 'mock_data'" in lowered
+            )
+        except Exception:
+            return False
+
+    def _get_tool_events_for_agent(self, agent_name: str) -> List[Dict[str, Any]]:
+        """Return tool_result events for a given agent name (most recent first)."""
+        try:
+            if not agent_name or not hasattr(self, 'event_handler') or not self.event_handler:
+                return []
+            events = self.event_handler.get_events_by_type('tool_result') or []
+            filtered = [e for e in events if e.get('agent_name') == agent_name]
+            return list(reversed(filtered))
+        except Exception:
+            return []
+
+    def _get_mock_usage_for_agent(self, agent_name: str) -> Dict[str, Any]:
+        """Return used tools and whether they were mock for the specific agent.
+
+        Shape: { 'usedTools': [ { 'name': str, 'mock': bool } ], 'anyMock': bool }
+        """
+        used_tools: List[Dict[str, Any]] = []
+        any_mock = False
+        try:
+            tool_names = self._get_tools_used_by_agent(agent_name)
+            events = self._get_tool_events_for_agent(agent_name)
+            for name in tool_names:
+                ev = next((e for e in events if e.get('tool_name') == name), None)
+                result_str = ev.get('result') if isinstance(ev, dict) else None
+                is_mock = self._detect_mock_from_result_str(result_str)
+                used_tools.append({ 'name': name, 'mock': bool(is_mock) })
+                any_mock = any_mock or is_mock
+        except Exception:
+            pass
+        return { 'usedTools': used_tools, 'anyMock': any_mock }
+
+    def _get_mock_counts(self) -> Dict[str, int]:
+        """Count total tool_result calls and how many appear to be mock."""
+        total, mock = 0, 0
+        try:
+            if hasattr(self, 'event_handler') and self.event_handler:
+                for ev in self.event_handler.get_events_by_type('tool_result') or []:
+                    total += 1
+                    if self._detect_mock_from_result_str(ev.get('result')):
+                        mock += 1
+        except Exception:
+            pass
+        return { 'totalCalls': total, 'mockCalls': mock }
+
+    def _derive_agent_summary_from_events(self, role: str, agent_name: Optional[str]) -> Optional[str]:
+        """Synthesize a concise summary from recent tool_result events for the agent.
+
+        - Prefers role-specific parsing for economic_data_analysis using common FRED series ids.
+        - Otherwise, emits a brief generic line listing tools touched and mock hint.
+        """
+        try:
+            if not agent_name:
+                return None
+            events = self._get_tool_events_for_agent(agent_name)
+            if not events:
+                return None
+
+            if role == 'economic_data_analysis':
+                import re
+                series_to_values: Dict[str, List[float]] = {}
+                for ev in events[:6]:
+                    text = ev.get('result') or ''
+                    sid_match = re.search(r"[\"']series_id[\"']\s*:\s*[\"']([A-Za-z0-9_]+)[\"']", text)
+                    series_id = sid_match.group(1) if sid_match else None
+                    if not series_id:
+                        continue
+                    values = [m.group(1) for m in re.finditer(r"[\"']value[\"']\s*:\s*[\"']?(-?\d+(?:\.\d+)?)[\"']?", text)]
+                    numeric: List[float] = []
+                    for v in values[-2:]:
+                        try:
+                            numeric.append(float(v))
+                        except Exception:
+                            continue
+                    if numeric:
+                        series_to_values.setdefault(series_id.upper(), []).extend(numeric)
+
+                def label(sid: str) -> str:
+                    mapping = { 'GDP': 'GDP', 'UNRATE': 'Unemployment', 'FEDFUNDS': 'Policy rate' }
+                    return mapping.get(sid.upper(), sid.upper())
+
+                takeaways: List[str] = []
+                for sid, vals in series_to_values.items():
+                    if len(vals) == 1:
+                        takeaways.append(f"{label(sid)}: {vals[0]:g}")
+                        continue
+                    prev_v, last_v = vals[-2], vals[-1]
+                    delta = last_v - prev_v
+                    abs_delta = abs(delta)
+                    if abs_delta < 1e-6:
+                        trend = 'unchanged'
+                    else:
+                        threshold = 0.05 if sid in ('UNRATE', 'FEDFUNDS') else 0.2
+                        trend = 'stable' if abs_delta < threshold else ('rising' if delta > 0 else 'falling')
+                    takeaways.append(f"{label(sid)} {trend}.")
+                if takeaways:
+                    return ' '.join(takeaways[:3])
+
+            # Generic fallback
+            names: List[str] = []
+            any_mock = False
+            for ev in events[:4]:
+                tn = ev.get('tool_name')
+                if tn and tn not in names:
+                    names.append(tn)
+                any_mock = any_mock or self._detect_mock_from_result_str(ev.get('result'))
+            if names:
+                base = f"Used tools: {', '.join(names[:3])}."
+                return base + (" Some data sources were mock." if any_mock else "")
+        except Exception:
+            return None
+        return None
     
     def _extract_ticker_from_query(self, query: str) -> str:
         """Extract ticker symbol using AI-powered detection; raise if not found."""
@@ -638,6 +769,14 @@ class ConfigDrivenWorkflow(BaseWorkflow):
                 if risk_text:
                     insights.append(risk_text[:180])
 
+                # If all contributing evidence appears to be mock-only, reduce confidence slightly (floor 0.5)
+                try:
+                    counts = self._get_mock_counts()
+                    if counts.get('totalCalls', 0) > 0 and counts.get('mockCalls', 0) == counts.get('totalCalls', 0):
+                        confidence = max(0.5, confidence - 0.05)
+                except Exception:
+                    pass
+
                 final_result = InvestmentAnalysis(
                     ticker=ticker,
                     market_analysis=market_text,
@@ -776,11 +915,30 @@ class ConfigDrivenWorkflow(BaseWorkflow):
                     except Exception:
                         pass
                     return ' '.join(sentences) if sentences else None
-            elif res is not None:
+            # If no structured model or role-specific summary, try event-derived summary first
+            agent_name: Optional[str] = None
+            for ac in (self.workflow_config.get('agents', []) or []):
+                if ac.get('role') == role:
+                    agent_name = ac.get('name')
+                    break
+            # Economic data: strongly prefer derived summary even if res is a generic string
+            if role == 'economic_data_analysis':
+                derived = self._derive_agent_summary_from_events(role, agent_name)
+                if derived:
+                    return derived
+            # Generic event-derived summary
+            generic = self._derive_agent_summary_from_events(role, agent_name)
+            if generic:
+                return generic
+            # Finally fall back to raw string if present
+            if res is not None:
                 s = str(res)
                 return s[:200] + ('...' if len(s) > 200 else '')
         except Exception:
             pass
+        # As a last resort for economic analysis, provide a useful generic line
+        if role == 'economic_data_analysis':
+            return "Macroeconomic indicators assessed; see report for details."
         # If still running, surface latest agent message snippet as a provisional summary
         if self.execution_context.get('current_task') == role and hasattr(self, 'event_handler') and self.event_handler:
             try:
@@ -849,9 +1007,14 @@ class ConfigDrivenWorkflow(BaseWorkflow):
             # Determine tools to display: prefer actually used tools; fall back to configured capability list
             agent_name_for_role = role_to_config[role].get('name', 'N/A')
             used_tools = self._get_tools_used_by_agent(agent_name_for_role)
+            mock_usage = self._get_mock_usage_for_agent(agent_name_for_role)
             try:
-                configured_tool_objects = self.registry_manager.get_tools_for_agent(role)
-                configured_tools = [t.get('name', '') for t in configured_tool_objects]
+                configured_tools = self.registry_manager.get_tools_for_agent(agent_name_for_role)
+                # Ensure it's a list of strings
+                if not isinstance(configured_tools, list):
+                    configured_tools = []
+                else:
+                    configured_tools = [str(t) for t in configured_tools]
             except Exception:
                 configured_tools = []
             tools_to_show = used_tools if used_tools else configured_tools
@@ -863,6 +1026,7 @@ class ConfigDrivenWorkflow(BaseWorkflow):
                     "description": role_to_config[role].get('description', ''),
                     "agentName": agent_name_for_role,
                     "tools": tools_to_show,
+                    "usedTools": (mock_usage.get('usedTools') if used_tools else [{ 'name': t, 'mock': False } for t in configured_tools]) if isinstance(mock_usage, dict) else [],
                     "liveDetails": self._get_live_details_for_agent(role) if status == 'running' else None,
                     "summary": self._get_task_summary(role),
                     "taskId": task_id,
@@ -907,9 +1071,17 @@ class ConfigDrivenWorkflow(BaseWorkflow):
         if isinstance(result_data, BaseModel):
             result_data = result_data.dict()
 
+        # Include data source counts on output
+        # Add data sources counts and also aggregate tools by role when available
+        output_data = {"label": "Final Report", "status": output_status, "result": result_data, "sources": self._get_mock_counts()}
+        try:
+            # Provide minimal upstream attribution: which roles completed
+            output_data["upstreamRoles"] = [r for r in roles if self.task_statuses.get(r) == 'completed']
+        except Exception:
+            pass
         nodes.append({
             "id": "output", "type": "output", "position": {"x": x_pos + (len(roles) + 1) * node_width, "y": y_pos},
-            "data": {"label": "Final Report", "status": output_status, "result": result_data}
+            "data": output_data
         })
         for role in terminal_roles:
             edges.append({

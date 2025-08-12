@@ -218,6 +218,7 @@ curl -X POST http://localhost:5001/api/run-workflow \
 - **Missing data tools**: set `ALPHA_VANTAGE_API_KEY` / `FRED_API_KEY`.
 - **Provider errors**: verify `OPENAI_API_KEY` or `GOOGLE_API_KEY`; check `DEFAULT_PROVIDER`.
 - **Port conflicts**: adjust `BACKEND_PORT` or Vite port.
+- **Market Breadth blank**: backend now falls back to labeled mock breadth; if still empty, ensure the `NewsSentimentAnalyst` agent is enabled in `backend/config/workflow_config.yaml` and Alpha Vantage tooling is available.
 
 ## Further reading
 - Single Source of Truth: `docs/SINGLE_SOURCE_OF_TRUTH_ARCHITECTURE.md`
