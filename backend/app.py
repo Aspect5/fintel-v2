@@ -36,6 +36,7 @@ from backend.utils.monitoring import workflow_monitor
 
 # Global workflow status storage
 active_workflows = {}
+_workflows_lock = threading.Lock()
 workflow_status_queue = queue.Queue()
 
 # Setup logging
@@ -442,38 +443,43 @@ def handle_internal_error(error):
 def get_workflow_status(workflow_id):
     """Get current workflow status for visualization with metrics"""
     logger.debug(f"Status request for workflow: {workflow_id}")
-    if workflow_id in active_workflows:
-        status = active_workflows[workflow_id].copy()
-        
-        # Ensure completed workflows have results
-        if status.get('status') == 'completed' and not status.get('result'):
-            logger.warning(f"Completed workflow {workflow_id} missing results")
-        
-        # Add metrics if available
-        metrics = workflow_monitor.get_workflow_metrics(workflow_id)
-        if metrics:
-            status['metrics'] = {
-                'duration': metrics.duration,
-                'memory_usage_mb': metrics.memory_usage_mb,
-                'cpu_usage_percent': metrics.cpu_usage_percent,
-                'execution_time': metrics.execution_time
-            }
-        
-        logger.info(f"Returning status for {workflow_id}: status={status.get('status')}, hasResult={bool(status.get('result'))}, hasEnhancedResult={bool(status.get('enhanced_result'))}")
-        return jsonify(status)
-    else:
-        logger.warning(f"Workflow not found: {workflow_id}")
-        return jsonify({"error": "Workflow not found"}), 404
+    with _workflows_lock:
+        if workflow_id in active_workflows:
+            status = active_workflows[workflow_id].copy()
+        else:
+            logger.warning(f"Workflow not found: {workflow_id}")
+            return jsonify({"error": "Workflow not found"}), 404
+
+    # Ensure completed workflows have results
+    if status.get('status') == 'completed' and not status.get('result'):
+        logger.warning(f"Completed workflow {workflow_id} missing results")
+
+    # Add metrics if available
+    metrics = workflow_monitor.get_workflow_metrics(workflow_id)
+    if metrics:
+        status['metrics'] = {
+            'duration': metrics.duration,
+            'memory_usage_mb': metrics.memory_usage_mb,
+            'cpu_usage_percent': metrics.cpu_usage_percent,
+            'execution_time': metrics.execution_time
+        }
+
+    logger.info(f"Returning status for {workflow_id}: status={status.get('status')}, hasResult={bool(status.get('result'))}, hasEnhancedResult={bool(status.get('enhanced_result'))}")
+    return jsonify(status)
 
 @app.route('/api/workflow-stream/<workflow_id>')
 def workflow_stream(workflow_id):
     """Server-sent events for real-time workflow updates"""
     def generate():
-        while workflow_id in active_workflows:
+        while True:
             try:
-                status = active_workflows.get(workflow_id, {})
-                yield f"data: {json.dumps(status)}"
-                
+                with _workflows_lock:
+                    status = active_workflows.get(workflow_id)
+                    if status is None:
+                        break
+                    status = status.copy()
+                yield f"data: {json.dumps(status)}\n\n"
+
                 time.sleep(1)
                 if status.get('status') in ['completed', 'failed']:
                     break
@@ -534,7 +540,7 @@ def run_workflow():
         
         # Set up status callback
         def status_callback(status_update):
-            with threading.Lock():
+            with _workflows_lock:
                 # Add detailed logging
                 logger.info(f"Status callback received: {status_update}")
                 
@@ -796,7 +802,7 @@ def cleanup_old_workflows():
             current_time = datetime.now()
             workflows_to_remove = []
             
-            with threading.Lock():
+            with _workflows_lock:
                 for workflow_id, workflow_data in list(active_workflows.items()):
                     if workflow_data.get('status') in ['completed', 'failed']:
                         start_time_str = workflow_data.get('start_time')
@@ -804,9 +810,9 @@ def cleanup_old_workflows():
                             start_time = datetime.fromisoformat(start_time_str)
                             if current_time - start_time > timedelta(hours=24):  # Changed from 1 to 24
                                 workflows_to_remove.append(workflow_id)
-            
+
             for workflow_id in workflows_to_remove:
-                with threading.Lock():
+                with _workflows_lock:
                     if workflow_id in active_workflows:
                         del active_workflows[workflow_id]
                         logger.info(f"Cleaned up old workflow: {workflow_id}")
