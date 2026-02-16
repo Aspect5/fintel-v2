@@ -229,6 +229,108 @@ seconds."
 
 ---
 
+## 5. Refinement: Parallel Tool Use & Concurrency (What to Mention in the Cover Letter)
+
+The recruiter suggested briefly mentioning parallel tool use or concurrency in the
+FINTEL section — "showing you know how to manage multiple agents without them
+colliding is a high-level skill they'll value." This is the strongest part of the
+codebase. Here's the honest technical inventory.
+
+### What's Genuinely There
+
+**DAG-based levelized execution** (`config_driven_workflow.py:574-608`):
+Agent tasks are declared with explicit dependencies in YAML. At execution time,
+the system builds a dependency graph, computes in-degree for each node, and runs
+Kahn's algorithm to produce execution "levels" — groups of tasks whose
+dependencies are all satisfied. Tasks within a level run in parallel; levels
+execute sequentially. This means a market analysis agent and a sentiment agent
+can run simultaneously, but the synthesis agent that depends on both waits until
+they finish.
+
+**Thread-pool concurrency with non-blocking result collection**
+(`config_driven_workflow.py:620-667`):
+Each level spawns a `ThreadPoolExecutor` with one worker per task. Results are
+harvested via `concurrent.futures.as_completed()`, which yields futures in
+completion order rather than submission order. If one agent finishes in 3 seconds
+and another takes 12 seconds, the fast result is processed immediately — no
+head-of-line blocking.
+
+**Thread-safe shared infrastructure** (`utils/http_client.py:35-127`):
+When parallel agents call the same external APIs (Alpha Vantage, FRED), they
+share a TTL cache and token-bucket rate limiter, both protected by
+`threading.Lock`. This prevents parallel agents from blowing through API rate
+limits — if one agent's request fills the bucket, the next agent gets a stale
+cache hit instead of a 429 error. The rate limiter uses a sliding-window token
+bucket with configurable per-provider limits.
+
+**Dependency-aware failure propagation** (`config_driven_workflow.py:628-635`):
+If an upstream task fails, all downstream tasks that depend on it are
+automatically marked `skipped` rather than executing with missing inputs. This
+prevents cascade failures and wasted LLM calls.
+
+**Per-workflow isolation**: Each workflow execution gets its own instance of
+`ConfigDrivenWorkflow` with its own `task_results`, `task_statuses`, and
+`execution_context` dictionaries. Concurrent workflows don't share state at
+the workflow level.
+
+### What's Not There (Be Honest About)
+
+**No explicit locking on per-workflow shared state**: Within a single workflow,
+parallel agents write to shared dictionaries (`task_results`, `task_statuses`,
+`execution_context`) without locks. This is incidentally safe because:
+- Python's GIL makes single dict operations (`dict[key] = value`) atomic
+- Parallel tasks write to *different keys* (each agent writes its own role)
+- Cross-level reads happen after `as_completed()` drains all futures
+
+But it's not *designed* to be safe — it relies on the GIL and the execution
+model rather than explicit synchronization.
+
+**A real bug in the Flask layer** (`app.py:537, 799, 809`):
+The global `active_workflows` dict (shared across HTTP request threads) uses
+`with threading.Lock()` — which creates a **new lock object on every call**.
+This is a no-op; multiple threads get different locks and can collide. Under
+low concurrency this doesn't manifest (Python GIL + short critical sections),
+but it's a genuine bug that would fail under load. Fixing it is straightforward:
+replace with a module-level `_workflows_lock = threading.Lock()`.
+
+**No locking on the event handler** (`utils/monitoring.py:51-55`):
+The `FintelEventHandler` that records agent messages and tool calls uses a
+shared `events` list and a `_event_index` counter with no synchronization.
+The `+=` operation on `_event_index` is not atomic (it's two bytecodes:
+LOAD + STORE). Under high concurrency this could produce duplicate or
+skipped indices.
+
+### Suggested Cover Letter Language
+
+**Too much (don't say this):**
+> "I built a distributed concurrent execution engine with thread-safe
+> shared-state management and failure-propagating dependency resolution."
+
+**Accurate (say this):**
+> "The workflow engine runs independent agents in parallel using a
+> DAG-based scheduler — tasks are topologically sorted into execution
+> levels, run concurrently via thread pools, and harvested with
+> non-blocking future collection. Shared external resources (API caches,
+> rate limiters) are synchronized with locks so parallel agents don't
+> collide on rate limits. Failed upstream tasks automatically skip their
+> dependents to avoid wasted inference calls."
+
+This is accurate, demonstrates real understanding of concurrency concerns
+(shared state, rate limiting, failure propagation), and doesn't overstate
+the sophistication level.
+
+### Why This Matters for Zoom
+
+The recruiter is right that this is a high-value skill to demonstrate.
+Zoom's agent platform deals with the harder version of this: multiple
+agents operating on shared real-time state (meeting context, participant
+data) under latency constraints. Showing that you've already thought
+about the collision problem — even in a simpler HTTP context — signals
+that you understand why it matters and won't need to learn the concept
+from scratch, just the domain-specific constraints.
+
+---
+
 ## Summary: What's Real vs. What's Oversold
 
 | Claim | Reality | Verdict |
@@ -240,7 +342,11 @@ seconds."
 | "Parallels to RTMS" | HTTP polling, no UDP/RTP | **Inaccurate comparison** |
 | DAG-based dependency resolution | Kahn's algorithm, topological sort | **Genuinely solid engineering** |
 | Concurrent agent execution | ThreadPoolExecutor + as_completed() | **Genuinely solid engineering** |
+| Thread-safe shared resources | Lock-protected cache + rate limiter | **Genuinely solid engineering** |
+| Dependency-aware failure skip | Upstream fail → downstream skipped | **Genuinely solid engineering** |
 | Structured output convergence | Pydantic models + synthesis agent | **Genuinely solid engineering** |
+| Flask threading lock | `threading.Lock()` created per-call | **Bug — new lock object each time** |
+| Event handler thread safety | No synchronization on shared list | **Bug — `_event_index +=` not atomic** |
 
 ### The Core Problem
 
