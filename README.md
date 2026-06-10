@@ -1,226 +1,104 @@
-## FINTEL v2 – Modular, Config‑Driven Multi‑Agent Financial Intelligence
+# Fintel v2
 
-FINTEL v2 is a web-based, config-driven environment for designing and executing multi-agent financial analysis workflows. The system is deliberately modular and easy to reconfigure:
-- **Backend is the single source of truth** for agents, tools, and workflows
-- **Behavior is configured via YAML** in `backend/config/` (not hardcoded)
-- **Providers are pluggable** (OpenAI, Google, Local)
-- **Frontend is a thin client** that consumes backend APIs
+Fintel is a multi-agent financial analysis platform. You ask it a question like "Should I invest in Palantir?", it assembles a team of LLM agents (market analyst, risk assessment, news sentiment, economic analyst, summarizer), runs them against live market and economic data, and streams the workflow back to a React UI that renders the agents and their dependencies as a live graph. The output is a structured investment report with the tool calls each agent made.
 
-Built on a unified, declarative workflow model using the `controlflow` library.
+The design goal is that agents, tools, and workflows are data, not code. All three are declared in YAML under `backend/config/`, validated at startup by a registry manager, and served to the frontend through the API. Adding a new workflow or rewiring which agent uses which tool is a YAML edit, not a Python change.
 
-### Why modular and config-driven
-- **Re-target different workflows/use cases** by editing YAML
-- **Swap agents/tools/providers** without touching Python code
-- **Validation and health checks** expose config issues early
+## How it works
 
-### Repository overview (key paths)
-- `backend/app.py`: Flask API and workflow execution
-- `backend/config/`: system configuration (single source of truth)
-  - `settings.py`: env-driven settings and provider selection
-  - `agents.yaml`: agent definitions, tools, capabilities
-  - `tools.yaml`: tool registry with API key requirements and examples
-  - `workflow_config.yaml`: workflows (agent roles, deps, defaults)
-- `backend/{agents,providers,tools,workflows,registry,utils}`: modular building blocks
-- `frontend/`: Vite React app
-- `docs/`: in-depth design docs (logging, SSOT, production blueprint)
+Three YAML files are the single source of truth:
 
-## Prerequisites
-- Node.js v18+
-- Python 3.9+ with `pip`
+- `backend/config/agents.yaml` defines six agents (FinancialAnalyst, MarketAnalyst, EconomicAnalyst, RiskAssessment, NewsSentimentAnalyst, Summarizer), each with its instructions, tools, and capabilities.
+- `backend/config/tools.yaml` registers around 38 tools (Alpha Vantage market data, fundamentals, technical indicators, FRED economic series, plus utilities) with their categories, API key requirements, and call examples.
+- `backend/config/workflow_config.yaml` composes agents into workflows with roles, dependencies, and fallbacks.
 
-## First-time setup
+A workflow declaration looks like this (from `workflow_config.yaml`):
 
-1) Create and activate a Python virtual environment
-- macOS/Linux:
+```yaml
+macroeconomic_outlook:
+  name: "Macroeconomic Outlook"
+  description: "Assesses the overall economic climate using key indicators like GDP, inflation, and unemployment."
+  agents:
+    - name: "EconomicAnalyst"
+      role: "economic_data_analysis"
+      required: true
+      tools: ["get_economic_data_from_fred"]
+    - name: "RiskAssessment"
+      role: "macro_risk_assessment"
+      required: false
+      fallback: "EconomicAnalyst"
+      tools: ["get_economic_data_from_fred"]
+    - name: "Summarizer"
+      role: "economic_summary"
+      required: true
+      tools: []
+      dependencies: ["economic_data_analysis", "macro_risk_assessment"]
+```
+
+`dependencies` controls execution order: the Summarizer waits for the analysis roles to finish. `fallback` lets a workflow degrade instead of failing when an optional agent is disabled or missing keys. At startup the `RegistryManager` (`backend/registry/manager.py`) cross-validates the three files, so a workflow referencing a tool that no agent has, or a tool missing its API key, surfaces as a validation error on `/api/registry/validation` rather than a runtime failure.
+
+Execution is built on the `controlflow` library (Prefect-based). `backend/workflows/config_driven_workflow.py` turns a YAML workflow into ControlFlow tasks, runs them, and pushes status events that the frontend consumes via polling (`/api/workflow-status/{id}`) and SSE (`/api/workflow-stream/{id}`).
+
+Three workflows ship today: `quick_stock_analysis`, `competitor_deep_dive`, and `macroeconomic_outlook`.
+
+## Stack
+
+- Backend: Python, Flask, ControlFlow, Pydantic. Providers are pluggable: OpenAI, Google Gemini, or a local OpenAI-compatible endpoint (`LOCAL_BASE_URL`), selected per request or via `DEFAULT_PROVIDER`.
+- Data: Alpha Vantage (quotes, fundamentals, news sentiment, insider transactions, technicals) and FRED (economic series). Tools fall back to clearly labeled mock data when keys are absent, so the system runs end to end without paid keys.
+- Frontend: React 18, Vite, TypeScript, Zustand, ReactFlow for the workflow graph, Tailwind.
+- Modeling: there is a small quantitative layer in `backend/tools/` (`feature_builder.py`, `model_inference.py`, `backtesting.py`) that engineers features from price/news/insider data, trains a scikit-learn baseline classifier, and runs walk-forward backtests. These are registered as agent tools (`build_features`, `train_model`, etc.) and covered by the pytest suite in `tests/`.
+
+## Running it
+
+Requires Node 18+ and Python 3.9+.
+
 ```bash
 python3 -m venv backend/venv
 source backend/venv/bin/activate
-```
-- Windows (PowerShell):
-```powershell
-python -m venv backend/venv
-backend\venv\Scripts\activate
-```
-
-2) Install backend dependencies
-```bash
 pip install -r backend/requirements.txt
-```
-
-3) Install frontend dependencies
-```bash
 npm install
 ```
 
-4) Configure environment variables
-- Create a `.env` in the repo root (preferred) or `backend/.env`.
-- At least one LLM provider key is required (OpenAI or Google). For market/economic data tools, Alpha Vantage and FRED keys are used.
+Create a `.env` in the repo root (see `backend/.env.example`). At least one LLM key is required:
+
 ```env
-OPENAI_API_KEY=sk-xxx
-GOOGLE_API_KEY=xxx
-ALPHA_VANTAGE_API_KEY=xxx
-FRED_API_KEY=xxx
-# Optional:
-# DEFAULT_PROVIDER=openai|google|local
-# LOG_LEVEL=INFO|DEBUG|WARNING|ERROR|CRITICAL
-# LOCAL_BASE_URL=http://127.0.0.1:8080/v1
+OPENAI_API_KEY=...
+GOOGLE_API_KEY=...
+ALPHA_VANTAGE_API_KEY=...   # optional, mock data without it
+FRED_API_KEY=...            # optional, mock data without it
 ```
 
-## Run locally
+Then:
 
-- Start both backend and frontend:
 ```bash
 npm run dev
 ```
-- Start individually:
-```bash
-npm run dev:backend
-npm run dev:frontend
-```
-- Default ports:
-  - Backend: `http://localhost:5001`
-  - Frontend: `http://localhost:9002`
 
-## The modular, config‑driven model
+This starts the Flask backend on port 5001, waits for `/api/health`, and starts the Vite frontend on port 9002. Or hit the API directly:
 
-- **Settings**: env-driven provider configuration and defaults (`backend/config/settings.py`).
-- **Agents**: declared in `backend/config/agents.yaml` with tools and capabilities.
-- **Tools**: declared in `backend/config/tools.yaml` with API key requirements, categories, and examples.
-- **Workflows**: declared in `backend/config/workflow_config.yaml` with agent roles, dependencies, and defaults.
-
-Example workflow (excerpt):
-```yaml
-workflows:
-  quick_stock_analysis:
-    name: "Quick Stock Analysis"
-    description: "Fast, high-level analysis..."
-    agents:
-      - name: "MarketAnalyst"
-        role: "market_analysis"
-        required: true
-        fallback: "FinancialAnalyst"
-        tools: ["get_market_data", "get_company_overview", "get_mock_news"]
-      - name: "RiskAssessment"
-        role: "risk_assessment"
-        required: true
-        fallback: "FinancialAnalyst"
-        tools: ["get_market_data", "get_mock_analyst_ratings"]
-      - name: "Summarizer"
-        role: "synthesis"
-        required: true
-        tools: []
-        dependencies: ["market_analysis", "risk_assessment"]
-
-settings:
-  default_workflow: "quick_stock_analysis"
-  enable_fallback_agents: true
-```
-
-Example agent (excerpt):
-```yaml
-agents:
-  FinancialAnalyst:
-    name: "FinancialAnalyst"
-    tools:
-      - "detect_stock_ticker"
-      - "get_market_data"
-      - "get_company_overview"
-      - "get_economic_data_from_fred"
-    capabilities:
-      - "market_analysis"
-      - "economic_analysis"
-      - "risk_assessment"
-    required: true
-    enabled: true
-```
-
-Example tool (excerpt):
-```yaml
-tools:
-  get_economic_data_from_fred:
-    name: "get_economic_data_from_fred"
-    description: "Get economic data from FRED..."
-    category: "economic_data"
-    function: "get_economic_data_from_fred"
-    class: "EconomicDataTool"
-    api_key_required: "fred"
-    enabled: true
-    examples:
-      - "get_economic_data_from_fred(series_id='GDP')"
-```
-
-## Extending the system
-
-- **Add a tool**
-  1) Implement or reuse a function in `backend/tools/` (e.g., `market_data.py`, `economic_data.py`).
-  2) Declare it in `backend/config/tools.yaml` with `function`, optional `class`, `api_key_required`, `examples`.
-  3) If it needs an API key, add the key to `.env`.
-  4) Reference the tool from agents in `agents.yaml` and workflows in `workflow_config.yaml`.
-
-- **Add an agent**
-  1) Add a new agent under `agents:` in `backend/config/agents.yaml` with `tools`, `capabilities`, and `enabled`.
-  2) Optionally add templates/logic in `backend/agents/` if needed.
-  3) Reference the agent in a workflow via `workflow_config.yaml` with `role`, `required`, and `fallback`.
-
-- **Add a workflow**
-  1) Add a new entry in `backend/config/workflow_config.yaml` under `workflows:`.
-  2) List agent roles, required flags, fallbacks, dependencies.
-  3) Optionally update `settings.default_workflow`.
-
-- **Switch providers (OpenAI, Google, Local)**
-  - Configure keys or `LOCAL_BASE_URL` in `.env`.
-  - The selected provider can be passed by the client or defaults to `DEFAULT_PROVIDER`.
-  - Provider settings live in `backend/config/settings.py`.
-
-## Core APIs (selected)
-
-- **Health and status**
-  - `GET /api/health`
-  - `GET /api/providers`
-  - `GET /api/agents`
-  - `GET /api/registry/{health|status|validation|summary}`
-
-- **Tools and workflows**
-  - `GET /api/registry/tools`
-  - `GET /api/workflows`
-  - `GET /api/workflow-configs`
-
-- **Execute a workflow**
-  - `POST /api/run-workflow`
-    - body: `{ "query": "Analyze Apple", "provider": "openai", "workflow_type": "quick_stock_analysis" }`
-  - `GET /api/workflow-status/{workflow_id}`
-  - `GET /api/workflow-stream/{workflow_id}` (SSE)
-
-Example:
 ```bash
 curl -X POST http://localhost:5001/api/run-workflow \
   -H 'Content-Type: application/json' \
   -d '{"query":"Analyze AAPL for a quick go/no-go","provider":"openai","workflow_type":"quick_stock_analysis"}'
 ```
 
-## Frontend usage
-- Open `http://localhost:9002`.
-- Choose provider and submit a query. The UI visualizes nodes/edges and polls `GET /api/workflow-status/{id}` for progress.
+Useful endpoints: `/api/health`, `/api/workflows`, `/api/registry/tools`, `/api/registry/validation`, `/api/workflow-metrics`.
 
-## Observability and logs
-- Backend logs to console and `logs/` (see `docs/LOGGING_SYSTEM.md`).
-- Workflow metrics: `GET /api/workflow-metrics`.
-- Health checks and validation endpoints expose configuration issues.
+## Extending it
 
-## Developer workflow
-- Python lint: `make -C backend lint-py`
-- Python dead code: `make -C backend deadcode-py`
-- JS/TS dead code: `npm run check:js` (runs ts-prune + depcheck)
-- Clean dev processes: `npm run clean`
+To add a tool: implement the function in `backend/tools/`, declare it in `tools.yaml` (with `function`, `api_key_required`, `examples`), and reference it from an agent in `agents.yaml`. To add a workflow: add an entry in `workflow_config.yaml` listing agent roles, dependencies, and fallbacks. The registry validation will tell you if you wired something wrong.
 
-## Troubleshooting
-- **Backend not ready**: hit `GET /api/health`. Ensure venv is active and `.env` keys exist.
-- **Missing data tools**: set `ALPHA_VANTAGE_API_KEY` / `FRED_API_KEY`.
-- **Provider errors**: verify `OPENAI_API_KEY` or `GOOGLE_API_KEY`; check `DEFAULT_PROVIDER`.
-- **Port conflicts**: adjust `BACKEND_PORT` or Vite port.
-- **Market Breadth blank**: backend now falls back to labeled mock breadth; if still empty, ensure the `NewsSentimentAnalyst` agent is enabled in `backend/config/workflow_config.yaml` and Alpha Vantage tooling is available.
+## Status and caveats
+
+This is a working prototype, not a production service. Known limitations:
+
+- Free-tier Alpha Vantage rate limits are low; some tools return labeled mock data when limits or keys block real calls.
+- Workflow state is held in memory in the Flask process; there is no persistence or auth. `docs/ARCHITECTURAL_BLUEPRINT_FOR_PRODUCTION.md` covers what productionizing would take (BFF, security, state).
+- The baseline model is intentionally simple (StandardScaler plus class-weighted logistic regression); the point is the plumbing from features to walk-forward evaluation, not alpha.
+
+Dev tooling: `make -C backend lint-py` (ruff), `npm run check:js` (ts-prune + depcheck), `pytest` for the modeling layer.
 
 ## Further reading
-- Single Source of Truth: `docs/SINGLE_SOURCE_OF_TRUTH_ARCHITECTURE.md`
-- Logging: `docs/LOGGING_SYSTEM.md`
-- Production blueprint (BFF, security): `docs/ARCHITECTURAL_BLUEPRINT_FOR_PRODUCTION.md`
+
+- `docs/SINGLE_SOURCE_OF_TRUTH_ARCHITECTURE.md` for the registry/validation design
+- `docs/LOGGING_SYSTEM.md` for structured logging
