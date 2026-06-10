@@ -2,6 +2,8 @@
 
 Fintel is a multi-agent financial analysis platform. You ask it a question like "Should I invest in Palantir?", it assembles a team of LLM agents (market analyst, risk assessment, news sentiment, economic analyst, summarizer), runs them against live market and economic data, and streams the workflow back to a React UI that renders the agents and their dependencies as a live graph. The output is a structured investment report with the tool calls each agent made.
 
+![FINTEL running a quick stock analysis](docs/fintel-quick-stock-analysis.png)
+
 The design goal is that agents, tools, and workflows are data, not code. All three are declared in YAML under `backend/config/`, validated at startup by a registry manager, and served to the frontend through the API. Adding a new workflow or rewiring which agent uses which tool is a YAML edit, not a Python change.
 
 ## How it works
@@ -100,5 +102,6 @@ Dev tooling: `make -C backend lint-py` (ruff), `npm run check:js` (ts-prune + de
 
 ## Further reading
 
+- `docs/RISE_at_APL_2026_FINTEL_talk.pdf` for the slides from my RISE@APL talk on how FINTEL came to be: I needed an AI-enhanced analysis environment at APL, could not put proprietary material into AI tools, so I built this as an unclassified parallel prototype
 - `docs/SINGLE_SOURCE_OF_TRUTH_ARCHITECTURE.md` for the registry/validation design
 - `docs/LOGGING_SYSTEM.md` for structured logging
